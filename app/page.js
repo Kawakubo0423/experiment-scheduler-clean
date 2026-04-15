@@ -530,6 +530,8 @@ function ParticipantPage({
   isLoading,
   onRetry,
   setupMode,
+  calendarView,
+  setCalendarView,
 }) {
   const mobileDateItems = days
     .filter((day) => day.getMonth() === displayMonth.getMonth())
@@ -607,106 +609,178 @@ function ParticipantPage({
               <SectionHeader
                 eyebrow="CALENDAR"
                 title="空いている日をカレンダーで選ぶ"
-                description="日付を押すと、自動で下の詳細枠へ移動します。"
+                description="表示方法を切り替えながら、見やすい形で日程を確認できます。"
                 action={
-                  <div className="flex items-center gap-2">
-                    <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() - 1, 1))}>
-                      <ChevronLeft />
-                    </IconButton>
-                    <div className="min-w-36 text-center text-sm font-semibold text-slate-700">{formatMonthTitle(displayMonth)}</div>
-                    <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() + 1, 1))}>
-                      <ChevronRight />
-                    </IconButton>
+                  <div className="flex w-full flex-col gap-3 sm:w-auto sm:items-end">
+                    <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1">
+                      <button
+                        type="button"
+                        onClick={() => setCalendarView("calendar")}
+                        className={classNames(
+                          "rounded-xl px-3 py-2 text-sm font-medium transition",
+                          calendarView === "calendar" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
+                        )}
+                      >
+                        カレンダー表示
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCalendarView("list")}
+                        className={classNames(
+                          "rounded-xl px-3 py-2 text-sm font-medium transition",
+                          calendarView === "list" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
+                        )}
+                      >
+                        一覧表示
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                      <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() - 1, 1))}>
+                        <ChevronLeft />
+                      </IconButton>
+                      <div className="min-w-36 text-center text-sm font-semibold text-slate-700">{formatMonthTitle(displayMonth)}</div>
+                      <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() + 1, 1))}>
+                        <ChevronRight />
+                      </IconButton>
+                    </div>
                   </div>
                 }
               />
 
-              <div className="hidden md:block">
-                <div className="mb-3 grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-400">
-                  {WEEK_LABELS.map((label) => (
-                    <div key={label} className="py-2">{label}</div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-7 gap-2">
-                  {days.map((day) => {
-                    const dateKey = formatDateKey(day);
-                    const summary = monthSummary[dateKey];
-                    const inMonth = day.getMonth() === displayMonth.getMonth();
-                    const selected = dateKey === selectedDate;
-                    const hasSlots = summary?.slotCount > 0;
-                    const onlyFewLeft = hasSlots && summary.totalRemaining <= 1;
-                    const allFull = hasSlots && summary.fullCount === summary.slotCount;
-
-                    return (
-                      <button
-                        key={dateKey}
-                        onClick={() => handleSelectDate(dateKey)}
-                        className={classNames(
-                          "min-h-[114px] rounded-3xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                          inMonth ? "bg-white" : "bg-slate-50 text-slate-400",
-                          selected ? "border-slate-900 shadow-md" : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="text-sm font-semibold">{day.getDate()}</div>
-                          {hasSlots ? (
-                            allFull ? (
-                              <StatusBadge tone="rose">満枠</StatusBadge>
-                            ) : onlyFewLeft ? (
-                              <StatusBadge tone="amber">残少</StatusBadge>
-                            ) : (
-                              <StatusBadge tone="emerald">空き</StatusBadge>
-                            )
-                          ) : null}
-                        </div>
-                        <div className="mt-4 space-y-1 text-xs leading-5 text-slate-500">
-                          <div>{summary?.slotCount || 0} 枠</div>
-                          <div>{hasSlots ? `残り ${summary.totalRemaining} 席` : "公開枠なし"}</div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="space-y-3 md:hidden">
-                {mobileDateItems.length === 0 ? (
-                  <div className="rounded-3xl border border-dashed border-slate-200 p-5 text-sm text-slate-500">
-                    今月の公開中の枠はまだありません。
+              {calendarView === "calendar" ? (
+                <>
+                  <div className="mb-3 grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-400">
+                    {WEEK_LABELS.map((label) => (
+                      <div key={label} className="py-2">{label}</div>
+                    ))}
                   </div>
-                ) : (
-                  mobileDateItems.map(({ day, dateKey, summary }) => {
-                    const selected = dateKey === selectedDate;
-                    const allFull = summary.fullCount === summary.slotCount;
-                    const few = !allFull && summary.totalRemaining <= 1;
-                    return (
-                      <button
-                        key={dateKey}
-                        onClick={() => handleSelectDate(dateKey)}
-                        className={classNames(
-                          "w-full rounded-3xl border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                          selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white hover:border-slate-300"
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className={classNames("text-lg font-semibold", selected ? "text-white" : "text-slate-900")}>
-                              {day.getDate()}日（{WEEK_LABELS[day.getDay()]}）
-                            </div>
-                            <div className={classNames("mt-1 text-sm", selected ? "text-slate-200" : "text-slate-500")}>
-                              {summary.slotCount}枠 / 残り {summary.totalRemaining}席
-                            </div>
+
+                  <div className="hidden md:grid md:grid-cols-7 md:gap-2">
+                    {days.map((day) => {
+                      const dateKey = formatDateKey(day);
+                      const summary = monthSummary[dateKey];
+                      const inMonth = day.getMonth() === displayMonth.getMonth();
+                      const selected = dateKey === selectedDate;
+                      const hasSlots = summary?.slotCount > 0;
+                      const onlyFewLeft = hasSlots && summary.totalRemaining <= 1;
+                      const allFull = hasSlots && summary.fullCount === summary.slotCount;
+
+                      return (
+                        <button
+                          key={dateKey}
+                          onClick={() => handleSelectDate(dateKey)}
+                          className={classNames(
+                            "min-h-[114px] rounded-3xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                            inMonth ? "bg-white" : "bg-slate-50 text-slate-400",
+                            selected ? "border-slate-900 shadow-md" : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="text-sm font-semibold">{day.getDate()}</div>
+                            {hasSlots ? (
+                              allFull ? (
+                                <StatusBadge tone="rose">満枠</StatusBadge>
+                              ) : onlyFewLeft ? (
+                                <StatusBadge tone="amber">残少</StatusBadge>
+                              ) : (
+                                <StatusBadge tone="emerald">空き</StatusBadge>
+                              )
+                            ) : null}
                           </div>
-                          <StatusBadge tone={allFull ? "rose" : few ? "amber" : "emerald"}>
-                            {allFull ? "満枠" : few ? "残少" : "空き"}
-                          </StatusBadge>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
+                          <div className="mt-4 space-y-1 text-xs leading-5 text-slate-500">
+                            <div>{summary?.slotCount || 0} 枠</div>
+                            <div>{hasSlots ? `残り ${summary.totalRemaining} 席` : "公開枠なし"}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-2 md:hidden">
+                    {days.map((day) => {
+                      const dateKey = formatDateKey(day);
+                      const summary = monthSummary[dateKey];
+                      const inMonth = day.getMonth() === displayMonth.getMonth();
+                      const selected = dateKey === selectedDate;
+                      const hasSlots = summary?.slotCount > 0;
+                      const allFull = hasSlots && summary.fullCount === summary.slotCount;
+                      const few = hasSlots && !allFull && summary.totalRemaining <= 1;
+
+                      return (
+                        <button
+                          key={dateKey}
+                          onClick={() => handleSelectDate(dateKey)}
+                          className={classNames(
+                            "aspect-square rounded-2xl border p-2 text-center transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                            inMonth ? "bg-white" : "bg-slate-50 text-slate-300",
+                            selected ? "border-slate-900 bg-slate-900 text-white shadow-md" : "border-slate-200 hover:border-slate-300"
+                          )}
+                        >
+                          <div className="flex h-full flex-col items-center justify-between">
+                            <div className="text-sm font-semibold">{day.getDate()}</div>
+                            {hasSlots ? (
+                              <div className={classNames(
+                                "inline-flex rounded-full px-2 py-1 text-[10px] font-medium",
+                                selected
+                                  ? "bg-white/15 text-white"
+                                  : allFull
+                                  ? "bg-rose-50 text-rose-700"
+                                  : few
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-emerald-50 text-emerald-700"
+                              )}>
+                                {allFull ? "満席" : few ? "残少" : "空き"}
+                              </div>
+                            ) : (
+                              <div className={classNames("text-[10px]", selected ? "text-slate-300" : "text-slate-400")}>
+                                なし
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3">
+                  {mobileDateItems.length === 0 ? (
+                    <div className="rounded-3xl border border-dashed border-slate-200 p-5 text-sm text-slate-500">
+                      今月の公開中の枠はまだありません。
+                    </div>
+                  ) : (
+                    mobileDateItems.map(({ day, dateKey, summary }) => {
+                      const selected = dateKey === selectedDate;
+                      const allFull = summary.fullCount === summary.slotCount;
+                      const few = !allFull && summary.totalRemaining <= 1;
+                      return (
+                        <button
+                          key={dateKey}
+                          onClick={() => handleSelectDate(dateKey)}
+                          className={classNames(
+                            "w-full rounded-3xl border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                            selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white hover:border-slate-300"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className={classNames("text-lg font-semibold", selected ? "text-white" : "text-slate-900")}>
+                                {day.getDate()}日（{WEEK_LABELS[day.getDay()]}）
+                              </div>
+                              <div className={classNames("mt-1 text-sm", selected ? "text-slate-200" : "text-slate-500")}>
+                                {summary.slotCount}枠 / 残り {summary.totalRemaining}席
+                              </div>
+                            </div>
+                            <StatusBadge tone={allFull ? "rose" : few ? "amber" : "emerald"}>
+                              {allFull ? "満枠" : few ? "残少" : "空き"}
+                            </StatusBadge>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
             </Card>
 
             <div className="space-y-6">
@@ -1267,6 +1341,7 @@ export default function ExperimentParticipantScheduler() {
   const [page, setPage] = useState("participant");
   const [adminTab, setAdminTab] = useState("dashboard");
   const [authReady, setAuthReady] = useState(!firebaseReady);
+  const [calendarView, setCalendarView] = useState("calendar");
   const [authUser, setAuthUser] = useState(null);
   const [authError, setAuthError] = useState("");
   const [showHelp, setShowHelp] = useState(false);
@@ -1968,6 +2043,8 @@ export default function ExperimentParticipantScheduler() {
           isLoading={slotsLoading}
           onRetry={retryFetch}
           setupMode={!firebaseReady}
+          calendarView={calendarView}
+          setCalendarView={setCalendarView}
         />
       )}
 
