@@ -10,7 +10,7 @@ import {
   signOut,
 } from "firebase/auth";
 
-const STORAGE_KEY = "experiment-scheduler-ui-v4";
+const STORAGE_KEY = "experiment-scheduler-ui-v5";
 
 const PERIODS = [
   { key: "p1", label: "1時限", start: "09:00", end: "10:35" },
@@ -321,6 +321,57 @@ function GoogleIcon() {
   );
 }
 
+function HelpIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.8 9.2a2.45 2.45 0 014.4 1.5c0 1.7-1.8 2.2-2.2 3.4" />
+      <circle cx="12" cy="17" r=".9" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function ModalShell({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+      <button className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} aria-label="閉じる" />
+      <div className="relative z-10 max-h-[90vh] w-full max-w-2xl overflow-auto rounded-[32px] border border-white/70 bg-white p-6 shadow-2xl sm:p-8">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">HELP</div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{title}</h2>
+          </div>
+          <IconButton onClick={onClose} aria-label="閉じる">×</IconButton>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function HelpModal({ onClose }) {
+  return (
+    <ModalShell title="予約ページの使い方" onClose={onClose}>
+      <div className="grid gap-4 md:grid-cols-3">
+        {[
+          ["1", "日付を選ぶ", "空きがある日付をカレンダーで押すと、その日の詳細枠へ自動で移動します。"],
+          ["2", "時間を選ぶ", "立命館大学の時限に合わせた枠から、希望する日時を最大3つまで選べます。"],
+          ["3", "送信する", "氏名、メールアドレス、所属・学年を入力して送信すれば申込完了です。"],
+        ].map(([number, title, text]) => (
+          <div key={number} className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-sm font-semibold text-white">{number}</div>
+            <div className="text-base font-semibold text-slate-900">{title}</div>
+            <div className="mt-2 text-sm leading-6 text-slate-500">{text}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-6 rounded-3xl border border-sky-200 bg-sky-50 p-5 text-sm leading-7 text-slate-700">
+        入力した氏名やメールアドレスは、日程調整と連絡のためにのみ利用される想定です。他の参加者には表示されません。
+      </div>
+    </ModalShell>
+  );
+}
+
 function SetupNotice() {
   return (
     <Card className="mb-6 border-amber-200 bg-amber-50">
@@ -344,6 +395,14 @@ NEXT_PUBLIC_ADMIN_EMAILS=your-mail@example.com</pre>
   );
 }
 
+function PrivacyNote() {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-600">
+      入力された個人情報は、実験日程の調整と連絡のための利用を想定しています。参加者同士には表示されず、管理者ページはログインした管理者のみが閲覧できます。
+    </div>
+  );
+}
+
 function ParticipantPage({
   sortedSlots,
   requests,
@@ -361,6 +420,7 @@ function ParticipantPage({
   message,
   detailsRef,
   onOpenAdmin,
+  onOpenHelp,
   stats,
 }) {
   return (
@@ -375,47 +435,27 @@ function ParticipantPage({
               実験日程予約ページ
             </h1>
             <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-              まずはカレンダーで空いている日を確認し、気になる日付を押してください。詳細な時限と空き枠が表示され、そのまま希望日時を送信できます。
+              カレンダーから空いている日を選び、詳細枠を見ながら希望日時を送信できます。必要な説明は右上のヘルプからいつでも確認できます。
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-3">
+            <IconButton aria-label="使い方を開く" onClick={onOpenHelp} title="使い方">
+              <HelpIcon />
+            </IconButton>
             <IconButton aria-label="管理者ページへ" onClick={onOpenAdmin} title="管理者ページへ">
               <GearIcon />
             </IconButton>
           </div>
         </header>
 
-        <section className="mb-6 grid gap-4 lg:grid-cols-[1.2fr,0.8fr]">
-          <Card className="bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(239,246,255,0.92),rgba(224,231,255,0.85))]">
-            <SectionHeader
-              eyebrow="HOW TO USE"
-              title="初めてでも使いやすい3ステップ"
-              description="やることを最小限に絞り、どこを見ればよいかが直感的にわかる構成にしています。"
-            />
-            <div className="grid gap-3 md:grid-cols-3">
-              {[
-                ["1", "日付を選ぶ", "空きがある日付を押すと、その日の詳細枠へ自動で移動します。"],
-                ["2", "時間を選ぶ", "立命館大学の時限に合わせた枠から、希望の日時を最大3つまで選べます。"],
-                ["3", "情報を送信", "必要事項を入力し、希望枠を含めて送れば申込完了です。"],
-              ].map(([number, title, text]) => (
-                <div key={number} className="rounded-3xl border border-white/80 bg-white/80 p-5 shadow-sm">
-                  <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-sm font-semibold text-white">
-                    {number}
-                  </div>
-                  <div className="text-base font-semibold text-slate-900">{title}</div>
-                  <div className="mt-2 text-sm leading-6 text-slate-500">{text}</div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
+        <section className="mb-6 grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
           <Card>
             <SectionHeader
               eyebrow="AT A GLANCE"
               title="今の受付状況"
               description="日程全体の空き具合をざっくり確認できます。"
             />
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
               <div className="rounded-3xl bg-slate-50 p-5">
                 <div className="text-sm text-slate-500">公開中の枠</div>
                 <div className="mt-2 text-3xl font-semibold text-slate-900">{sortedSlots.length}</div>
@@ -431,6 +471,8 @@ function ParticipantPage({
               <StatusBadge tone="rose">満枠</StatusBadge>
             </div>
           </Card>
+
+          <PrivacyNote />
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.28fr,0.92fr]">
@@ -570,6 +612,7 @@ function ParticipantPage({
                       onChange={(event) => setParticipantForm((prev) => ({ ...prev, name: event.target.value }))}
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
                       placeholder="例: 山田 太郎"
+                      autoComplete="name"
                     />
                   </label>
                   <label className="text-sm">
@@ -581,6 +624,7 @@ function ParticipantPage({
                       onChange={(event) => setParticipantForm((prev) => ({ ...prev, email: event.target.value }))}
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
                       placeholder="example@xxx.com"
+                      autoComplete="email"
                     />
                   </label>
                 </div>
@@ -629,6 +673,8 @@ function ParticipantPage({
                     )}
                   </div>
                 </div>
+
+                <PrivacyNote />
 
                 {message ? (
                   <div className="rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
@@ -734,7 +780,7 @@ function AdminPage({
               <SectionHeader
                 eyebrow="BACKUP"
                 title="データの保存と初期化"
-                description="試作段階でも扱いやすいように、ローカル保存データの書き出しもできます。"
+                description="個人情報を含むため、書き出しデータの取り扱いには注意してください。"
               />
               <div className="flex flex-wrap gap-3">
                 <button onClick={exportJson} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
@@ -938,7 +984,6 @@ function AdminLoginPage({
   authUser,
   authReady,
   authError,
-  allowedEmails,
   firebaseEnabled,
   onBack,
   onGoogleLogin,
@@ -988,12 +1033,6 @@ function AdminLoginPage({
                 </div>
               ) : null}
 
-              {allowedEmails.length > 0 ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                  許可済み管理者: {allowedEmails.join(", ")}
-                </div>
-              ) : null}
-
               {authError ? (
                 <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   {authError}
@@ -1029,6 +1068,7 @@ export default function ExperimentParticipantScheduler() {
   const [authReady, setAuthReady] = useState(!firebaseReady);
   const [authUser, setAuthUser] = useState(null);
   const [authError, setAuthError] = useState("");
+  const [showHelp, setShowHelp] = useState(false);
   const [participantForm, setParticipantForm] = useState({
     name: "",
     email: "",
@@ -1105,6 +1145,13 @@ export default function ExperimentParticipantScheduler() {
       setSelectedDate(sortSlots(slots)[0].date);
     }
   }, [selectedDate, slots]);
+
+  useEffect(() => {
+    document.body.style.overflow = showHelp ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [showHelp]);
 
   const adminAuthorized = !!authUser?.email && ALLOWED_ADMIN_EMAILS.includes(authUser.email.toLowerCase());
 
@@ -1299,79 +1346,74 @@ export default function ExperimentParticipantScheduler() {
     }
   }, [page, authUser, adminAuthorized]);
 
-  if (page === "admin-login") {
-    return (
-      <AdminLoginPage
-        authUser={authUser}
-        authReady={authReady}
-        authError={authError}
-        allowedEmails={ALLOWED_ADMIN_EMAILS}
-        firebaseEnabled={firebaseReady}
-        onBack={() => setPage("participant")}
-        onGoogleLogin={handleGoogleLogin}
-      />
-    );
-  }
-
-  if (page === "admin") {
-    if (!adminAuthorized) {
-      return (
+  return (
+    <>
+      {page === "admin-login" ? (
         <AdminLoginPage
           authUser={authUser}
           authReady={authReady}
-          authError={authError || "管理者ログインが必要です。"}
-          allowedEmails={ALLOWED_ADMIN_EMAILS}
+          authError={authError}
           firebaseEnabled={firebaseReady}
           onBack={() => setPage("participant")}
           onGoogleLogin={handleGoogleLogin}
         />
-      );
-    }
+      ) : page === "admin" ? (
+        adminAuthorized ? (
+          <AdminPage
+            adminTab={adminTab}
+            setAdminTab={setAdminTab}
+            stats={stats}
+            exportJson={exportJson}
+            resetAll={resetAll}
+            slotForm={slotForm}
+            setSlotForm={setSlotForm}
+            handleAddSlot={handleAddSlot}
+            sortedSlots={sortedSlots}
+            requests={requests}
+            handleDeleteSlot={handleDeleteSlot}
+            search={search}
+            setSearch={setSearch}
+            filteredRequests={filteredRequests}
+            handleAssignRequest={handleAssignRequest}
+            handleDeleteRequest={handleDeleteRequest}
+            onBack={() => setPage("participant")}
+            onLogout={handleAdminLogout}
+            adminEmail={authUser?.email || ""}
+          />
+        ) : (
+          <AdminLoginPage
+            authUser={authUser}
+            authReady={authReady}
+            authError={authError || "管理者ログインが必要です。"}
+            firebaseEnabled={firebaseReady}
+            onBack={() => setPage("participant")}
+            onGoogleLogin={handleGoogleLogin}
+          />
+        )
+      ) : (
+        <ParticipantPage
+          sortedSlots={sortedSlots}
+          requests={requests}
+          displayMonth={displayMonth}
+          setDisplayMonth={setDisplayMonth}
+          selectedDate={selectedDate}
+          handleSelectDate={handleSelectDate}
+          monthSummary={monthSummary}
+          days={days}
+          selectedDaySlots={selectedDaySlots}
+          participantForm={participantForm}
+          setParticipantForm={setParticipantForm}
+          togglePreferredSlot={togglePreferredSlot}
+          handleSubmitRequest={handleSubmitRequest}
+          message={message}
+          detailsRef={detailsRef}
+          onOpenAdmin={openAdminPage}
+          onOpenHelp={() => setShowHelp(true)}
+          stats={stats}
+        />
+      )}
 
-    return (
-      <AdminPage
-        adminTab={adminTab}
-        setAdminTab={setAdminTab}
-        stats={stats}
-        exportJson={exportJson}
-        resetAll={resetAll}
-        slotForm={slotForm}
-        setSlotForm={setSlotForm}
-        handleAddSlot={handleAddSlot}
-        sortedSlots={sortedSlots}
-        requests={requests}
-        handleDeleteSlot={handleDeleteSlot}
-        search={search}
-        setSearch={setSearch}
-        filteredRequests={filteredRequests}
-        handleAssignRequest={handleAssignRequest}
-        handleDeleteRequest={handleDeleteRequest}
-        onBack={() => setPage("participant")}
-        onLogout={handleAdminLogout}
-        adminEmail={authUser?.email || ""}
-      />
-    );
-  }
-
-  return (
-    <ParticipantPage
-      sortedSlots={sortedSlots}
-      requests={requests}
-      displayMonth={displayMonth}
-      setDisplayMonth={setDisplayMonth}
-      selectedDate={selectedDate}
-      handleSelectDate={handleSelectDate}
-      monthSummary={monthSummary}
-      days={days}
-      selectedDaySlots={selectedDaySlots}
-      participantForm={participantForm}
-      setParticipantForm={setParticipantForm}
-      togglePreferredSlot={togglePreferredSlot}
-      handleSubmitRequest={handleSubmitRequest}
-      message={message}
-      detailsRef={detailsRef}
-      onOpenAdmin={openAdminPage}
-      stats={stats}
-    />
+      {showHelp ? <HelpModal onClose={() => setShowHelp(false)} /> : null}
+    </>
   );
 }
