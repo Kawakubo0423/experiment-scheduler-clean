@@ -654,7 +654,7 @@ function ParticipantPage({
             <h1 className="whitespace-nowrap text-[clamp(2.1rem,8.8vw,3rem)] font-bold tracking-tight leading-[1.05] text-slate-900">
               実験日程予約ページ
             </h1>
-            <p className="mt-4 max-w-[18.5rem] text-[15px] leading-7 text-slate-600 sm:max-w-3xl sm:text-base">
+            <p className="mt-4 max-w-[18.5rem] text-[15px] leading-7 text-slate-600 sm:max-w-none sm:whitespace-nowrap sm:text-base">
               カレンダーから空いている日を選び、詳細枠を見ながら希望日時を送信できます。必要な説明は右上のヘルプからいつでも確認できます。
             </p>
           </div>
@@ -732,15 +732,18 @@ function ParticipantPage({
                         <ChevronRight />
                       </IconButton>
                     </div>
-                      <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() + 1, 1))}>
-                        <ChevronRight />
-                      </IconButton>
-                    </div>
-                  
+                  </div>
                 }
               />
 
-              <div className="mb-4 flex flex-nowrap items-center justify-between gap-2 overflow-x-auto pb-1 text-xs text-slate-500 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="mb-4 hidden flex-wrap gap-2 text-xs text-slate-500 md:flex">
+                <StatusBadge tone="emerald">空きあり</StatusBadge>
+                <StatusBadge tone="amber">残りわずか</StatusBadge>
+                <StatusBadge tone="rose">満席</StatusBadge>
+                <StatusBadge tone="slate">公開枠なし</StatusBadge>
+              </div>
+
+              <div className="mb-4 flex flex-nowrap items-center justify-between gap-2 overflow-x-auto pb-1 text-xs text-slate-500 md:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <span className="inline-flex shrink-0 rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">空きあり</span>
                 <span className="inline-flex shrink-0 rounded-full border border-amber-200 bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">残りわずか</span>
                 <span className="inline-flex shrink-0 rounded-full border border-rose-200 bg-rose-100 px-2.5 py-1 text-xs font-medium text-rose-700">満席</span>
