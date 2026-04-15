@@ -9,8 +9,20 @@ import {
   signInWithPopup,
   signOut,
 } from "firebase/auth";
-
-const STORAGE_KEY = "experiment-scheduler-ui-v5";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getFirestore,
+  onSnapshot,
+  query,
+  runTransaction,
+  serverTimestamp,
+  updateDoc,
+  where,
+  writeBatch,
+} from "firebase/firestore";
 
 const PERIODS = [
   { key: "p1", label: "1時限", start: "09:00", end: "10:35" },
@@ -27,75 +39,47 @@ const WEEK_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
 const SAMPLE_SLOTS = [
   {
-    id: "slot-1",
+    id: "sample-slot-1",
     date: "2026-04-21",
     periodKey: "p3",
     capacity: 2,
+    confirmedCount: 1,
+    isPublished: true,
     location: "OIC 実験室A",
     note: "VR体験あり / 約30分",
   },
   {
-    id: "slot-2",
+    id: "sample-slot-2",
     date: "2026-04-21",
     periodKey: "p4",
     capacity: 2,
+    confirmedCount: 0,
+    isPublished: true,
     location: "OIC 実験室A",
     note: "VR体験あり / 約30分",
   },
   {
-    id: "slot-3",
-    date: "2026-04-22",
-    periodKey: "p2",
-    capacity: 1,
-    location: "OIC 実験室B",
-    note: "短時間の予備枠",
-  },
-  {
-    id: "slot-4",
-    date: "2026-04-22",
-    periodKey: "p5",
-    capacity: 2,
-    location: "OIC 実験室B",
-    note: "放課後に参加しやすい枠",
-  },
-  {
-    id: "slot-5",
+    id: "sample-slot-3",
     date: "2026-04-24",
     periodKey: "p3",
     capacity: 3,
-    location: "OIC 実験室A",
-    note: "友人同士の参加も可",
-  },
-  {
-    id: "slot-6",
-    date: "2026-04-28",
-    periodKey: "p4",
-    capacity: 2,
-    location: "OIC 実験室C",
-    note: "酔いやすい方向けに途中休憩あり",
+    confirmedCount: 1,
+    isPublished: true,
+    location: "OIC 実験室B",
+    note: "放課後参加しやすい枠",
   },
 ];
 
 const SAMPLE_REQUESTS = [
   {
-    id: "request-1",
+    id: "sample-request-1",
     name: "山田 太郎",
     email: "taro@example.com",
     affiliation: "情報理工学部 B3",
     note: "できれば午後希望",
-    preferredSlotIds: ["slot-1", "slot-5"],
-    assignedSlotId: "slot-1",
+    preferredSlotIds: ["sample-slot-1", "sample-slot-3"],
+    assignedSlotId: "sample-slot-1",
     status: "confirmed",
-  },
-  {
-    id: "request-2",
-    name: "佐藤 花子",
-    email: "hanako@example.com",
-    affiliation: "情報理工学部 B4",
-    note: "VR酔いしやすいです",
-    preferredSlotIds: ["slot-4", "slot-6"],
-    assignedSlotId: "",
-    status: "requested",
   },
 ];
 
@@ -117,10 +101,12 @@ const firebaseReady = Object.values(firebaseConfig).every(Boolean);
 
 let firebaseApp;
 let firebaseAuth;
+let firestore;
 
 if (firebaseReady) {
   firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
   firebaseAuth = getAuth(firebaseApp);
+  firestore = getFirestore(firebaseApp);
 }
 
 function classNames(...values) {
@@ -174,9 +160,13 @@ function getSlotLabel(slot) {
   return `${period.label} (${period.start}〜${period.end})`;
 }
 
-function getSlotMetrics(slot, requests) {
-  const confirmed = requests.filter((request) => request.assignedSlotId === slot.id).length;
-  const interested = requests.filter((request) => (request.preferredSlotIds || []).includes(slot.id)).length;
+function getSlotMetrics(slot, requests = []) {
+  const confirmed = typeof slot.confirmedCount === "number"
+    ? slot.confirmedCount
+    : requests.filter((request) => request.assignedSlotId === slot.id).length;
+  const interested = requests.length
+    ? requests.filter((request) => (request.preferredSlotIds || []).includes(slot.id)).length
+    : 0;
   const remaining = Math.max(Number(slot.capacity || 1) - confirmed, 0);
 
   return {
@@ -187,11 +177,11 @@ function getSlotMetrics(slot, requests) {
   };
 }
 
-function getDaySummary(dateKey, slots, requests) {
-  const daySlots = slots.filter((slot) => slot.date === dateKey);
+function getDaySummary(dateKey, slots) {
+  const daySlots = slots.filter((slot) => slot.date === dateKey && slot.isPublished !== false);
   const slotCount = daySlots.length;
-  const totalRemaining = daySlots.reduce((sum, slot) => sum + getSlotMetrics(slot, requests).remaining, 0);
-  const fullCount = daySlots.filter((slot) => getSlotMetrics(slot, requests).full).length;
+  const totalRemaining = daySlots.reduce((sum, slot) => sum + getSlotMetrics(slot).remaining, 0);
+  const fullCount = daySlots.filter((slot) => getSlotMetrics(slot).full).length;
 
   return {
     slotCount,
@@ -366,7 +356,7 @@ function HelpModal({ onClose }) {
         ))}
       </div>
       <div className="mt-6 rounded-3xl border border-sky-200 bg-sky-50 p-5 text-sm leading-7 text-slate-700">
-        入力した氏名やメールアドレスは、日程調整と連絡のためにのみ利用される想定です。他の参加者には表示されません。
+        入力した氏名やメールアドレスは、日程調整と連絡のための利用を想定しています。他の参加者には表示されません。
       </div>
     </ModalShell>
   );
@@ -374,11 +364,11 @@ function HelpModal({ onClose }) {
 
 function SetupNotice() {
   return (
-    <Card className="mb-6 border-amber-200 bg-amber-50">
+    <Card className="border-amber-200 bg-amber-50">
       <SectionHeader
         eyebrow="SETUP"
-        title="管理者ログインの設定がまだです"
-        description="Googleログインを使うために、Firebase の環境変数が必要です。参加者ページはそのまま使えます。"
+        title="Firebase / Firestore の設定がまだです"
+        description="リアルタイム共有のために、認証だけでなく Firestore を使います。下の環境変数を確認してください。"
       />
       <div className="space-y-3 text-sm text-slate-700">
         <p>`.env.local` と Vercel の Environment Variables に次を追加してください。</p>
@@ -389,7 +379,7 @@ NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=...
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
 NEXT_PUBLIC_FIREBASE_APP_ID=...
 NEXT_PUBLIC_ADMIN_EMAILS=your-mail@example.com</pre>
-        <p>Firebase Authentication で Google ログインを有効化し、許可したい管理者メールを `NEXT_PUBLIC_ADMIN_EMAILS` に入れてください。</p>
+        <p>Firebase Authentication で Google ログインを有効化し、Firestore の Rules で公開枠と管理者権限を分けてください。</p>
       </div>
     </Card>
   );
@@ -403,9 +393,16 @@ function PrivacyNote() {
   );
 }
 
+function LoadingCard({ title = "読み込み中..." }) {
+  return (
+    <Card>
+      <div className="text-sm text-slate-500">{title}</div>
+    </Card>
+  );
+}
+
 function ParticipantPage({
   sortedSlots,
-  requests,
   displayMonth,
   setDisplayMonth,
   selectedDate,
@@ -422,6 +419,9 @@ function ParticipantPage({
   onOpenAdmin,
   onOpenHelp,
   stats,
+  isLoading,
+  onRetry,
+  setupMode,
 }) {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe_0%,_#eff6ff_24%,_#f8fafc_58%,_#eef2ff_100%)] text-slate-900">
@@ -448,12 +448,19 @@ function ParticipantPage({
           </div>
         </header>
 
+        {setupMode ? <div className="mb-6"><SetupNotice /></div> : null}
+
         <section className="mb-6 grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
           <Card>
             <SectionHeader
               eyebrow="AT A GLANCE"
               title="今の受付状況"
               description="日程全体の空き具合をざっくり確認できます。"
+              action={!setupMode ? (
+                <button onClick={onRetry} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  最新状態を再取得
+                </button>
+              ) : null}
             />
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
               <div className="rounded-3xl bg-slate-50 p-5">
@@ -475,220 +482,224 @@ function ParticipantPage({
           <PrivacyNote />
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1.28fr,0.92fr]">
-          <Card>
-            <SectionHeader
-              eyebrow="CALENDAR"
-              title="空いている日をカレンダーで選ぶ"
-              description="日付を押すと、自動で下の詳細枠へ移動します。"
-              action={
-                <div className="flex items-center gap-2">
-                  <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() - 1, 1))}>
-                    <ChevronLeft />
-                  </IconButton>
-                  <div className="min-w-36 text-center text-sm font-semibold text-slate-700">{formatMonthTitle(displayMonth)}</div>
-                  <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() + 1, 1))}>
-                    <ChevronRight />
-                  </IconButton>
-                </div>
-              }
-            />
-
-            <div className="mb-3 grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-400">
-              {WEEK_LABELS.map((label) => (
-                <div key={label} className="py-2">{label}</div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-7 gap-2">
-              {days.map((day) => {
-                const dateKey = formatDateKey(day);
-                const summary = monthSummary[dateKey];
-                const inMonth = day.getMonth() === displayMonth.getMonth();
-                const selected = dateKey === selectedDate;
-                const hasSlots = summary?.slotCount > 0;
-                const onlyFewLeft = hasSlots && summary.totalRemaining <= 1;
-                const allFull = hasSlots && summary.fullCount === summary.slotCount;
-
-                return (
-                  <button
-                    key={dateKey}
-                    onClick={() => handleSelectDate(dateKey)}
-                    className={classNames(
-                      "min-h-[114px] rounded-3xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                      inMonth ? "bg-white" : "bg-slate-50 text-slate-400",
-                      selected ? "border-slate-900 shadow-md" : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="text-sm font-semibold">{day.getDate()}</div>
-                      {hasSlots ? (
-                        allFull ? (
-                          <StatusBadge tone="rose">満枠</StatusBadge>
-                        ) : onlyFewLeft ? (
-                          <StatusBadge tone="amber">残少</StatusBadge>
-                        ) : (
-                          <StatusBadge tone="emerald">空き</StatusBadge>
-                        )
-                      ) : null}
-                    </div>
-                    <div className="mt-4 space-y-1 text-xs leading-5 text-slate-500">
-                      <div>{summary?.slotCount || 0} 枠</div>
-                      <div>{hasSlots ? `残り ${summary.totalRemaining} 席` : "公開枠なし"}</div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </Card>
-
-          <div className="space-y-6">
-            <Card ref={detailsRef} tabIndex={-1} className="scroll-mt-6 focus:outline-none focus:ring-2 focus:ring-sky-300">
+        {isLoading ? (
+          <LoadingCard title="公開中の日程を読み込んでいます..." />
+        ) : (
+          <section className="grid gap-6 xl:grid-cols-[1.28fr,0.92fr]">
+            <Card>
               <SectionHeader
-                eyebrow="DETAIL"
-                title={selectedDate ? `${formatJapaneseDate(selectedDate)} の詳細枠` : "日付を選択してください"}
-                description="気になる時間帯を選ぶと、右下の送信フォームに反映されます。"
-              />
-              <div className="space-y-3">
-                {selectedDaySlots.length === 0 ? (
-                  <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
-                    この日は現在公開されている枠がありません。
+                eyebrow="CALENDAR"
+                title="空いている日をカレンダーで選ぶ"
+                description="日付を押すと、自動で下の詳細枠へ移動します。"
+                action={
+                  <div className="flex items-center gap-2">
+                    <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() - 1, 1))}>
+                      <ChevronLeft />
+                    </IconButton>
+                    <div className="min-w-36 text-center text-sm font-semibold text-slate-700">{formatMonthTitle(displayMonth)}</div>
+                    <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() + 1, 1))}>
+                      <ChevronRight />
+                    </IconButton>
                   </div>
-                ) : (
-                  selectedDaySlots.map((slot) => {
-                    const metrics = getSlotMetrics(slot, requests);
-                    const selected = participantForm.preferredSlotIds.includes(slot.id);
-                    return (
-                      <div key={slot.id} className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-base font-semibold text-slate-900">{getSlotLabel(slot)}</div>
-                              <StatusBadge tone={metrics.full ? "rose" : metrics.remaining <= 1 ? "amber" : "emerald"}>
-                                {metrics.full ? "満枠" : `残り ${metrics.remaining} 席`}
-                              </StatusBadge>
-                            </div>
-                            <div className="mt-2 text-sm text-slate-500">{slot.location || "場所未設定"}</div>
-                            {slot.note ? <div className="mt-1 text-sm text-slate-500">{slot.note}</div> : null}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => togglePreferredSlot(slot.id)}
-                            disabled={metrics.full && !selected}
-                            className={classNames(
-                              "rounded-2xl px-4 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                              selected
-                                ? "bg-slate-900 text-white"
-                                : metrics.full
-                                ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                                : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-                            )}
-                          >
-                            {selected ? "選択中" : "希望に追加"}
-                          </button>
-                        </div>
+                }
+              />
+
+              <div className="mb-3 grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-400">
+                {WEEK_LABELS.map((label) => (
+                  <div key={label} className="py-2">{label}</div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-7 gap-2">
+                {days.map((day) => {
+                  const dateKey = formatDateKey(day);
+                  const summary = monthSummary[dateKey];
+                  const inMonth = day.getMonth() === displayMonth.getMonth();
+                  const selected = dateKey === selectedDate;
+                  const hasSlots = summary?.slotCount > 0;
+                  const onlyFewLeft = hasSlots && summary.totalRemaining <= 1;
+                  const allFull = hasSlots && summary.fullCount === summary.slotCount;
+
+                  return (
+                    <button
+                      key={dateKey}
+                      onClick={() => handleSelectDate(dateKey)}
+                      className={classNames(
+                        "min-h-[114px] rounded-3xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                        inMonth ? "bg-white" : "bg-slate-50 text-slate-400",
+                        selected ? "border-slate-900 shadow-md" : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-sm font-semibold">{day.getDate()}</div>
+                        {hasSlots ? (
+                          allFull ? (
+                            <StatusBadge tone="rose">満枠</StatusBadge>
+                          ) : onlyFewLeft ? (
+                            <StatusBadge tone="amber">残少</StatusBadge>
+                          ) : (
+                            <StatusBadge tone="emerald">空き</StatusBadge>
+                          )
+                        ) : null}
                       </div>
-                    );
-                  })
-                )}
+                      <div className="mt-4 space-y-1 text-xs leading-5 text-slate-500">
+                        <div>{summary?.slotCount || 0} 枠</div>
+                        <div>{hasSlots ? `残り ${summary.totalRemaining} 席` : "公開枠なし"}</div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </Card>
 
-            <Card>
-              <SectionHeader
-                eyebrow="FORM"
-                title="希望日時を送信する"
-                description="氏名、メールアドレス、所属・学年、希望枠は必須です。"
-                action={<StatusBadge tone="sky">最大3枠まで</StatusBadge>}
-              />
+            <div className="space-y-6">
+              <Card ref={detailsRef} tabIndex={-1} className="scroll-mt-6 focus:outline-none focus:ring-2 focus:ring-sky-300">
+                <SectionHeader
+                  eyebrow="DETAIL"
+                  title={selectedDate ? `${formatJapaneseDate(selectedDate)} の詳細枠` : "日付を選択してください"}
+                  description="気になる時間帯を選ぶと、右下の送信フォームに反映されます。"
+                />
+                <div className="space-y-3">
+                  {selectedDaySlots.length === 0 ? (
+                    <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                      この日は現在公開されている枠がありません。
+                    </div>
+                  ) : (
+                    selectedDaySlots.map((slot) => {
+                      const metrics = getSlotMetrics(slot);
+                      const selected = participantForm.preferredSlotIds.includes(slot.id);
+                      return (
+                        <div key={slot.id} className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="text-base font-semibold text-slate-900">{getSlotLabel(slot)}</div>
+                                <StatusBadge tone={metrics.full ? "rose" : metrics.remaining <= 1 ? "amber" : "emerald"}>
+                                  {metrics.full ? "満枠" : `残り ${metrics.remaining} 席`}
+                                </StatusBadge>
+                              </div>
+                              <div className="mt-2 text-sm text-slate-500">{slot.location || "場所未設定"}</div>
+                              {slot.note ? <div className="mt-1 text-sm text-slate-500">{slot.note}</div> : null}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => togglePreferredSlot(slot.id)}
+                              disabled={metrics.full && !selected}
+                              className={classNames(
+                                "rounded-2xl px-4 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                                selected
+                                  ? "bg-slate-900 text-white"
+                                  : metrics.full
+                                  ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                              )}
+                            >
+                              {selected ? "選択中" : "希望に追加"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </Card>
 
-              <form onSubmit={handleSubmitRequest} className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="text-sm">
-                    <div className="mb-1.5 text-slate-600">氏名 <span className="text-rose-500">*</span></div>
+              <Card>
+                <SectionHeader
+                  eyebrow="FORM"
+                  title="希望日時を送信する"
+                  description="氏名、メールアドレス、所属・学年、希望枠は必須です。"
+                  action={<StatusBadge tone="sky">最大3枠まで</StatusBadge>}
+                />
+
+                <form onSubmit={handleSubmitRequest} className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm">
+                      <div className="mb-1.5 text-slate-600">氏名 <span className="text-rose-500">*</span></div>
+                      <input
+                        required
+                        value={participantForm.name}
+                        onChange={(event) => setParticipantForm((prev) => ({ ...prev, name: event.target.value }))}
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
+                        placeholder="例: 山田 太郎"
+                        autoComplete="name"
+                      />
+                    </label>
+                    <label className="text-sm">
+                      <div className="mb-1.5 text-slate-600">メールアドレス <span className="text-rose-500">*</span></div>
+                      <input
+                        required
+                        type="email"
+                        value={participantForm.email}
+                        onChange={(event) => setParticipantForm((prev) => ({ ...prev, email: event.target.value }))}
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
+                        placeholder="example@xxx.com"
+                        autoComplete="email"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="block text-sm">
+                    <div className="mb-1.5 text-slate-600">所属・学年 <span className="text-rose-500">*</span></div>
                     <input
                       required
-                      value={participantForm.name}
-                      onChange={(event) => setParticipantForm((prev) => ({ ...prev, name: event.target.value }))}
+                      value={participantForm.affiliation}
+                      onChange={(event) => setParticipantForm((prev) => ({ ...prev, affiliation: event.target.value }))}
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                      placeholder="例: 山田 太郎"
-                      autoComplete="name"
+                      placeholder="例: 情報理工学部 B4"
                     />
                   </label>
-                  <label className="text-sm">
-                    <div className="mb-1.5 text-slate-600">メールアドレス <span className="text-rose-500">*</span></div>
-                    <input
-                      required
-                      type="email"
-                      value={participantForm.email}
-                      onChange={(event) => setParticipantForm((prev) => ({ ...prev, email: event.target.value }))}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                      placeholder="example@xxx.com"
-                      autoComplete="email"
+
+                  <label className="block text-sm">
+                    <div className="mb-1.5 text-slate-600">補足</div>
+                    <textarea
+                      value={participantForm.note}
+                      onChange={(event) => setParticipantForm((prev) => ({ ...prev, note: event.target.value }))}
+                      className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
+                      placeholder="例: 放課後希望 / VR酔いしやすい など"
                     />
                   </label>
-                </div>
 
-                <label className="block text-sm">
-                  <div className="mb-1.5 text-slate-600">所属・学年 <span className="text-rose-500">*</span></div>
-                  <input
-                    required
-                    value={participantForm.affiliation}
-                    onChange={(event) => setParticipantForm((prev) => ({ ...prev, affiliation: event.target.value }))}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                    placeholder="例: 情報理工学部 B4"
-                  />
-                </label>
-
-                <label className="block text-sm">
-                  <div className="mb-1.5 text-slate-600">補足</div>
-                  <textarea
-                    value={participantForm.note}
-                    onChange={(event) => setParticipantForm((prev) => ({ ...prev, note: event.target.value }))}
-                    className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                    placeholder="例: 放課後希望 / VR酔いしやすい など"
-                  />
-                </label>
-
-                <div className="rounded-3xl bg-slate-50 p-4">
-                  <div className="text-sm font-medium text-slate-700">選択中の希望枠 <span className="text-rose-500">*</span></div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {participantForm.preferredSlotIds.length === 0 ? (
-                      <div className="text-sm text-slate-500">まだ選択されていません。</div>
-                    ) : (
-                      participantForm.preferredSlotIds.map((slotId) => {
-                        const slot = sortedSlots.find((item) => item.id === slotId);
-                        if (!slot) return null;
-                        return (
-                          <button
-                            key={slotId}
-                            type="button"
-                            onClick={() => togglePreferredSlot(slotId)}
-                            className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700"
-                          >
-                            {formatJapaneseDate(slot.date)} / {PERIOD_MAP[slot.periodKey].label} ×
-                          </button>
-                        );
-                      })
-                    )}
+                  <div className="rounded-3xl bg-slate-50 p-4">
+                    <div className="text-sm font-medium text-slate-700">選択中の希望枠 <span className="text-rose-500">*</span></div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {participantForm.preferredSlotIds.length === 0 ? (
+                        <div className="text-sm text-slate-500">まだ選択されていません。</div>
+                      ) : (
+                        participantForm.preferredSlotIds.map((slotId) => {
+                          const slot = sortedSlots.find((item) => item.id === slotId);
+                          if (!slot) return null;
+                          return (
+                            <button
+                              key={slotId}
+                              type="button"
+                              onClick={() => togglePreferredSlot(slotId)}
+                              className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700"
+                            >
+                              {formatJapaneseDate(slot.date)} / {PERIOD_MAP[slot.periodKey].label} ×
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <PrivacyNote />
+                  <PrivacyNote />
 
-                {message ? (
-                  <div className="rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                    {message}
-                  </div>
-                ) : null}
+                  {message ? (
+                    <div className="rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                      {message}
+                    </div>
+                  ) : null}
 
-                <button className="w-full rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-300">
-                  希望日時を送信する
-                </button>
-              </form>
-            </Card>
-          </div>
-        </section>
+                  <button className="w-full rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-300">
+                    希望日時を送信する
+                  </button>
+                </form>
+              </Card>
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );
@@ -706,6 +717,7 @@ function AdminPage({
   sortedSlots,
   requests,
   handleDeleteSlot,
+  handleTogglePublished,
   search,
   setSearch,
   filteredRequests,
@@ -714,6 +726,8 @@ function AdminPage({
   onBack,
   onLogout,
   adminEmail,
+  isLoading,
+  onSeedSampleData,
 }) {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e2e8f0_0%,_#f8fafc_32%,_#eef2ff_100%)] text-slate-900">
@@ -748,6 +762,8 @@ function AdminPage({
           </div>
         </header>
 
+        {isLoading ? <LoadingCard title="管理データを読み込んでいます..." /> : null}
+
         <div className="mb-6 flex flex-wrap gap-2">
           {[
             ["dashboard", "概要"],
@@ -781,6 +797,11 @@ function AdminPage({
                 eyebrow="BACKUP"
                 title="データの保存と初期化"
                 description="個人情報を含むため、書き出しデータの取り扱いには注意してください。"
+                action={
+                  <button onClick={onSeedSampleData} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    デモ枠を追加
+                  </button>
+                }
               />
               <div className="flex flex-wrap gap-3">
                 <button onClick={exportJson} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
@@ -837,15 +858,23 @@ function AdminPage({
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
                     />
                   </label>
-                  <label className="text-sm">
-                    <div className="mb-1.5 text-slate-600">場所</div>
+                  <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                     <input
-                      value={slotForm.location}
-                      onChange={(event) => setSlotForm((prev) => ({ ...prev, location: event.target.value }))}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                      type="checkbox"
+                      checked={slotForm.isPublished}
+                      onChange={(event) => setSlotForm((prev) => ({ ...prev, isPublished: event.target.checked }))}
                     />
+                    参加者に公開する
                   </label>
                 </div>
+                <label className="block text-sm">
+                  <div className="mb-1.5 text-slate-600">場所</div>
+                  <input
+                    value={slotForm.location}
+                    onChange={(event) => setSlotForm((prev) => ({ ...prev, location: event.target.value }))}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                  />
+                </label>
                 <label className="block text-sm">
                   <div className="mb-1.5 text-slate-600">メモ</div>
                   <textarea
@@ -867,13 +896,21 @@ function AdminPage({
                   <div key={slot.id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div>
-                        <div className="text-base font-semibold text-slate-900">{formatJapaneseDate(slot.date)} / {getSlotLabel(slot)}</div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-base font-semibold text-slate-900">{formatJapaneseDate(slot.date)} / {getSlotLabel(slot)}</div>
+                          <StatusBadge tone={slot.isPublished === false ? "slate" : "sky"}>{slot.isPublished === false ? "非公開" : "公開中"}</StatusBadge>
+                        </div>
                         <div className="mt-2 text-sm text-slate-500">{slot.location} / 定員 {slot.capacity} / 残り {metrics.remaining}</div>
                         {slot.note ? <div className="mt-1 text-sm text-slate-500">{slot.note}</div> : null}
                       </div>
-                      <button onClick={() => handleDeleteSlot(slot.id)} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">
-                        削除
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => handleTogglePublished(slot)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                          {slot.isPublished === false ? "公開にする" : "非公開にする"}
+                        </button>
+                        <button onClick={() => handleDeleteSlot(slot.id)} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">
+                          削除
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1017,38 +1054,39 @@ function AdminLoginPage({
             </div>
           </Card>
 
-          <Card>
-            <SectionHeader
-              eyebrow="LOGIN"
-              title="Googleでログイン"
-              description="Firebase Authentication を使って管理者ログインを行います。"
-            />
-
+          <div className="space-y-6">
             {!firebaseEnabled ? <SetupNotice /> : null}
+            <Card>
+              <SectionHeader
+                eyebrow="LOGIN"
+                title="Googleでログイン"
+                description="Firebase Authentication を使って管理者ログインを行います。"
+              />
 
-            <div className="space-y-4">
-              {authUser ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                  現在のログインアカウント: {authUser.email}
-                </div>
-              ) : null}
+              <div className="space-y-4">
+                {authUser ? (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    現在のログインアカウント: {authUser.email}
+                  </div>
+                ) : null}
 
-              {authError ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                  {authError}
-                </div>
-              ) : null}
+                {authError ? (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {authError}
+                  </div>
+                ) : null}
 
-              <button
-                disabled={!firebaseEnabled || !authReady}
-                onClick={onGoogleLogin}
-                className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-              >
-                <GoogleIcon />
-                Googleでログインする
-              </button>
-            </div>
-          </Card>
+                <button
+                  disabled={!firebaseEnabled || !authReady}
+                  onClick={onGoogleLogin}
+                  className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <GoogleIcon />
+                  Googleでログインする
+                </button>
+              </div>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
@@ -1082,9 +1120,13 @@ export default function ExperimentParticipantScheduler() {
     capacity: 1,
     location: "OIC 実験室A",
     note: "",
+    isPublished: true,
   });
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
+  const [slotsLoading, setSlotsLoading] = useState(firebaseReady);
+  const [requestsLoading, setRequestsLoading] = useState(firebaseReady);
+  const [dataError, setDataError] = useState("");
   const detailsRef = useRef(null);
 
   useEffect(() => {
@@ -1092,22 +1134,35 @@ export default function ExperimentParticipantScheduler() {
   }, []);
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setSlots(sortSlots(parsed.slots || []));
-        setRequests(parsed.requests || []);
-        setSelectedDate(parsed.selectedDate || "");
-      } catch (error) {
-        console.error(error);
-      }
-    } else {
+    if (!firebaseReady) {
       setSlots(sortSlots(SAMPLE_SLOTS));
       setRequests(SAMPLE_REQUESTS);
-      setSelectedDate(SAMPLE_SLOTS[0].date);
+      setSelectedDate(SAMPLE_SLOTS[0]?.date || "");
+      setSlotsLoading(false);
+      setRequestsLoading(false);
+      return;
     }
-  }, []);
+
+    const publicSlotsQuery = query(collection(firestore, "slots"), where("isPublished", "==", true));
+    const unsubscribePublicSlots = onSnapshot(
+      publicSlotsQuery,
+      (snapshot) => {
+        if (page === "participant" || page === "admin-login") {
+          const nextSlots = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+          if (page !== "admin") setSlots(sortSlots(nextSlots));
+        }
+        setSlotsLoading(false);
+        setDataError("");
+      },
+      (error) => {
+        console.error(error);
+        setSlotsLoading(false);
+        setDataError("日程データの取得に失敗しました。");
+      }
+    );
+
+    return () => unsubscribePublicSlots();
+  }, [page]);
 
   useEffect(() => {
     if (!firebaseReady) return undefined;
@@ -1119,16 +1174,54 @@ export default function ExperimentParticipantScheduler() {
   }, []);
 
   useEffect(() => {
-    if (!slots.length) return;
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        slots,
-        requests,
-        selectedDate,
-      })
+    if (!firebaseReady || page !== "admin" || !authUser) return undefined;
+
+    const unsubscribeSlots = onSnapshot(
+      collection(firestore, "slots"),
+      (snapshot) => {
+        const nextSlots = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+        setSlots(sortSlots(nextSlots));
+        setSlotsLoading(false);
+        setDataError("");
+      },
+      (error) => {
+        console.error(error);
+        setSlotsLoading(false);
+        setDataError("管理者用の日程データ取得に失敗しました。");
+      }
     );
-  }, [slots, requests, selectedDate]);
+
+    const unsubscribeRequests = onSnapshot(
+      collection(firestore, "requests"),
+      (snapshot) => {
+        const nextRequests = snapshot.docs
+          .map((item) => ({ id: item.id, ...item.data() }))
+          .sort((a, b) => {
+            const aTime = a.createdAt?.seconds || 0;
+            const bTime = b.createdAt?.seconds || 0;
+            return bTime - aTime;
+          });
+        setRequests(nextRequests);
+        setRequestsLoading(false);
+      },
+      (error) => {
+        console.error(error);
+        setRequestsLoading(false);
+        setDataError("申込データの取得に失敗しました。");
+      }
+    );
+
+    return () => {
+      unsubscribeSlots();
+      unsubscribeRequests();
+    };
+  }, [page, authUser]);
+
+  useEffect(() => {
+    if (!selectedDate && slots.length) {
+      setSelectedDate(sortSlots(slots)[0].date);
+    }
+  }, [selectedDate, slots]);
 
   useEffect(() => {
     if (!selectedDate || !detailsRef.current || page !== "participant") return;
@@ -1141,12 +1234,6 @@ export default function ExperimentParticipantScheduler() {
   }, [selectedDate, page]);
 
   useEffect(() => {
-    if (!selectedDate && slots.length) {
-      setSelectedDate(sortSlots(slots)[0].date);
-    }
-  }, [selectedDate, slots]);
-
-  useEffect(() => {
     document.body.style.overflow = showHelp ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
@@ -1157,24 +1244,25 @@ export default function ExperimentParticipantScheduler() {
 
   const sortedSlots = useMemo(() => sortSlots(slots), [slots]);
   const days = useMemo(() => getMonthGrid(displayMonth), [displayMonth]);
-
   const selectedDaySlots = useMemo(
-    () => sortedSlots.filter((slot) => slot.date === selectedDate),
+    () => sortedSlots.filter((slot) => slot.date === selectedDate && slot.isPublished !== false),
     [sortedSlots, selectedDate]
   );
 
   const monthSummary = useMemo(() => {
     const summaryMap = {};
     days.forEach((day) => {
-      summaryMap[formatDateKey(day)] = getDaySummary(formatDateKey(day), sortedSlots, requests);
+      summaryMap[formatDateKey(day)] = getDaySummary(formatDateKey(day), sortedSlots);
     });
     return summaryMap;
-  }, [days, sortedSlots, requests]);
+  }, [days, sortedSlots]);
 
   const stats = useMemo(() => {
     const confirmed = requests.filter((request) => request.assignedSlotId).length;
     const pending = requests.filter((request) => !request.assignedSlotId).length;
-    const openSeats = sortedSlots.reduce((sum, slot) => sum + getSlotMetrics(slot, requests).remaining, 0);
+    const openSeats = sortedSlots
+      .filter((slot) => slot.isPublished !== false || page === "admin")
+      .reduce((sum, slot) => sum + getSlotMetrics(slot, requests).remaining, 0);
 
     return {
       requestCount: requests.length,
@@ -1182,7 +1270,7 @@ export default function ExperimentParticipantScheduler() {
       pending,
       openSeats,
     };
-  }, [requests, sortedSlots]);
+  }, [requests, sortedSlots, page]);
 
   const filteredRequests = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -1206,9 +1294,7 @@ export default function ExperimentParticipantScheduler() {
           preferredSlotIds: prev.preferredSlotIds.filter((id) => id !== slotId),
         };
       }
-
       if (prev.preferredSlotIds.length >= 3) return prev;
-
       return {
         ...prev,
         preferredSlotIds: [...prev.preferredSlotIds, slotId],
@@ -1216,7 +1302,7 @@ export default function ExperimentParticipantScheduler() {
     });
   }
 
-  function handleSubmitRequest(event) {
+  async function handleSubmitRequest(event) {
     event.preventDefault();
     if (
       !participantForm.name.trim() ||
@@ -1228,70 +1314,251 @@ export default function ExperimentParticipantScheduler() {
       return;
     }
 
-    const newRequest = {
-      id: crypto.randomUUID(),
-      name: participantForm.name.trim(),
-      email: participantForm.email.trim(),
-      affiliation: participantForm.affiliation.trim(),
-      note: participantForm.note.trim(),
-      preferredSlotIds: participantForm.preferredSlotIds,
-      assignedSlotId: "",
-      status: "requested",
-    };
+    try {
+      if (firebaseReady) {
+        await addDoc(collection(firestore, "requests"), {
+          name: participantForm.name.trim(),
+          email: participantForm.email.trim(),
+          affiliation: participantForm.affiliation.trim(),
+          note: participantForm.note.trim(),
+          preferredSlotIds: participantForm.preferredSlotIds,
+          assignedSlotId: "",
+          status: "requested",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        setRequests((prev) => [
+          {
+            id: crypto.randomUUID(),
+            name: participantForm.name.trim(),
+            email: participantForm.email.trim(),
+            affiliation: participantForm.affiliation.trim(),
+            note: participantForm.note.trim(),
+            preferredSlotIds: participantForm.preferredSlotIds,
+            assignedSlotId: "",
+            status: "requested",
+          },
+          ...prev,
+        ]);
+      }
 
-    setRequests((prev) => [newRequest, ...prev]);
-    setParticipantForm({
-      name: "",
-      email: "",
-      affiliation: "",
-      note: "",
-      preferredSlotIds: [],
-    });
-    setMessage("希望日時を送信しました。確認後に連絡します。");
+      setParticipantForm({
+        name: "",
+        email: "",
+        affiliation: "",
+        note: "",
+        preferredSlotIds: [],
+      });
+      setMessage("希望日時を送信しました。確認後に連絡します。");
+    } catch (error) {
+      console.error(error);
+      setMessage("送信に失敗しました。時間をおいて再度お試しください。");
+    }
   }
 
-  function handleAddSlot(event) {
+  async function handleAddSlot(event) {
     event.preventDefault();
     if (!slotForm.date || !slotForm.periodKey) return;
 
-    const newSlot = {
-      id: crypto.randomUUID(),
-      date: slotForm.date,
-      periodKey: slotForm.periodKey,
-      capacity: Number(slotForm.capacity || 1),
-      location: slotForm.location.trim(),
-      note: slotForm.note.trim(),
-    };
+    try {
+      if (firebaseReady) {
+        await addDoc(collection(firestore, "slots"), {
+          date: slotForm.date,
+          periodKey: slotForm.periodKey,
+          capacity: Number(slotForm.capacity || 1),
+          confirmedCount: 0,
+          isPublished: Boolean(slotForm.isPublished),
+          location: slotForm.location.trim(),
+          note: slotForm.note.trim(),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        setSlots((prev) => sortSlots([
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            date: slotForm.date,
+            periodKey: slotForm.periodKey,
+            capacity: Number(slotForm.capacity || 1),
+            confirmedCount: 0,
+            isPublished: Boolean(slotForm.isPublished),
+            location: slotForm.location.trim(),
+            note: slotForm.note.trim(),
+          },
+        ]));
+      }
 
-    const nextSlots = sortSlots([...slots, newSlot]);
-    setSlots(nextSlots);
-    if (!selectedDate) setSelectedDate(newSlot.date);
-    setSlotForm((prev) => ({ ...prev, note: "" }));
+      setSlotForm((prev) => ({ ...prev, note: "", isPublished: true }));
+    } catch (error) {
+      console.error(error);
+      alert("日程枠の追加に失敗しました。");
+    }
   }
 
-  function handleDeleteSlot(slotId) {
-    setSlots((prev) => prev.filter((slot) => slot.id !== slotId));
-    setRequests((prev) =>
-      prev.map((request) => ({
-        ...request,
-        preferredSlotIds: (request.preferredSlotIds || []).filter((id) => id !== slotId),
-        assignedSlotId: request.assignedSlotId === slotId ? "" : request.assignedSlotId,
-      }))
-    );
+  async function handleDeleteSlot(slotId) {
+    const targetSlot = slots.find((slot) => slot.id === slotId);
+    if (!targetSlot) return;
+    const ok = window.confirm("この日程枠を削除しますか？ 関連する希望枠・確定情報も更新されます。");
+    if (!ok) return;
+
+    try {
+      if (firebaseReady) {
+        const batch = writeBatch(firestore);
+        batch.delete(doc(firestore, "slots", slotId));
+
+        requests.forEach((request) => {
+          const preferred = (request.preferredSlotIds || []).filter((id) => id !== slotId);
+          const assigned = request.assignedSlotId === slotId ? "" : request.assignedSlotId || "";
+          if (preferred.length !== (request.preferredSlotIds || []).length || assigned !== (request.assignedSlotId || "")) {
+            batch.update(doc(firestore, "requests", request.id), {
+              preferredSlotIds: preferred,
+              assignedSlotId: assigned,
+              status: assigned ? "confirmed" : "requested",
+              updatedAt: serverTimestamp(),
+            });
+          }
+        });
+
+        await batch.commit();
+      } else {
+        setSlots((prev) => prev.filter((slot) => slot.id !== slotId));
+        setRequests((prev) =>
+          prev.map((request) => ({
+            ...request,
+            preferredSlotIds: (request.preferredSlotIds || []).filter((id) => id !== slotId),
+            assignedSlotId: request.assignedSlotId === slotId ? "" : request.assignedSlotId,
+            status: request.assignedSlotId === slotId ? "requested" : request.status,
+          }))
+        );
+      }
+    } catch (error) {
+      console.error(error);
+      alert("日程枠の削除に失敗しました。");
+    }
   }
 
-  function handleAssignRequest(requestId, slotId) {
-    setRequests((prev) =>
-      prev.map((request) =>
-        request.id === requestId
-          ? { ...request, assignedSlotId: slotId, status: slotId ? "confirmed" : "requested" }
-          : request
-      )
-    );
+  async function handleTogglePublished(slot) {
+    try {
+      if (firebaseReady) {
+        await updateDoc(doc(firestore, "slots", slot.id), {
+          isPublished: slot.isPublished === false ? true : false,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        setSlots((prev) => prev.map((item) => item.id === slot.id ? { ...item, isPublished: item.isPublished === false ? true : false } : item));
+      }
+    } catch (error) {
+      console.error(error);
+      alert("公開状態の変更に失敗しました。");
+    }
   }
 
-  function handleDeleteRequest(requestId) {
-    setRequests((prev) => prev.filter((request) => request.id !== requestId));
+  async function handleAssignRequest(requestId, slotId) {
+    const requestItem = requests.find((item) => item.id === requestId);
+    if (!requestItem) return;
+
+    try {
+      if (firebaseReady) {
+        await runTransaction(firestore, async (transaction) => {
+          const requestRef = doc(firestore, "requests", requestId);
+          const requestSnap = await transaction.get(requestRef);
+          if (!requestSnap.exists()) throw new Error("request-not-found");
+          const requestData = requestSnap.data();
+          const previousSlotId = requestData.assignedSlotId || "";
+
+          if (previousSlotId === slotId) return;
+
+          if (previousSlotId) {
+            const prevRef = doc(firestore, "slots", previousSlotId);
+            const prevSnap = await transaction.get(prevRef);
+            if (prevSnap.exists()) {
+              const prevData = prevSnap.data();
+              const nextCount = Math.max(Number(prevData.confirmedCount || 0) - 1, 0);
+              transaction.update(prevRef, {
+                confirmedCount: nextCount,
+                updatedAt: serverTimestamp(),
+              });
+            }
+          }
+
+          if (slotId) {
+            const nextRef = doc(firestore, "slots", slotId);
+            const nextSnap = await transaction.get(nextRef);
+            if (!nextSnap.exists()) throw new Error("slot-not-found");
+            const nextData = nextSnap.data();
+            const capacity = Number(nextData.capacity || 1);
+            const confirmedCount = Number(nextData.confirmedCount || 0);
+            if (confirmedCount >= capacity) throw new Error("slot-full");
+            transaction.update(nextRef, {
+              confirmedCount: confirmedCount + 1,
+              updatedAt: serverTimestamp(),
+            });
+          }
+
+          transaction.update(requestRef, {
+            assignedSlotId: slotId,
+            status: slotId ? "confirmed" : "requested",
+            updatedAt: serverTimestamp(),
+          });
+        });
+      } else {
+        const previousSlotId = requestItem.assignedSlotId || "";
+        setSlots((prev) => prev.map((slot) => {
+          if (slot.id === previousSlotId) return { ...slot, confirmedCount: Math.max(Number(slot.confirmedCount || 0) - 1, 0) };
+          if (slot.id === slotId) return { ...slot, confirmedCount: Number(slot.confirmedCount || 0) + 1 };
+          return slot;
+        }));
+        setRequests((prev) => prev.map((item) => item.id === requestId ? { ...item, assignedSlotId: slotId, status: slotId ? "confirmed" : "requested" } : item));
+      }
+    } catch (error) {
+      console.error(error);
+      if (String(error?.message).includes("slot-full")) {
+        alert("その枠はすでに満席です。最新状態を確認してください。");
+      } else {
+        alert("確定処理に失敗しました。");
+      }
+    }
+  }
+
+  async function handleDeleteRequest(requestId) {
+    const requestItem = requests.find((item) => item.id === requestId);
+    if (!requestItem) return;
+    const ok = window.confirm("この申込を削除しますか？");
+    if (!ok) return;
+
+    try {
+      if (firebaseReady) {
+        await runTransaction(firestore, async (transaction) => {
+          const requestRef = doc(firestore, "requests", requestId);
+          const requestSnap = await transaction.get(requestRef);
+          if (!requestSnap.exists()) return;
+          const requestData = requestSnap.data();
+          const assignedSlotId = requestData.assignedSlotId || "";
+          if (assignedSlotId) {
+            const slotRef = doc(firestore, "slots", assignedSlotId);
+            const slotSnap = await transaction.get(slotRef);
+            if (slotSnap.exists()) {
+              const slotData = slotSnap.data();
+              transaction.update(slotRef, {
+                confirmedCount: Math.max(Number(slotData.confirmedCount || 0) - 1, 0),
+                updatedAt: serverTimestamp(),
+              });
+            }
+          }
+          transaction.delete(requestRef);
+        });
+      } else {
+        if (requestItem.assignedSlotId) {
+          setSlots((prev) => prev.map((slot) => slot.id === requestItem.assignedSlotId ? { ...slot, confirmedCount: Math.max(Number(slot.confirmedCount || 0) - 1, 0) } : slot));
+        }
+        setRequests((prev) => prev.filter((item) => item.id !== requestId));
+      }
+    } catch (error) {
+      console.error(error);
+      alert("申込の削除に失敗しました。");
+    }
   }
 
   function exportJson() {
@@ -1301,13 +1568,51 @@ export default function ExperimentParticipantScheduler() {
     );
   }
 
-  function resetAll() {
-    if (!window.confirm("保存データをすべて初期化しますか？")) return;
-    localStorage.removeItem(STORAGE_KEY);
-    setSlots(sortSlots(SAMPLE_SLOTS));
-    setRequests(SAMPLE_REQUESTS);
-    setSelectedDate(SAMPLE_SLOTS[0].date);
-    setPage("participant");
+  async function resetAll() {
+    const ok = window.confirm("Firestore 上の申込と日程枠をすべて削除しますか？");
+    if (!ok) return;
+
+    try {
+      if (firebaseReady) {
+        const batch = writeBatch(firestore);
+        slots.forEach((slot) => batch.delete(doc(firestore, "slots", slot.id)));
+        requests.forEach((request) => batch.delete(doc(firestore, "requests", request.id)));
+        await batch.commit();
+      } else {
+        setSlots(sortSlots(SAMPLE_SLOTS));
+        setRequests(SAMPLE_REQUESTS);
+        setSelectedDate(SAMPLE_SLOTS[0].date);
+      }
+      setPage("participant");
+    } catch (error) {
+      console.error(error);
+      alert("初期化に失敗しました。");
+    }
+  }
+
+  async function seedSampleData() {
+    if (!firebaseReady) return;
+    try {
+      const batch = writeBatch(firestore);
+      SAMPLE_SLOTS.forEach((slot) => {
+        const newRef = doc(collection(firestore, "slots"));
+        batch.set(newRef, {
+          date: slot.date,
+          periodKey: slot.periodKey,
+          capacity: slot.capacity,
+          confirmedCount: slot.confirmedCount,
+          isPublished: slot.isPublished,
+          location: slot.location,
+          note: slot.note,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error(error);
+      alert("デモ枠の追加に失敗しました。");
+    }
   }
 
   function openAdminPage() {
@@ -1334,6 +1639,12 @@ export default function ExperimentParticipantScheduler() {
       await signOut(firebaseAuth);
     }
     setPage("participant");
+  }
+
+  function retryFetch() {
+    setSlotsLoading(true);
+    setRequestsLoading(true);
+    setPage((current) => current === "participant" ? "participant" : current);
   }
 
   useEffect(() => {
@@ -1371,6 +1682,7 @@ export default function ExperimentParticipantScheduler() {
             sortedSlots={sortedSlots}
             requests={requests}
             handleDeleteSlot={handleDeleteSlot}
+            handleTogglePublished={handleTogglePublished}
             search={search}
             setSearch={setSearch}
             filteredRequests={filteredRequests}
@@ -1379,6 +1691,8 @@ export default function ExperimentParticipantScheduler() {
             onBack={() => setPage("participant")}
             onLogout={handleAdminLogout}
             adminEmail={authUser?.email || ""}
+            isLoading={slotsLoading || requestsLoading}
+            onSeedSampleData={seedSampleData}
           />
         ) : (
           <AdminLoginPage
@@ -1393,7 +1707,6 @@ export default function ExperimentParticipantScheduler() {
       ) : (
         <ParticipantPage
           sortedSlots={sortedSlots}
-          requests={requests}
           displayMonth={displayMonth}
           setDisplayMonth={setDisplayMonth}
           selectedDate={selectedDate}
@@ -1410,10 +1723,18 @@ export default function ExperimentParticipantScheduler() {
           onOpenAdmin={openAdminPage}
           onOpenHelp={() => setShowHelp(true)}
           stats={stats}
+          isLoading={slotsLoading}
+          onRetry={retryFetch}
+          setupMode={!firebaseReady}
         />
       )}
 
       {showHelp ? <HelpModal onClose={() => setShowHelp(false)} /> : null}
+      {dataError ? (
+        <div className="fixed bottom-4 right-4 z-40 max-w-sm rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm text-rose-700 shadow-lg">
+          {dataError}
+        </div>
+      ) : null}
     </>
   );
 }
