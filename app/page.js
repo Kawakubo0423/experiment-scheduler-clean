@@ -599,11 +599,7 @@ function ParticipantPage({
                 <div className="mt-2 text-3xl font-semibold text-slate-900">{stats.openSeats}</div>
               </div>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
-              <StatusBadge tone="emerald">空きあり</StatusBadge>
-              <StatusBadge tone="amber">残りわずか</StatusBadge>
-              <StatusBadge tone="rose">満枠</StatusBadge>
-            </div>
+            
           </Card>
 
           <PrivacyNote />
@@ -617,7 +613,7 @@ function ParticipantPage({
               <SectionHeader
                 eyebrow="CALENDAR"
                 title="空いている日をカレンダーで選ぶ"
-                description="表示方法を切り替えながら、見やすい形で日程を確認できます。"
+                description="表示方法を切り替えながら、見やすい形で日程を確認できます。色の意味は下の凡例で確認できます。"
                 action={
                   <div className="flex w-full flex-col gap-3 sm:w-auto sm:items-end">
                     <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1">
@@ -655,6 +651,13 @@ function ParticipantPage({
                 }
               />
 
+              <div className="mb-4 flex flex-wrap gap-2 text-xs text-slate-500">
+                <StatusBadge tone="emerald">空きあり</StatusBadge>
+                <StatusBadge tone="amber">残りわずか</StatusBadge>
+                <StatusBadge tone="rose">満席</StatusBadge>
+                <StatusBadge tone="slate">公開枠なし</StatusBadge>
+              </div>
+
               {calendarView === "calendar" ? (
                 <>
                   <div className="mb-3 grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-400">
@@ -679,12 +682,21 @@ function ParticipantPage({
                           onClick={() => handleSelectDate(dateKey)}
                           className={classNames(
                             "min-h-[114px] rounded-3xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                            inMonth ? "bg-white" : "bg-slate-50 text-slate-400",
-                            selected ? "border-slate-900 shadow-md" : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
+                            selected
+                              ? "border-slate-900 bg-slate-900 text-white shadow-lg"
+                              : !inMonth
+                              ? "bg-slate-50 text-slate-400 border-slate-200"
+                              : hasSlots
+                              ? allFull
+                                ? "border-rose-300 bg-rose-50 hover:border-rose-400 hover:shadow-sm"
+                                : onlyFewLeft
+                                ? "border-amber-300 bg-amber-50 hover:border-amber-400 hover:shadow-sm"
+                                : "border-emerald-300 bg-emerald-50 hover:border-emerald-400 hover:shadow-sm"
+                              : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
                           )}
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <div className="text-sm font-semibold">{day.getDate()}</div>
+                            <div className={classNames("font-semibold", hasSlots ? "text-lg" : "text-sm")}>{day.getDate()}</div>
                             {hasSlots ? (
                               allFull ? (
                                 <StatusBadge tone="rose">満枠</StatusBadge>
@@ -695,7 +707,7 @@ function ParticipantPage({
                               )
                             ) : null}
                           </div>
-                          <div className="mt-4 space-y-1 text-xs leading-5 text-slate-500">
+                          <div className={classNames("mt-4 space-y-1 text-xs leading-5", selected ? "text-slate-200" : "text-slate-500")}>
                             <div>{summary?.slotCount || 0} 枠</div>
                             <div>{hasSlots ? `残り ${summary.totalRemaining} 席` : "公開枠なし"}</div>
                           </div>
@@ -953,6 +965,7 @@ function AdminPage({
   search,
   setSearch,
   filteredRequests,
+  confirmedScheduleGroups,
   handleAssignRequest,
   handleDeleteRequest,
   onBack,
@@ -1157,6 +1170,43 @@ function AdminPage({
 
         {adminTab === "requests" && (
           <div className="space-y-4">
+            <Card className="p-5 shadow-none">
+              <SectionHeader
+                eyebrow="CONFIRMED OVERVIEW"
+                title="確定済みの日程サマリー"
+                description="どの日時に何人入っているかを先に確認してから、個別の申込を処理できます。"
+              />
+              {confirmedScheduleGroups.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-slate-200 p-5 text-sm text-slate-500">
+                  まだ確定済みの申込はありません。
+                </div>
+              ) : (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {confirmedScheduleGroups.map((group) => (
+                    <div key={group.slot.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-base font-semibold text-slate-900">
+                            {formatJapaneseDate(group.slot.date)} / {PERIOD_MAP[group.slot.periodKey]?.label}
+                          </div>
+                          <div className="mt-1 text-sm text-slate-500">{group.slot.location || "場所未設定"}</div>
+                        </div>
+                        <StatusBadge tone={group.remaining <= 0 ? "rose" : group.remaining <= 1 ? "amber" : "emerald"}>
+                          {group.confirmedCount}/{group.slot.capacity} 名
+                        </StatusBadge>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {group.names.map((name) => (
+                          <span key={name} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700">
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
             <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
               <input
                 value={search}
@@ -1530,6 +1580,20 @@ export default function ExperimentParticipantScheduler() {
       return text.includes(keyword);
     });
   }, [requests, search]);
+
+  const confirmedScheduleGroups = useMemo(() => {
+    return sortSlots(
+      sortedSlots.filter((slot) => Number(slot.confirmedCount || 0) > 0)
+    ).map((slot) => {
+      const groupedRequests = requests.filter((request) => request.assignedSlotId === slot.id);
+      return {
+        slot,
+        confirmedCount: Number(slot.confirmedCount || 0),
+        remaining: Math.max(Number(slot.capacity || 1) - Number(slot.confirmedCount || 0), 0),
+        names: groupedRequests.map((request) => request.name),
+      };
+    });
+  }, [sortedSlots, requests]);
 
   function showToast(messageText, tone = "info") {
     setToast({ message: messageText, tone, id: Date.now() });
@@ -2002,6 +2066,7 @@ export default function ExperimentParticipantScheduler() {
             search={search}
             setSearch={setSearch}
             filteredRequests={filteredRequests}
+            confirmedScheduleGroups={confirmedScheduleGroups}
             handleAssignRequest={handleAssignRequest}
             handleDeleteRequest={handleDeleteRequest}
             onBack={() => setPage("participant")}
