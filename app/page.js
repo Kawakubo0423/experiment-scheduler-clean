@@ -145,14 +145,22 @@ function sortSlots(slots) {
 
 function getMonthGrid(baseMonth) {
   const firstDay = new Date(baseMonth.getFullYear(), baseMonth.getMonth(), 1);
+  const lastDay = new Date(baseMonth.getFullYear(), baseMonth.getMonth() + 1, 0);
+
   const start = new Date(firstDay);
   start.setDate(firstDay.getDate() - firstDay.getDay());
 
-  return Array.from({ length: 42 }, (_, index) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + index);
-    return date;
-  });
+  const end = new Date(lastDay);
+  end.setDate(lastDay.getDate() + (6 - lastDay.getDay()));
+
+  const days = [];
+  const current = new Date(start);
+  while (current <= end) {
+    days.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+  }
+
+  return days;
 }
 
 function getSlotLabel(slot) {
@@ -711,31 +719,22 @@ function ParticipantPage({
                           key={dateKey}
                           onClick={() => handleSelectDate(dateKey)}
                           className={classNames(
-                            "aspect-square rounded-2xl border p-2 text-center transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                            inMonth ? "bg-white" : "bg-slate-50 text-slate-300",
-                            selected ? "border-slate-900 bg-slate-900 text-white shadow-md" : "border-slate-200 hover:border-slate-300"
+                            "aspect-square rounded-2xl border text-center transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                            selected
+                              ? "border-slate-900 bg-slate-900 text-white shadow-md"
+                              : !inMonth
+                              ? "border-slate-200 bg-slate-50 text-slate-300"
+                              : hasSlots
+                              ? allFull
+                                ? "border-rose-200 bg-rose-100 text-rose-700"
+                                : few
+                                ? "border-amber-200 bg-amber-100 text-amber-700"
+                                : "border-emerald-200 bg-emerald-100 text-emerald-700"
+                              : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
                           )}
                         >
-                          <div className="flex h-full flex-col items-center justify-between">
-                            <div className="text-sm font-semibold">{day.getDate()}</div>
-                            {hasSlots ? (
-                              <div className={classNames(
-                                "inline-flex rounded-full px-2 py-1 text-[10px] font-medium",
-                                selected
-                                  ? "bg-white/15 text-white"
-                                  : allFull
-                                  ? "bg-rose-50 text-rose-700"
-                                  : few
-                                  ? "bg-amber-50 text-amber-700"
-                                  : "bg-emerald-50 text-emerald-700"
-                              )}>
-                                {allFull ? "満席" : few ? "残少" : "空き"}
-                              </div>
-                            ) : (
-                              <div className={classNames("text-[10px]", selected ? "text-slate-300" : "text-slate-400")}>
-                                なし
-                              </div>
-                            )}
+                          <div className="flex h-full items-center justify-center text-base font-semibold">
+                            {day.getDate()}
                           </div>
                         </button>
                       );
