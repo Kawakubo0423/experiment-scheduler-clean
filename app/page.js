@@ -136,6 +136,86 @@ function formatMonthTitle(date) {
   });
 }
 
+function nthWeekdayOfMonth(year, monthIndex, weekday, nth) {
+  const first = new Date(year, monthIndex, 1);
+  const offset = (7 + weekday - first.getDay()) % 7;
+  return new Date(year, monthIndex, 1 + offset + (nth - 1) * 7);
+}
+
+function calcVernalEquinoxDay(year) {
+  return Math.floor(20.8431 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+}
+
+function calcAutumnalEquinoxDay(year) {
+  return Math.floor(23.2488 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+}
+
+function getJapaneseHolidayMap(year) {
+  const holidays = new Map();
+  const addHoliday = (monthIndex, day, name) => {
+    const key = formatDateKey(new Date(year, monthIndex, day));
+    holidays.set(key, name);
+  };
+
+  addHoliday(0, 1, "元日");
+  addHoliday(1, 11, "建国記念の日");
+  addHoliday(1, 23, "天皇誕生日");
+  addHoliday(3, 29, "昭和の日");
+  addHoliday(4, 3, "憲法記念日");
+  addHoliday(4, 4, "みどりの日");
+  addHoliday(4, 5, "こどもの日");
+  addHoliday(7, 11, "山の日");
+  addHoliday(10, 3, "文化の日");
+  addHoliday(10, 23, "勤労感謝の日");
+
+  const comingOfAgeDay = nthWeekdayOfMonth(year, 0, 1, 2);
+  holidays.set(formatDateKey(comingOfAgeDay), "成人の日");
+
+  const marineDay = nthWeekdayOfMonth(year, 6, 1, 3);
+  holidays.set(formatDateKey(marineDay), "海の日");
+
+  const respectForAgedDay = nthWeekdayOfMonth(year, 8, 1, 3);
+  holidays.set(formatDateKey(respectForAgedDay), "敬老の日");
+
+  const sportsDay = nthWeekdayOfMonth(year, 9, 1, 2);
+  holidays.set(formatDateKey(sportsDay), "スポーツの日");
+
+  addHoliday(2, calcVernalEquinoxDay(year), "春分の日");
+  addHoliday(8, calcAutumnalEquinoxDay(year), "秋分の日");
+
+  const substituteTargets = Array.from(holidays.keys()).sort();
+  substituteTargets.forEach((key) => {
+    const holidayDate = new Date(`${key}T00:00:00`);
+    if (holidayDate.getDay() !== 0) return;
+    const substitute = new Date(holidayDate);
+    substitute.setDate(substitute.getDate() + 1);
+    while (holidays.has(formatDateKey(substitute))) {
+      substitute.setDate(substitute.getDate() + 1);
+    }
+    holidays.set(formatDateKey(substitute), "振替休日");
+  });
+
+  const firstDay = new Date(year, 0, 1);
+  const lastDay = new Date(year, 11, 31);
+  for (let current = new Date(firstDay); current <= lastDay; current.setDate(current.getDate() + 1)) {
+    const key = formatDateKey(current);
+    if (holidays.has(key)) continue;
+    const prev = new Date(current);
+    prev.setDate(prev.getDate() - 1);
+    const next = new Date(current);
+    next.setDate(next.getDate() + 1);
+    if (holidays.has(formatDateKey(prev)) && holidays.has(formatDateKey(next)) && current.getDay() !== 0) {
+      holidays.set(key, "国民の休日");
+    }
+  }
+
+  return holidays;
+}
+
+function getJapaneseHolidayName(date) {
+  return getJapaneseHolidayMap(date.getFullYear()).get(formatDateKey(date)) || "";
+}
+
 function sortSlots(slots) {
   return [...slots].sort((a, b) => {
     if (a.date !== b.date) return a.date.localeCompare(b.date);
@@ -553,25 +633,30 @@ function ParticipantPage({
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe_0%,_#eff6ff_24%,_#f8fafc_58%,_#eef2ff_100%)] text-slate-900">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <header className="mb-6 flex items-start justify-between gap-4 rounded-[32px] border border-white/70 bg-white/70 px-5 py-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur sm:px-7 sm:py-6">
-          <div className="max-w-3xl">
-            <div className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-sky-700">
-              RESERVATION PAGE
+        <header className="mb-6 rounded-[32px] border border-white/70 bg-white/70 px-5 py-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur sm:px-7 sm:py-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-sky-700">
+                RESERVATION PAGE
+              </div>
             </div>
-            <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+            <div className="flex shrink-0 items-start gap-3">
+              <IconButton aria-label="使い方を開く" onClick={onOpenHelp} title="使い方">
+                <HelpIcon />
+              </IconButton>
+              <IconButton aria-label="管理者ページへ" onClick={onOpenAdmin} title="管理者ページへ">
+                <GearIcon />
+              </IconButton>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <h1 className="whitespace-nowrap text-[clamp(2.1rem,8.8vw,3rem)] font-bold tracking-tight leading-[1.05] text-slate-900">
               実験日程予約ページ
             </h1>
-            <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
+            <p className="mt-4 max-w-[18.5rem] text-[15px] leading-7 text-slate-600 sm:max-w-3xl sm:text-base">
               カレンダーから空いている日を選び、詳細枠を見ながら希望日時を送信できます。必要な説明は右上のヘルプからいつでも確認できます。
             </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-3">
-            <IconButton aria-label="使い方を開く" onClick={onOpenHelp} title="使い方">
-              <HelpIcon />
-            </IconButton>
-            <IconButton aria-label="管理者ページへ" onClick={onOpenAdmin} title="管理者ページへ">
-              <GearIcon />
-            </IconButton>
           </div>
         </header>
 
@@ -616,12 +701,12 @@ function ParticipantPage({
                 description="表示方法を切り替えながら、見やすい形で日程を確認できます。色の意味は下の凡例で確認できます。"
                 action={
                   <div className="flex w-full flex-col gap-3 sm:w-auto sm:items-end">
-                    <div className="inline-flex rounded-2xl border border-slate-200 bg-white p-1">
+                    <div className="inline-flex w-full rounded-2xl border border-slate-200 bg-white p-1 sm:w-auto">
                       <button
                         type="button"
                         onClick={() => setCalendarView("calendar")}
                         className={classNames(
-                          "rounded-xl px-3 py-2 text-sm font-medium transition",
+                          "flex-1 rounded-xl px-3 py-2 text-sm font-medium transition sm:flex-none",
                           calendarView === "calendar" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
                         )}
                       >
@@ -631,38 +716,50 @@ function ParticipantPage({
                         type="button"
                         onClick={() => setCalendarView("list")}
                         className={classNames(
-                          "rounded-xl px-3 py-2 text-sm font-medium transition",
+                          "flex-1 rounded-xl border-l border-slate-200 px-3 py-2 text-sm font-medium transition sm:flex-none sm:border-l-0",
                           calendarView === "list" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
                         )}
                       >
                         一覧表示
                       </button>
                     </div>
-                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <div className="grid w-full grid-cols-[56px_1fr_56px] items-center gap-2 sm:w-auto sm:min-w-[260px]">
                       <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() - 1, 1))}>
                         <ChevronLeft />
                       </IconButton>
-                      <div className="min-w-36 text-center text-sm font-semibold text-slate-700">{formatMonthTitle(displayMonth)}</div>
+                      <div className="text-center text-sm font-semibold text-slate-700">{formatMonthTitle(displayMonth)}</div>
                       <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() + 1, 1))}>
                         <ChevronRight />
                       </IconButton>
                     </div>
-                  </div>
+                      <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() + 1, 1))}>
+                        <ChevronRight />
+                      </IconButton>
+                    </div>
+                  
                 }
               />
 
-              <div className="mb-4 flex flex-wrap gap-2 text-xs text-slate-500">
-                <StatusBadge tone="emerald">空きあり</StatusBadge>
-                <StatusBadge tone="amber">残りわずか</StatusBadge>
-                <StatusBadge tone="rose">満席</StatusBadge>
-                <StatusBadge tone="slate">公開枠なし</StatusBadge>
+              <div className="mb-4 flex flex-nowrap items-center justify-between gap-2 overflow-x-auto pb-1 text-xs text-slate-500 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <span className="inline-flex shrink-0 rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">空きあり</span>
+                <span className="inline-flex shrink-0 rounded-full border border-amber-200 bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">残りわずか</span>
+                <span className="inline-flex shrink-0 rounded-full border border-rose-200 bg-rose-100 px-2.5 py-1 text-xs font-medium text-rose-700">満席</span>
+                <span className="inline-flex shrink-0 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">公開枠なし</span>
               </div>
 
               {calendarView === "calendar" ? (
                 <>
                   <div className="mb-3 grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-400">
-                    {WEEK_LABELS.map((label) => (
-                      <div key={label} className="py-2">{label}</div>
+                    {WEEK_LABELS.map((label, index) => (
+                      <div
+                        key={label}
+                        className={classNames(
+                          "py-2",
+                          index === 0 ? "text-rose-500" : index === 6 ? "text-sky-500" : "text-slate-400"
+                        )}
+                      >
+                        {label}
+                      </div>
                     ))}
                   </div>
 
@@ -675,6 +772,10 @@ function ParticipantPage({
                       const hasSlots = summary?.slotCount > 0;
                       const onlyFewLeft = hasSlots && summary.totalRemaining <= 1;
                       const allFull = hasSlots && summary.fullCount === summary.slotCount;
+                      const holidayName = getJapaneseHolidayName(day);
+                      const isHoliday = Boolean(holidayName);
+                      const isSunday = day.getDay() === 0;
+                      const isSaturday = day.getDay() === 6;
 
                       return (
                         <button
@@ -696,7 +797,28 @@ function ParticipantPage({
                           )}
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <div className={classNames("font-semibold", hasSlots ? "text-lg" : "text-sm")}>{day.getDate()}</div>
+                            <div className="flex items-center gap-2">
+                            <div
+                              className={classNames(
+                                "font-semibold",
+                                hasSlots ? "text-lg" : "text-sm",
+                                selected
+                                  ? "text-white"
+                                  : isHoliday || isSunday
+                                  ? "text-rose-600"
+                                  : isSaturday
+                                  ? "text-sky-600"
+                                  : "text-slate-900"
+                              )}
+                            >
+                              {day.getDate()}
+                            </div>
+                            {holidayName && inMonth ? (
+                              <span className={classNames("rounded-full px-2 py-0.5 text-[10px] font-medium", selected ? "bg-white/15 text-white" : "bg-rose-100 text-rose-700")}>
+                                祝
+                              </span>
+                            ) : null}
+                          </div>
                             {hasSlots ? (
                               allFull ? (
                                 <StatusBadge tone="rose">満枠</StatusBadge>
@@ -725,6 +847,10 @@ function ParticipantPage({
                       const hasSlots = summary?.slotCount > 0;
                       const allFull = hasSlots && summary.fullCount === summary.slotCount;
                       const few = hasSlots && !allFull && summary.totalRemaining <= 1;
+                      const holidayName = getJapaneseHolidayName(day);
+                      const isHoliday = Boolean(holidayName);
+                      const isSunday = day.getDay() === 0;
+                      const isSaturday = day.getDay() === 6;
 
                       return (
                         <button
@@ -745,7 +871,20 @@ function ParticipantPage({
                               : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
                           )}
                         >
-                          <div className="flex h-full items-center justify-center text-base font-semibold">
+                          <div
+                            className={classNames(
+                              "flex h-full items-center justify-center text-base font-semibold",
+                              selected
+                                ? "text-white"
+                                : isHoliday || isSunday
+                                ? "text-rose-600"
+                                : isSaturday
+                                ? "text-sky-600"
+                                : inMonth
+                                ? "text-slate-800"
+                                : "text-slate-300"
+                            )}
+                          >
                             {day.getDate()}
                           </div>
                         </button>
