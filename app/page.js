@@ -321,6 +321,15 @@ function HelpIcon() {
   );
 }
 
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M4 20l4.5-1 9.7-9.7a1.8 1.8 0 000-2.6l-.7-.7a1.8 1.8 0 00-2.6 0L5.2 15.7 4 20z" />
+      <path d="M13.5 6.5l4 4" />
+    </svg>
+  );
+}
+
 function ModalShell({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
@@ -401,6 +410,105 @@ function LoadingCard({ title = "読み込み中..." }) {
   );
 }
 
+function ActionToast({ toast, onClose }) {
+  if (!toast) return null;
+
+  const styles = {
+    success: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    info: "border-sky-200 bg-sky-50 text-sky-800",
+    error: "border-rose-200 bg-rose-50 text-rose-800",
+  };
+
+  return (
+    <div className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2">
+      <div className={classNames("rounded-2xl border px-4 py-3 text-sm shadow-lg", styles[toast.tone] || styles.info)}>
+        <div className="flex items-start justify-between gap-3">
+          <div>{toast.message}</div>
+          <button onClick={onClose} className="font-medium opacity-70 hover:opacity-100">×</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditSlotModal({ form, setForm, onSave, onClose, saving }) {
+  return (
+    <ModalShell title="日程枠を編集" onClose={onClose}>
+      <form onSubmit={onSave} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="text-sm">
+            <div className="mb-1.5 text-slate-600">日付</div>
+            <input
+              type="date"
+              value={form.date}
+              onChange={(event) => setForm((prev) => ({ ...prev, date: event.target.value }))}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+            />
+          </label>
+          <label className="text-sm">
+            <div className="mb-1.5 text-slate-600">時限</div>
+            <select
+              value={form.periodKey}
+              onChange={(event) => setForm((prev) => ({ ...prev, periodKey: event.target.value }))}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+            >
+              {PERIODS.map((period) => (
+                <option key={period.key} value={period.key}>
+                  {period.label} ({period.start}〜{period.end})
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="text-sm">
+            <div className="mb-1.5 text-slate-600">定員</div>
+            <input
+              type="number"
+              min="1"
+              value={form.capacity}
+              onChange={(event) => setForm((prev) => ({ ...prev, capacity: event.target.value }))}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+            />
+          </label>
+          <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={form.isPublished}
+              onChange={(event) => setForm((prev) => ({ ...prev, isPublished: event.target.checked }))}
+            />
+            参加者に公開する
+          </label>
+        </div>
+        <label className="block text-sm">
+          <div className="mb-1.5 text-slate-600">場所</div>
+          <input
+            value={form.location}
+            onChange={(event) => setForm((prev) => ({ ...prev, location: event.target.value }))}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+          />
+        </label>
+        <label className="block text-sm">
+          <div className="mb-1.5 text-slate-600">メモ</div>
+          <textarea
+            value={form.note}
+            onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))}
+            className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+          />
+        </label>
+        <div className="flex flex-wrap gap-3 pt-2">
+          <button type="submit" disabled={saving} className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60">
+            {saving ? "保存中..." : "変更を保存"}
+          </button>
+          <button type="button" onClick={onClose} className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            キャンセル
+          </button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
 function ParticipantPage({
   sortedSlots,
   displayMonth,
@@ -423,6 +531,15 @@ function ParticipantPage({
   onRetry,
   setupMode,
 }) {
+  const mobileDateItems = days
+    .filter((day) => day.getMonth() === displayMonth.getMonth())
+    .map((day) => {
+      const dateKey = formatDateKey(day);
+      const summary = monthSummary[dateKey];
+      return { day, dateKey, summary };
+    })
+    .filter(({ summary }) => (summary?.slotCount || 0) > 0);
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe_0%,_#eff6ff_24%,_#f8fafc_58%,_#eef2ff_100%)] text-slate-900">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
@@ -504,51 +621,91 @@ function ParticipantPage({
                 }
               />
 
-              <div className="mb-3 grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-400">
-                {WEEK_LABELS.map((label) => (
-                  <div key={label} className="py-2">{label}</div>
-                ))}
+              <div className="hidden md:block">
+                <div className="mb-3 grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-400">
+                  {WEEK_LABELS.map((label) => (
+                    <div key={label} className="py-2">{label}</div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7 gap-2">
+                  {days.map((day) => {
+                    const dateKey = formatDateKey(day);
+                    const summary = monthSummary[dateKey];
+                    const inMonth = day.getMonth() === displayMonth.getMonth();
+                    const selected = dateKey === selectedDate;
+                    const hasSlots = summary?.slotCount > 0;
+                    const onlyFewLeft = hasSlots && summary.totalRemaining <= 1;
+                    const allFull = hasSlots && summary.fullCount === summary.slotCount;
+
+                    return (
+                      <button
+                        key={dateKey}
+                        onClick={() => handleSelectDate(dateKey)}
+                        className={classNames(
+                          "min-h-[114px] rounded-3xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                          inMonth ? "bg-white" : "bg-slate-50 text-slate-400",
+                          selected ? "border-slate-900 shadow-md" : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-sm font-semibold">{day.getDate()}</div>
+                          {hasSlots ? (
+                            allFull ? (
+                              <StatusBadge tone="rose">満枠</StatusBadge>
+                            ) : onlyFewLeft ? (
+                              <StatusBadge tone="amber">残少</StatusBadge>
+                            ) : (
+                              <StatusBadge tone="emerald">空き</StatusBadge>
+                            )
+                          ) : null}
+                        </div>
+                        <div className="mt-4 space-y-1 text-xs leading-5 text-slate-500">
+                          <div>{summary?.slotCount || 0} 枠</div>
+                          <div>{hasSlots ? `残り ${summary.totalRemaining} 席` : "公開枠なし"}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="grid grid-cols-7 gap-2">
-                {days.map((day) => {
-                  const dateKey = formatDateKey(day);
-                  const summary = monthSummary[dateKey];
-                  const inMonth = day.getMonth() === displayMonth.getMonth();
-                  const selected = dateKey === selectedDate;
-                  const hasSlots = summary?.slotCount > 0;
-                  const onlyFewLeft = hasSlots && summary.totalRemaining <= 1;
-                  const allFull = hasSlots && summary.fullCount === summary.slotCount;
-
-                  return (
-                    <button
-                      key={dateKey}
-                      onClick={() => handleSelectDate(dateKey)}
-                      className={classNames(
-                        "min-h-[114px] rounded-3xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                        inMonth ? "bg-white" : "bg-slate-50 text-slate-400",
-                        selected ? "border-slate-900 shadow-md" : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="text-sm font-semibold">{day.getDate()}</div>
-                        {hasSlots ? (
-                          allFull ? (
-                            <StatusBadge tone="rose">満枠</StatusBadge>
-                          ) : onlyFewLeft ? (
-                            <StatusBadge tone="amber">残少</StatusBadge>
-                          ) : (
-                            <StatusBadge tone="emerald">空き</StatusBadge>
-                          )
-                        ) : null}
-                      </div>
-                      <div className="mt-4 space-y-1 text-xs leading-5 text-slate-500">
-                        <div>{summary?.slotCount || 0} 枠</div>
-                        <div>{hasSlots ? `残り ${summary.totalRemaining} 席` : "公開枠なし"}</div>
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="space-y-3 md:hidden">
+                {mobileDateItems.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-slate-200 p-5 text-sm text-slate-500">
+                    今月の公開中の枠はまだありません。
+                  </div>
+                ) : (
+                  mobileDateItems.map(({ day, dateKey, summary }) => {
+                    const selected = dateKey === selectedDate;
+                    const allFull = summary.fullCount === summary.slotCount;
+                    const few = !allFull && summary.totalRemaining <= 1;
+                    return (
+                      <button
+                        key={dateKey}
+                        onClick={() => handleSelectDate(dateKey)}
+                        className={classNames(
+                          "w-full rounded-3xl border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                          selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white hover:border-slate-300"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className={classNames("text-lg font-semibold", selected ? "text-white" : "text-slate-900")}>
+                              {day.getDate()}日（{WEEK_LABELS[day.getDay()]}）
+                            </div>
+                            <div className={classNames("mt-1 text-sm", selected ? "text-slate-200" : "text-slate-500")}>
+                              {summary.slotCount}枠 / 残り {summary.totalRemaining}席
+                            </div>
+                          </div>
+                          <StatusBadge tone={allFull ? "rose" : few ? "amber" : "emerald"}>
+                            {allFull ? "満枠" : few ? "残少" : "空き"}
+                          </StatusBadge>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
               </div>
             </Card>
 
@@ -569,7 +726,7 @@ function ParticipantPage({
                       const metrics = getSlotMetrics(slot);
                       const selected = participantForm.preferredSlotIds.includes(slot.id);
                       return (
-                        <div key={slot.id} className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                        <div key={slot.id} className={classNames("rounded-3xl border p-4 transition", selected ? "border-sky-300 bg-sky-50" : "border-slate-200 bg-slate-50/80")}>
                           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                             <div>
                               <div className="flex flex-wrap items-center gap-2">
@@ -580,6 +737,7 @@ function ParticipantPage({
                               </div>
                               <div className="mt-2 text-sm text-slate-500">{slot.location || "場所未設定"}</div>
                               {slot.note ? <div className="mt-1 text-sm text-slate-500">{slot.note}</div> : null}
+                              {selected ? <div className="mt-3 text-sm font-medium text-sky-700">この枠は希望一覧に追加されています。</div> : null}
                             </div>
                             <button
                               type="button"
@@ -718,6 +876,7 @@ function AdminPage({
   requests,
   handleDeleteSlot,
   handleTogglePublished,
+  onEditSlot,
   search,
   setSearch,
   filteredRequests,
@@ -904,6 +1063,10 @@ function AdminPage({
                         {slot.note ? <div className="mt-1 text-sm text-slate-500">{slot.note}</div> : null}
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        <button onClick={() => onEditSlot(slot)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                          <PencilIcon />
+                          編集
+                        </button>
                         <button onClick={() => handleTogglePublished(slot)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                           {slot.isPublished === false ? "公開にする" : "非公開にする"}
                         </button>
@@ -1107,6 +1270,17 @@ export default function ExperimentParticipantScheduler() {
   const [authUser, setAuthUser] = useState(null);
   const [authError, setAuthError] = useState("");
   const [showHelp, setShowHelp] = useState(false);
+  const [editingSlot, setEditingSlot] = useState(null);
+  const [editSlotForm, setEditSlotForm] = useState({
+    date: "",
+    periodKey: "p3",
+    capacity: 1,
+    location: "",
+    note: "",
+    isPublished: true,
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [toast, setToast] = useState(null);
   const [participantForm, setParticipantForm] = useState({
     name: "",
     email: "",
@@ -1128,6 +1302,7 @@ export default function ExperimentParticipantScheduler() {
   const [requestsLoading, setRequestsLoading] = useState(firebaseReady);
   const [dataError, setDataError] = useState("");
   const detailsRef = useRef(null);
+  const shouldFocusDetailsRef = useRef(false);
 
   useEffect(() => {
     document.title = "実験日程予約ページ";
@@ -1137,7 +1312,7 @@ export default function ExperimentParticipantScheduler() {
     if (!firebaseReady) {
       setSlots(sortSlots(SAMPLE_SLOTS));
       setRequests(SAMPLE_REQUESTS);
-      setSelectedDate(SAMPLE_SLOTS[0]?.date || "");
+      setSelectedDate("");
       setSlotsLoading(false);
       setRequestsLoading(false);
       return;
@@ -1218,27 +1393,28 @@ export default function ExperimentParticipantScheduler() {
   }, [page, authUser]);
 
   useEffect(() => {
-    if (!selectedDate && slots.length) {
-      setSelectedDate(sortSlots(slots)[0].date);
-    }
-  }, [selectedDate, slots]);
-
-  useEffect(() => {
-    if (!selectedDate || !detailsRef.current || page !== "participant") return;
+    if (!selectedDate || !detailsRef.current || page !== "participant" || !shouldFocusDetailsRef.current) return;
     const target = detailsRef.current;
     const handle = requestAnimationFrame(() => {
       target.scrollIntoView({ behavior: "smooth", block: "start" });
       target.focus({ preventScroll: true });
+      shouldFocusDetailsRef.current = false;
     });
     return () => cancelAnimationFrame(handle);
   }, [selectedDate, page]);
 
   useEffect(() => {
-    document.body.style.overflow = showHelp ? "hidden" : "";
+    document.body.style.overflow = showHelp || !!editingSlot ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
     };
-  }, [showHelp]);
+  }, [showHelp, editingSlot]);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = setTimeout(() => setToast(null), 2200);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   const adminAuthorized = !!authUser?.email && ALLOWED_ADMIN_EMAILS.includes(authUser.email.toLowerCase());
 
@@ -1281,13 +1457,18 @@ export default function ExperimentParticipantScheduler() {
     });
   }, [requests, search]);
 
+  function showToast(messageText, tone = "info") {
+    setToast({ message: messageText, tone, id: Date.now() });
+  }
+
   function handleSelectDate(dateKey) {
+    shouldFocusDetailsRef.current = true;
     setSelectedDate(dateKey);
   }
 
   function togglePreferredSlot(slotId) {
+    const exists = participantForm.preferredSlotIds.includes(slotId);
     setParticipantForm((prev) => {
-      const exists = prev.preferredSlotIds.includes(slotId);
       if (exists) {
         return {
           ...prev,
@@ -1300,6 +1481,14 @@ export default function ExperimentParticipantScheduler() {
         preferredSlotIds: [...prev.preferredSlotIds, slotId],
       };
     });
+
+    if (exists) {
+      showToast("希望枠から外しました。", "info");
+    } else if (participantForm.preferredSlotIds.length >= 3) {
+      showToast("希望枠は最大3つまでです。", "error");
+    } else {
+      showToast("希望枠に追加しました。", "success");
+    }
   }
 
   async function handleSubmitRequest(event) {
@@ -1311,6 +1500,7 @@ export default function ExperimentParticipantScheduler() {
       participantForm.preferredSlotIds.length === 0
     ) {
       setMessage("氏名、メールアドレス、所属・学年、希望枠は必須です。");
+      showToast("必須項目を入力してください。", "error");
       return;
     }
 
@@ -1351,9 +1541,11 @@ export default function ExperimentParticipantScheduler() {
         preferredSlotIds: [],
       });
       setMessage("希望日時を送信しました。確認後に連絡します。");
+      showToast("希望日時を送信しました。", "success");
     } catch (error) {
       console.error(error);
       setMessage("送信に失敗しました。時間をおいて再度お試しください。");
+      showToast("送信に失敗しました。", "error");
     }
   }
 
@@ -1391,15 +1583,14 @@ export default function ExperimentParticipantScheduler() {
       }
 
       setSlotForm((prev) => ({ ...prev, note: "", isPublished: true }));
+      showToast("日程枠を追加しました。", "success");
     } catch (error) {
       console.error(error);
-      alert("日程枠の追加に失敗しました。");
+      showToast("日程枠の追加に失敗しました。", "error");
     }
   }
 
   async function handleDeleteSlot(slotId) {
-    const targetSlot = slots.find((slot) => slot.id === slotId);
-    if (!targetSlot) return;
     const ok = window.confirm("この日程枠を削除しますか？ 関連する希望枠・確定情報も更新されます。");
     if (!ok) return;
 
@@ -1433,9 +1624,10 @@ export default function ExperimentParticipantScheduler() {
           }))
         );
       }
+      showToast("日程枠を削除しました。", "success");
     } catch (error) {
       console.error(error);
-      alert("日程枠の削除に失敗しました。");
+      showToast("日程枠の削除に失敗しました。", "error");
     }
   }
 
@@ -1449,9 +1641,56 @@ export default function ExperimentParticipantScheduler() {
       } else {
         setSlots((prev) => prev.map((item) => item.id === slot.id ? { ...item, isPublished: item.isPublished === false ? true : false } : item));
       }
+      showToast(slot.isPublished === false ? "公開にしました。" : "非公開にしました。", "success");
     } catch (error) {
       console.error(error);
-      alert("公開状態の変更に失敗しました。");
+      showToast("公開状態の変更に失敗しました。", "error");
+    }
+  }
+
+  function openEditSlot(slot) {
+    setEditingSlot(slot);
+    setEditSlotForm({
+      date: slot.date,
+      periodKey: slot.periodKey,
+      capacity: String(slot.capacity || 1),
+      location: slot.location || "",
+      note: slot.note || "",
+      isPublished: slot.isPublished !== false,
+    });
+  }
+
+  async function saveEditedSlot(event) {
+    event.preventDefault();
+    if (!editingSlot) return;
+
+    try {
+      setSavingEdit(true);
+      const payload = {
+        date: editSlotForm.date,
+        periodKey: editSlotForm.periodKey,
+        capacity: Number(editSlotForm.capacity || 1),
+        location: editSlotForm.location.trim(),
+        note: editSlotForm.note.trim(),
+        isPublished: Boolean(editSlotForm.isPublished),
+      };
+
+      if (firebaseReady) {
+        await updateDoc(doc(firestore, "slots", editingSlot.id), {
+          ...payload,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        setSlots((prev) => prev.map((slot) => slot.id === editingSlot.id ? { ...slot, ...payload } : slot));
+      }
+
+      setEditingSlot(null);
+      showToast("日程枠を更新しました。", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("日程枠の更新に失敗しました。", "error");
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -1512,12 +1751,13 @@ export default function ExperimentParticipantScheduler() {
         }));
         setRequests((prev) => prev.map((item) => item.id === requestId ? { ...item, assignedSlotId: slotId, status: slotId ? "confirmed" : "requested" } : item));
       }
+      showToast(slotId ? "日程を確定しました。" : "確定を解除しました。", "success");
     } catch (error) {
       console.error(error);
       if (String(error?.message).includes("slot-full")) {
-        alert("その枠はすでに満席です。最新状態を確認してください。");
+        showToast("その枠はすでに満席です。最新状態を確認してください。", "error");
       } else {
-        alert("確定処理に失敗しました。");
+        showToast("確定処理に失敗しました。", "error");
       }
     }
   }
@@ -1555,9 +1795,10 @@ export default function ExperimentParticipantScheduler() {
         }
         setRequests((prev) => prev.filter((item) => item.id !== requestId));
       }
+      showToast("申込を削除しました。", "success");
     } catch (error) {
       console.error(error);
-      alert("申込の削除に失敗しました。");
+      showToast("申込の削除に失敗しました。", "error");
     }
   }
 
@@ -1581,12 +1822,13 @@ export default function ExperimentParticipantScheduler() {
       } else {
         setSlots(sortSlots(SAMPLE_SLOTS));
         setRequests(SAMPLE_REQUESTS);
-        setSelectedDate(SAMPLE_SLOTS[0].date);
       }
+      setSelectedDate("");
       setPage("participant");
+      showToast("データを初期化しました。", "success");
     } catch (error) {
       console.error(error);
-      alert("初期化に失敗しました。");
+      showToast("初期化に失敗しました。", "error");
     }
   }
 
@@ -1609,9 +1851,10 @@ export default function ExperimentParticipantScheduler() {
         });
       });
       await batch.commit();
+      showToast("デモ枠を追加しました。", "success");
     } catch (error) {
       console.error(error);
-      alert("デモ枠の追加に失敗しました。");
+      showToast("デモ枠の追加に失敗しました。", "error");
     }
   }
 
@@ -1642,9 +1885,7 @@ export default function ExperimentParticipantScheduler() {
   }
 
   function retryFetch() {
-    setSlotsLoading(true);
-    setRequestsLoading(true);
-    setPage((current) => current === "participant" ? "participant" : current);
+    showToast("最新状態は自動同期されています。必要ならページを再読み込みしてください。", "info");
   }
 
   useEffect(() => {
@@ -1683,6 +1924,7 @@ export default function ExperimentParticipantScheduler() {
             requests={requests}
             handleDeleteSlot={handleDeleteSlot}
             handleTogglePublished={handleTogglePublished}
+            onEditSlot={openEditSlot}
             search={search}
             setSearch={setSearch}
             filteredRequests={filteredRequests}
@@ -1706,7 +1948,7 @@ export default function ExperimentParticipantScheduler() {
         )
       ) : (
         <ParticipantPage
-          sortedSlots={sortedSlots}
+          sortedSlots={sortedSlots.filter((slot) => slot.isPublished !== false)}
           displayMonth={displayMonth}
           setDisplayMonth={setDisplayMonth}
           selectedDate={selectedDate}
@@ -1730,6 +1972,16 @@ export default function ExperimentParticipantScheduler() {
       )}
 
       {showHelp ? <HelpModal onClose={() => setShowHelp(false)} /> : null}
+      {editingSlot ? (
+        <EditSlotModal
+          form={editSlotForm}
+          setForm={setEditSlotForm}
+          onSave={saveEditedSlot}
+          onClose={() => setEditingSlot(null)}
+          saving={savingEdit}
+        />
+      ) : null}
+      {toast ? <ActionToast toast={toast} onClose={() => setToast(null)} /> : null}
       {dataError ? (
         <div className="fixed bottom-4 right-4 z-40 max-w-sm rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm text-rose-700 shadow-lg">
           {dataError}
