@@ -133,67 +133,92 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
   const slotMap = await getSlotMap([beforeAssigned, afterAssigned]);
   const beforeSlot = slotMap.get(beforeAssigned);
   const afterSlot = slotMap.get(afterAssigned);
+  const recipientName = after.name || "参加者様";
 
   let subject = "";
   let text = "";
   let html = "";
 
   if (!beforeAssigned && afterAssigned) {
-    subject = "【実験日程予約】日程が確定しました";
+    subject = "【実験日程予約】実験日程確定のご連絡";
     text = [
-      `${after.name || "参加者様"}`,
+      `${recipientName} さん`,
       "",
-      "実験日程が確定しました。",
-      `確定日時: ${slotToText(afterSlot)}`,
+      "このたびは実験へのご協力ありがとうございます。",
+      "以下の通り、参加日程が確定しましたのでご連絡いたします。",
       "",
-      "当日はお気をつけてお越しください。",
-    ].join("\n");
+      `【確定日時】 ${slotToText(afterSlot)}`,
+      "",
+      "ご都合をご確認のうえ、ご参加をお願いいたします。",
+      "ご不明な点やご都合の変更がありましたら、本メールへの返信にてご連絡ください。",
+      "",
+      "どうぞよろしくお願いいたします。",
+    ].join(" ");
 
     html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; color: #0f172a;">
-        <p>${escapeHtml(after.name || "参加者様")}</p>
-        <p>実験日程が確定しました。</p>
-        <p><strong>確定日時:</strong> ${escapeHtml(slotToText(afterSlot))}</p>
-        <p>当日はお気をつけてお越しください。</p>
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.8; color: #0f172a;">
+        <p>${escapeHtml(recipientName)} さん</p>
+        <p>このたびは実験へのご協力ありがとうございます。<br/>以下の通り、参加日程が確定しましたのでご連絡いたします。</p>
+        <div style="margin: 16px 0; padding: 14px 16px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
+          <strong>【確定日時】</strong><br/>
+          ${escapeHtml(slotToText(afterSlot))}
+        </div>
+        <p>ご都合をご確認のうえ、ご参加をお願いいたします。<br/>ご不明な点やご都合の変更がありましたら、本メールへの返信にてご連絡ください。</p>
+        <p>どうぞよろしくお願いいたします。</p>
       </div>
     `;
   } else if (beforeAssigned && afterAssigned) {
-    subject = "【実験日程予約】日程が変更されました";
+    subject = "【実験日程予約】参加日程変更のご連絡";
     text = [
-      `${after.name || "参加者様"}`,
+      `${recipientName} さん`,
       "",
-      "実験日程が変更されました。",
-      `変更前: ${slotToText(beforeSlot)}`,
-      `変更後: ${slotToText(afterSlot)}`,
+      "実験日程について変更がありましたので、ご連絡いたします。",
+      "以下の内容をご確認ください。",
       "",
-      "ご確認をお願いします。",
-    ].join("\n");
+      `【変更前】 ${slotToText(beforeSlot)}`,
+      `【変更後】 ${slotToText(afterSlot)}`,
+      "",
+      "お手数をおかけしますが、ご確認をお願いいたします。",
+      "ご都合が合わない場合やご不明点がある場合は、本メールへの返信にてご連絡ください。",
+      "",
+      "どうぞよろしくお願いいたします。",
+    ].join(" ");
 
     html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; color: #0f172a;">
-        <p>${escapeHtml(after.name || "参加者様")}</p>
-        <p>実験日程が変更されました。</p>
-        <p><strong>変更前:</strong> ${escapeHtml(slotToText(beforeSlot))}</p>
-        <p><strong>変更後:</strong> ${escapeHtml(slotToText(afterSlot))}</p>
-        <p>ご確認をお願いします。</p>
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.8; color: #0f172a;">
+        <p>${escapeHtml(recipientName)} さん</p>
+        <p>実験日程について変更がありましたので、ご連絡いたします。<br/>以下の内容をご確認ください。</p>
+        <div style="margin: 16px 0; padding: 14px 16px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
+          <div><strong>【変更前】</strong> ${escapeHtml(slotToText(beforeSlot))}</div>
+          <div style="margin-top: 8px;"><strong>【変更後】</strong> ${escapeHtml(slotToText(afterSlot))}</div>
+        </div>
+        <p>お手数をおかけしますが、ご確認をお願いいたします。<br/>ご都合が合わない場合やご不明点がある場合は、本メールへの返信にてご連絡ください。</p>
+        <p>どうぞよろしくお願いいたします。</p>
       </div>
     `;
   } else if (beforeAssigned && !afterAssigned) {
-    subject = "【実験日程予約】日程を再調整しています";
+    subject = "【実験日程予約】参加日程再調整のお願い";
     text = [
-      `${after.name || "参加者様"}`,
+      `${recipientName} さん`,
       "",
-      "現在、実験日程を再調整しています。",
-      `直前の確定枠: ${slotToText(beforeSlot)}`,
-      "新しい日程が決まり次第、あらためてご連絡します。",
-    ].join("\n");
+      "実験日程について再調整が必要となりましたため、ご連絡いたします。",
+      "現在、確定済みだった日程をいったん見直しております。",
+      "",
+      `【直前の確定日時】 ${slotToText(beforeSlot)}`,
+      "",
+      "新しい日程が決まり次第、あらためてご連絡いたします。",
+      "ご迷惑をおかけして申し訳ありませんが、どうぞよろしくお願いいたします。",
+    ].join(" ");
 
     html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; color: #0f172a;">
-        <p>${escapeHtml(after.name || "参加者様")}</p>
-        <p>現在、実験日程を再調整しています。</p>
-        <p><strong>直前の確定枠:</strong> ${escapeHtml(slotToText(beforeSlot))}</p>
-        <p>新しい日程が決まり次第、あらためてご連絡します。</p>
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.8; color: #0f172a;">
+        <p>${escapeHtml(recipientName)} さん</p>
+        <p>実験日程について再調整が必要となりましたため、ご連絡いたします。<br/>現在、確定済みだった日程をいったん見直しております。</p>
+        <div style="margin: 16px 0; padding: 14px 16px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
+          <strong>【直前の確定日時】</strong><br/>
+          ${escapeHtml(slotToText(beforeSlot))}
+        </div>
+        <p>新しい日程が決まり次第、あらためてご連絡いたします。<br/>ご迷惑をおかけして申し訳ありませんが、どうぞよろしくお願いいたします。</p>
       </div>
     `;
   } else {

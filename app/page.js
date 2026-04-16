@@ -597,6 +597,66 @@ function EditSlotModal({ form, setForm, onSave, onClose, saving }) {
   );
 }
 
+
+function AssignmentConfirmModal({ dialog, onConfirm, onClose, loading }) {
+  if (!dialog) return null;
+
+  const { mode, requestName, currentLabel, nextLabel } = dialog;
+
+  return (
+    <ModalShell
+      title={mode === "change" ? "確定日程を変更しますか？" : mode === "assign" ? "この日程で確定しますか？" : "確定を解除しますか？"}
+      onClose={onClose}
+    >
+      <div className="space-y-4">
+        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-700">
+          <div><span className="font-medium">対象者:</span> {requestName}</div>
+
+          {mode === "assign" ? (
+            <div className="mt-2">
+              <span className="font-medium">確定先:</span> {nextLabel}
+            </div>
+          ) : null}
+
+          {mode === "change" ? (
+            <div className="mt-2 space-y-1">
+              <div><span className="font-medium">現在:</span> {currentLabel}</div>
+              <div><span className="font-medium">変更後:</span> {nextLabel}</div>
+            </div>
+          ) : null}
+
+          {mode === "unassign" ? (
+            <div className="mt-2">
+              <span className="font-medium">解除対象:</span> {currentLabel}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
+          >
+            {loading ? "処理中..." : mode === "change" ? "変更を確定する" : mode === "assign" ? "この日程で確定する" : "確定を解除する"}
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
+
 function ParticipantPage({
   sortedSlots,
   displayMonth,
@@ -1115,6 +1175,7 @@ function AdminPage({
   adminEmail,
   isLoading,
   onSeedSampleData,
+  onPrepareAssignRequest,
 }) {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e2e8f0_0%,_#f8fafc_32%,_#eef2ff_100%)] text-slate-900">
@@ -1397,7 +1458,7 @@ function AdminPage({
                                     <button
                                       type="button"
                                       disabled={disableConfirm}
-                                      onClick={() => handleAssignRequest(request.id, slot.id)}
+                                      onClick={() => onPrepareAssignRequest(request, slot.id)}
                                       className={classNames(
                                         "rounded-2xl px-4 py-2 text-sm font-medium transition",
                                         isAssigned
@@ -1407,7 +1468,7 @@ function AdminPage({
                                           : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
                                       )}
                                     >
-                                      {isAssigned ? "確定済み" : "この枠で確定"}
+                                      {isAssigned ? "確定済み" : request.assignedSlotId ? "この枠へ変更" : "この枠で確定"}
                                     </button>
                                   </div>
                                 </div>
@@ -1423,7 +1484,7 @@ function AdminPage({
                         {assignedSlot ? (
                           <button
                             type="button"
-                            onClick={() => handleAssignRequest(request.id, "")}
+                            onClick={() => onPrepareAssignRequest(request, "")}
                             className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
                           >
                             確定を解除
@@ -1567,6 +1628,8 @@ export default function ExperimentParticipantScheduler() {
   const [slotsLoading, setSlotsLoading] = useState(firebaseReady);
   const [requestsLoading, setRequestsLoading] = useState(firebaseReady);
   const [dataError, setDataError] = useState("");
+  const [assignmentDialog, setAssignmentDialog] = useState(null);
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
   const detailsRef = useRef(null);
   const shouldFocusDetailsRef = useRef(false);
 
@@ -1670,11 +1733,11 @@ export default function ExperimentParticipantScheduler() {
   }, [selectedDate, page]);
 
   useEffect(() => {
-    document.body.style.overflow = showHelp || !!editingSlot ? "hidden" : "";
+    document.body.style.overflow = showHelp || !!editingSlot || !!assignmentDialog ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
     };
-  }, [showHelp, editingSlot]);
+  }, [showHelp, editingSlot, assignmentDialog]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -1974,8 +2037,30 @@ export default function ExperimentParticipantScheduler() {
     }
   }
 
+  function prepareAssignRequest(request, slotId) {
+    const currentSlotId = request.assignedSlotId || "";
+
+    if (!slotId && !currentSlotId) return;
+
+    const mode = !slotId
+      ? "unassign"
+      : currentSlotId && currentSlotId !== slotId
+      ? "change"
+      : "assign";
+
+    setAssignmentDialog({
+      requestId: request.id,
+      slotId,
+      mode,
+      requestName: request.name,
+      currentLabel: currentSlotId ? buildSlotDisplayLabel(currentSlotId) : "",
+      nextLabel: slotId ? buildSlotDisplayLabel(slotId) : "",
+    });
+  }
+
   async function handleAssignRequest(requestId, slotId) {
     const requestItem = requests.find((item) => item.id === requestId);
+    const previousSlotId = requestItem?.assignedSlotId || "";
     if (!requestItem) return;
 
     try {
@@ -1984,34 +2069,51 @@ export default function ExperimentParticipantScheduler() {
           const requestRef = doc(firestore, "requests", requestId);
           const requestSnap = await transaction.get(requestRef);
           if (!requestSnap.exists()) throw new Error("request-not-found");
+
           const requestData = requestSnap.data();
           const previousSlotId = requestData.assignedSlotId || "";
 
           if (previousSlotId === slotId) return;
 
-          if (previousSlotId) {
-            const prevRef = doc(firestore, "slots", previousSlotId);
-            const prevSnap = await transaction.get(prevRef);
-            if (prevSnap.exists()) {
-              const prevData = prevSnap.data();
-              const nextCount = Math.max(Number(prevData.confirmedCount || 0) - 1, 0);
-              transaction.update(prevRef, {
-                confirmedCount: nextCount,
-                updatedAt: serverTimestamp(),
-              });
-            }
+          const prevRef = previousSlotId ? doc(firestore, "slots", previousSlotId) : null;
+          const nextRef = slotId ? doc(firestore, "slots", slotId) : null;
+
+          // 先に全部読む
+          const prevSnap = prevRef ? await transaction.get(prevRef) : null;
+          const nextSnap = nextRef ? await transaction.get(nextRef) : null;
+
+          if (nextRef && !nextSnap?.exists()) {
+            throw new Error("slot-not-found");
           }
 
-          if (slotId) {
-            const nextRef = doc(firestore, "slots", slotId);
-            const nextSnap = await transaction.get(nextRef);
-            if (!nextSnap.exists()) throw new Error("slot-not-found");
+          // 変更先が満席か確認
+          if (nextSnap?.exists()) {
             const nextData = nextSnap.data();
             const capacity = Number(nextData.capacity || 1);
             const confirmedCount = Number(nextData.confirmedCount || 0);
-            if (confirmedCount >= capacity) throw new Error("slot-full");
+            const movingWithinDifferentSlots = previousSlotId && previousSlotId !== slotId;
+
+            // 同じ枠への再確定ではない前提
+            // 変更先が別枠で満席なら不可
+            if (confirmedCount >= capacity) {
+              throw new Error("slot-full");
+            }
+          }
+
+          // ここから書き込み
+          if (prevRef && prevSnap?.exists()) {
+            const prevData = prevSnap.data();
+            const nextCount = Math.max(Number(prevData.confirmedCount || 0) - 1, 0);
+            transaction.update(prevRef, {
+              confirmedCount: nextCount,
+              updatedAt: serverTimestamp(),
+            });
+          }
+
+          if (nextRef && nextSnap?.exists()) {
+            const nextData = nextSnap.data();
             transaction.update(nextRef, {
-              confirmedCount: confirmedCount + 1,
+              confirmedCount: Number(nextData.confirmedCount || 0) + 1,
               updatedAt: serverTimestamp(),
             });
           }
@@ -2031,7 +2133,13 @@ export default function ExperimentParticipantScheduler() {
         }));
         setRequests((prev) => prev.map((item) => item.id === requestId ? { ...item, assignedSlotId: slotId, status: slotId ? "confirmed" : "requested" } : item));
       }
-      showToast(slotId ? "日程を確定しました。" : "確定を解除しました。", "success");
+      if (!previousSlotId && slotId) {
+        showToast("日程を確定しました。", "success");
+      } else if (previousSlotId && slotId && previousSlotId !== slotId) {
+        showToast("確定日程を変更しました。", "success");
+      } else if (previousSlotId && !slotId) {
+        showToast("確定を解除しました。", "success");
+      }
     } catch (error) {
       console.error(error);
       if (String(error?.message).includes("slot-full")) {
@@ -2039,6 +2147,18 @@ export default function ExperimentParticipantScheduler() {
       } else {
         showToast("確定処理に失敗しました。", "error");
       }
+    }
+  }
+
+  async function confirmAssignmentDialog() {
+    if (!assignmentDialog) return;
+
+    try {
+      setAssignmentLoading(true);
+      await handleAssignRequest(assignmentDialog.requestId, assignmentDialog.slotId);
+      setAssignmentDialog(null);
+    } finally {
+      setAssignmentLoading(false);
     }
   }
 
@@ -2138,6 +2258,13 @@ export default function ExperimentParticipantScheduler() {
     }
   }
 
+  function buildSlotDisplayLabel(slotId) {
+    const slot = sortedSlots.find((item) => item.id === slotId);
+    if (!slot) return "未設定の枠";
+    return `${formatJapaneseDate(slot.date)} / ${PERIOD_MAP[slot.periodKey]?.label || slot.periodKey}`;
+  }
+
+
   function openAdminPage() {
     setAuthError("");
     setPage(adminAuthorized ? "admin" : "admin-login");
@@ -2216,6 +2343,7 @@ export default function ExperimentParticipantScheduler() {
             adminEmail={authUser?.email || ""}
             isLoading={slotsLoading || requestsLoading}
             onSeedSampleData={seedSampleData}
+            onPrepareAssignRequest={prepareAssignRequest}
           />
         ) : (
           <AdminLoginPage
@@ -2262,6 +2390,14 @@ export default function ExperimentParticipantScheduler() {
           onSave={saveEditedSlot}
           onClose={() => setEditingSlot(null)}
           saving={savingEdit}
+        />
+      ) : null}
+      {assignmentDialog ? (
+        <AssignmentConfirmModal
+          dialog={assignmentDialog}
+          onConfirm={confirmAssignmentDialog}
+          onClose={() => setAssignmentDialog(null)}
+          loading={assignmentLoading}
         />
       ) : null}
       {toast ? <ActionToast toast={toast} onClose={() => setToast(null)} /> : null}
