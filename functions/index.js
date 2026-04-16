@@ -7,6 +7,37 @@ const db = getFirestore();
 
 const NOTIFY_ADMIN_EMAIL = process.env.NOTIFY_ADMIN_EMAIL || "";
 const MAIL_COLLECTION = process.env.MAIL_COLLECTION || "mail";
+const FROM_ADDRESS = process.env.FROM_ADDRESS || "is0611xi@ed.ritsumei.ac.jp";
+const FROM_NAME = process.env.FROM_NAME || "実験予約システム";
+const REPLY_TO = process.env.REPLY_TO || "is0611xi@ed.ritsumei.ac.jp";
+
+const CONTACT_TEXT = [
+  "----------------------------------------------------------------------------------------",
+  "立命館大学大学院（OIC）情報理工学研究科 修士2年",
+  "プレイフルインタラクション研究室",
+  "実験責任者: 川久保 空真（Kuma Kawakubo）",
+  "問い合わせ先: is0611xi@ed.ritsumei.ac.jp",
+].join("\\n");
+
+const CONTACT_HTML = `
+  <div style="margin-top: 28px;">
+    <hr style="border: none; border-top: 1px solid #cbd5e1; margin: 0 0 16px;" />
+    <div style="font-size: 14px; line-height: 1.9; color: #334155;">
+      立命館大学大学院（OIC）情報理工学研究科 修士2年<br/>
+      プレイフルインタラクション研究室<br/>
+      実験責任者: 川久保 空真（Kuma Kawakubo）<br/>
+      問い合わせ先: <a href="mailto:is0611xi@ed.ritsumei.ac.jp" style="color:#2563eb; text-decoration:none;">is0611xi@ed.ritsumei.ac.jp</a>
+    </div>
+  </div>
+`;
+
+function withSignatureText(body) {
+  return `${body}\\n\\n${CONTACT_TEXT}`;
+}
+
+function withSignatureHtml(body) {
+  return `${body}${CONTACT_HTML}`;
+}
 
 const PERIOD_LABELS = {
   p1: "1時限 09:00〜10:35",
@@ -62,6 +93,8 @@ async function enqueueMail({ to, subject, text, html }) {
 
   await db.collection(MAIL_COLLECTION).add({
     to,
+    from: `${FROM_NAME} <${FROM_ADDRESS}>`,
+    replyTo: REPLY_TO,
     message: {
       subject,
       text,
@@ -141,7 +174,7 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
 
   if (!beforeAssigned && afterAssigned) {
     subject = "【実験日程予約】実験日程確定のご連絡";
-    text = [
+    text = withSignatureText([
       `${recipientName} さん`,
       "",
       "このたびは実験へのご協力ありがとうございます。",
@@ -153,9 +186,9 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
       "ご不明な点やご都合の変更がありましたら、本メールへの返信にてご連絡ください。",
       "",
       "どうぞよろしくお願いいたします。",
-    ].join(" ");
+    ].join("\\n"));
 
-    html = `
+    html = withSignatureHtml(`
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.8; color: #0f172a;">
         <p>${escapeHtml(recipientName)} さん</p>
         <p>このたびは実験へのご協力ありがとうございます。<br/>以下の通り、参加日程が確定しましたのでご連絡いたします。</p>
@@ -166,10 +199,10 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
         <p>ご都合をご確認のうえ、ご参加をお願いいたします。<br/>ご不明な点やご都合の変更がありましたら、本メールへの返信にてご連絡ください。</p>
         <p>どうぞよろしくお願いいたします。</p>
       </div>
-    `;
+    `);
   } else if (beforeAssigned && afterAssigned) {
     subject = "【実験日程予約】参加日程変更のご連絡";
-    text = [
+    text = withSignatureText([
       `${recipientName} さん`,
       "",
       "実験日程について変更がありましたので、ご連絡いたします。",
@@ -182,9 +215,9 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
       "ご都合が合わない場合やご不明点がある場合は、本メールへの返信にてご連絡ください。",
       "",
       "どうぞよろしくお願いいたします。",
-    ].join(" ");
+    ].join("\\n"));
 
-    html = `
+    html = withSignatureHtml(`
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.8; color: #0f172a;">
         <p>${escapeHtml(recipientName)} さん</p>
         <p>実験日程について変更がありましたので、ご連絡いたします。<br/>以下の内容をご確認ください。</p>
@@ -195,10 +228,10 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
         <p>お手数をおかけしますが、ご確認をお願いいたします。<br/>ご都合が合わない場合やご不明点がある場合は、本メールへの返信にてご連絡ください。</p>
         <p>どうぞよろしくお願いいたします。</p>
       </div>
-    `;
+    `);
   } else if (beforeAssigned && !afterAssigned) {
     subject = "【実験日程予約】参加日程再調整のお願い";
-    text = [
+    text = withSignatureText([
       `${recipientName} さん`,
       "",
       "実験日程について再調整が必要となりましたため、ご連絡いたします。",
@@ -208,9 +241,9 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
       "",
       "新しい日程が決まり次第、あらためてご連絡いたします。",
       "ご迷惑をおかけして申し訳ありませんが、どうぞよろしくお願いいたします。",
-    ].join(" ");
+    ].join("\\n"));
 
-    html = `
+    html = withSignatureHtml(`
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.8; color: #0f172a;">
         <p>${escapeHtml(recipientName)} さん</p>
         <p>実験日程について再調整が必要となりましたため、ご連絡いたします。<br/>現在、確定済みだった日程をいったん見直しております。</p>
@@ -220,7 +253,7 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
         </div>
         <p>新しい日程が決まり次第、あらためてご連絡いたします。<br/>ご迷惑をおかけして申し訳ありませんが、どうぞよろしくお願いいたします。</p>
       </div>
-    `;
+    `);
   } else {
     return;
   }
