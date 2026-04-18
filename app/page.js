@@ -19,6 +19,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
   writeBatch,
@@ -82,6 +83,32 @@ const SAMPLE_REQUESTS = [
     status: "confirmed",
   },
 ];
+
+const DEFAULT_EXPERIMENT_INFO = {
+  title: "VR実験 参加者募集",
+  description:
+    "VR環境での体験や操作に関する研究実験です。公開中の日程から希望日時を選んでお申し込みください。",
+  duration: "約30〜45分",
+  reward: "謝礼あり（詳細は当日案内）",
+  organization: "立命館大学 プレイフルインタラクション研究室",
+  managerName: "川久保 空真",
+  contactEmail: "is0611xi@ed.ritsumei.ac.jp",
+  notes:
+    "・応募後、管理者が内容を確認して日程を確定します。\n・体調不良時は無理せずご連絡ください。\n・詳細は確定後のメールでご案内します。",
+};
+
+function normalizeExperimentInfo(raw = {}) {
+  return {
+    title: raw.title ?? DEFAULT_EXPERIMENT_INFO.title,
+    description: raw.description ?? DEFAULT_EXPERIMENT_INFO.description,
+    duration: raw.duration ?? DEFAULT_EXPERIMENT_INFO.duration,
+    reward: raw.reward ?? DEFAULT_EXPERIMENT_INFO.reward,
+    organization: raw.organization ?? DEFAULT_EXPERIMENT_INFO.organization,
+    managerName: raw.managerName ?? DEFAULT_EXPERIMENT_INFO.managerName,
+    contactEmail: raw.contactEmail ?? DEFAULT_EXPERIMENT_INFO.contactEmail,
+    notes: raw.notes ?? DEFAULT_EXPERIMENT_INFO.notes,
+  };
+}
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -490,6 +517,164 @@ function PrivacyNote() {
   );
 }
 
+
+function ExperimentInfoCard({ info, compact = false }) {
+  const detailItems = [
+    ["所要時間", info.duration],
+    ["報酬", info.reward],
+    ["所属組織", info.organization],
+    ["実験責任者", info.managerName],
+    ["連絡先", info.contactEmail],
+  ].filter(([, value]) => String(value || "").trim());
+
+  return (
+    <Card className={compact ? "p-5 shadow-none" : ""}>
+      <SectionHeader
+        eyebrow="EXPERIMENT INFO"
+        title={info.title || DEFAULT_EXPERIMENT_INFO.title}
+        description="実験の概要と参加前に確認してほしい内容です。"
+      />
+
+      <div className="space-y-5">
+        {String(info.description || "").trim() ? (
+          <div className="rounded-3xl bg-slate-50 p-5 text-sm leading-7 text-slate-700">
+            {info.description}
+          </div>
+        ) : null}
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {detailItems.map(([label, value]) => (
+            <div key={label} className="rounded-3xl border border-slate-200 bg-white p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</div>
+              <div className="mt-2 text-sm font-medium leading-6 text-slate-800 break-words">{value}</div>
+            </div>
+          ))}
+        </div>
+
+        {String(info.notes || "").trim() ? (
+          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+            <div className="text-sm font-medium text-slate-700">補足事項</div>
+            <div className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-600">
+              {info.notes}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </Card>
+  );
+}
+
+function ExperimentInfoEditor({
+  experimentInfoForm,
+  setExperimentInfoForm,
+  onSaveExperimentInfo,
+  savingExperimentInfo,
+}) {
+  function updateField(key, value) {
+    setExperimentInfoForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  return (
+    <Card className="p-5 shadow-none">
+      <SectionHeader
+        eyebrow="EXPERIMENT SETTINGS"
+        title="参加者ページの実験情報を編集"
+        description="ここで保存した内容が、参加者ページ上部の説明カードに反映されます。"
+      />
+
+      <form onSubmit={onSaveExperimentInfo} className="space-y-4">
+        <label className="block text-sm">
+          <div className="mb-1.5 text-slate-600">実験タイトル</div>
+          <input
+            value={experimentInfoForm.title}
+            onChange={(event) => updateField("title", event.target.value)}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+          />
+        </label>
+
+        <label className="block text-sm">
+          <div className="mb-1.5 text-slate-600">実験概要</div>
+          <textarea
+            value={experimentInfoForm.description}
+            onChange={(event) => updateField("description", event.target.value)}
+            className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+          />
+        </label>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="text-sm">
+            <div className="mb-1.5 text-slate-600">所要時間</div>
+            <input
+              value={experimentInfoForm.duration}
+              onChange={(event) => updateField("duration", event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+            />
+          </label>
+
+          <label className="text-sm">
+            <div className="mb-1.5 text-slate-600">報酬</div>
+            <input
+              value={experimentInfoForm.reward}
+              onChange={(event) => updateField("reward", event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+            />
+          </label>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="text-sm">
+            <div className="mb-1.5 text-slate-600">募集組織・研究室</div>
+            <input
+              value={experimentInfoForm.organization}
+              onChange={(event) => updateField("organization", event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+            />
+          </label>
+
+          <label className="text-sm">
+            <div className="mb-1.5 text-slate-600">実験責任者の表示</div>
+            <input
+              value={experimentInfoForm.managerName}
+              onChange={(event) => updateField("managerName", event.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+            />
+          </label>
+        </div>
+
+        <label className="block text-sm">
+          <div className="mb-1.5 text-slate-600">連絡先メール</div>
+          <input
+            type="email"
+            value={experimentInfoForm.contactEmail}
+            onChange={(event) => updateField("contactEmail", event.target.value)}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+          />
+        </label>
+
+        <label className="block text-sm">
+          <div className="mb-1.5 text-slate-600">補足事項</div>
+          <textarea
+            value={experimentInfoForm.notes}
+            onChange={(event) => updateField("notes", event.target.value)}
+            className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+            placeholder="複数行で入力できます"
+          />
+        </label>
+
+        <div className="flex flex-wrap gap-3 pt-1">
+          <button
+            type="submit"
+            disabled={savingExperimentInfo}
+            className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
+          >
+            {savingExperimentInfo ? "保存中..." : "実験情報を保存"}
+          </button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
 function LoadingCard({ title = "読み込み中..." }) {
   return (
     <Card>
@@ -680,6 +865,7 @@ function ParticipantPage({
   setupMode,
   calendarView,
   setCalendarView,
+  experimentInfo,
 }) {
   const mobileDateItems = days
     .filter((day) => day.getMonth() === displayMonth.getMonth())
@@ -721,6 +907,10 @@ function ParticipantPage({
         </header>
 
         {setupMode ? <div className="mb-6"><SetupNotice /></div> : null}
+
+        <section className="mb-6">
+          <ExperimentInfoCard info={experimentInfo} />
+        </section>
 
         <section className="mb-6 grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
           <Card>
@@ -1176,6 +1366,23 @@ function AdminPage({
   isLoading,
   onSeedSampleData,
   onPrepareAssignRequest,
+  experimentInfo,
+  experimentInfoForm,
+  setExperimentInfoForm,
+  onSaveExperimentInfo,
+  savingExperimentInfo,
+  selectedSlotIds,
+  allSlotsSelected,
+  onToggleSlotSelection,
+  onToggleSelectAllSlots,
+  onClearSlotSelection,
+  bulkNote,
+  setBulkNote,
+  bulkActionLoading,
+  onBulkUpdateNote,
+  onBulkPublish,
+  onBulkUnpublish,
+  onBulkDelete,
 }) {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e2e8f0_0%,_#f8fafc_32%,_#eef2ff_100%)] text-slate-900">
@@ -1239,6 +1446,15 @@ function AdminPage({
               <div className="rounded-3xl bg-white p-5 shadow-sm"><div className="text-sm text-slate-500">確定済み</div><div className="mt-2 text-3xl font-semibold">{stats.confirmed}</div></div>
               <div className="rounded-3xl bg-white p-5 shadow-sm"><div className="text-sm text-slate-500">残り席数</div><div className="mt-2 text-3xl font-semibold">{stats.openSeats}</div></div>
             </div>
+
+            <ExperimentInfoEditor
+              experimentInfoForm={experimentInfoForm}
+              setExperimentInfoForm={setExperimentInfoForm}
+              onSaveExperimentInfo={onSaveExperimentInfo}
+              savingExperimentInfo={savingExperimentInfo}
+            />
+
+            <ExperimentInfoCard info={experimentInfo} compact />
 
             <Card className="p-5 shadow-none">
               <SectionHeader
@@ -1337,36 +1553,139 @@ function AdminPage({
               </form>
             </Card>
 
+            <Card className="p-5 shadow-none">
+              <SectionHeader
+                eyebrow="BULK ACTIONS"
+                title="選択した日程枠を一括操作"
+                description="複数の枠をまとめて公開・非公開・削除したり、メモを同じ内容にそろえられます。"
+              />
+
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <StatusBadge tone={selectedSlotIds.length > 0 ? "sky" : "slate"}>
+                    選択中 {selectedSlotIds.length} 件
+                  </StatusBadge>
+                  <button
+                    type="button"
+                    onClick={onToggleSelectAllSlots}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    {allSlotsSelected ? "すべて解除" : "すべて選択"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClearSlotSelection}
+                    disabled={selectedSlotIds.length === 0 || bulkActionLoading}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    選択解除
+                  </button>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-[1.15fr,0.85fr]">
+                  <div>
+                    <label className="block text-sm">
+                      <div className="mb-1.5 text-slate-600">一括更新するメモ</div>
+                      <textarea
+                        value={bulkNote}
+                        onChange={(event) => setBulkNote(event.target.value)}
+                        className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                        placeholder="選択した枠のメモをこの内容で上書きします。空欄で保存するとメモを空にできます。"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={onBulkUpdateNote}
+                      disabled={selectedSlotIds.length === 0 || bulkActionLoading}
+                      className="mt-3 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      {bulkActionLoading ? "処理中..." : "選択枠のメモを一括更新"}
+                    </button>
+                  </div>
+
+                  <div className="grid content-start gap-3">
+                    <button
+                      type="button"
+                      onClick={onBulkPublish}
+                      disabled={selectedSlotIds.length === 0 || bulkActionLoading}
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      選択枠を一括公開
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onBulkUnpublish}
+                      disabled={selectedSlotIds.length === 0 || bulkActionLoading}
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      選択枠を一括非公開
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onBulkDelete}
+                      disabled={selectedSlotIds.length === 0 || bulkActionLoading}
+                      className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                    >
+                      選択枠を一括削除
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
             <div className="space-y-3">
-              {sortedSlots.map((slot) => {
-                const metrics = getSlotMetrics(slot, requests);
-                return (
-                  <div key={slot.id} className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-base font-semibold text-slate-900">{formatJapaneseDate(slot.date)} / {getSlotLabel(slot)}</div>
-                          <StatusBadge tone={slot.isPublished === false ? "slate" : "sky"}>{slot.isPublished === false ? "非公開" : "公開中"}</StatusBadge>
+              {sortedSlots.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                  まだ日程枠はありません。
+                </div>
+              ) : (
+                sortedSlots.map((slot) => {
+                  const metrics = getSlotMetrics(slot, requests);
+                  const selected = selectedSlotIds.includes(slot.id);
+                  return (
+                    <div
+                      key={slot.id}
+                      className={classNames(
+                        "rounded-3xl border bg-white p-4 shadow-sm transition",
+                        selected ? "border-sky-300 ring-2 ring-sky-100" : "border-slate-200"
+                      )}
+                    >
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="flex gap-3">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => onToggleSlotSelection(slot.id)}
+                            className="mt-1 h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-sky-300"
+                            aria-label={`${formatJapaneseDate(slot.date)} ${getSlotLabel(slot)} を選択`}
+                          />
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="text-base font-semibold text-slate-900">{formatJapaneseDate(slot.date)} / {getSlotLabel(slot)}</div>
+                              <StatusBadge tone={slot.isPublished === false ? "slate" : "sky"}>{slot.isPublished === false ? "非公開" : "公開中"}</StatusBadge>
+                              {selected ? <StatusBadge tone="emerald">選択中</StatusBadge> : null}
+                            </div>
+                            <div className="mt-2 text-sm text-slate-500">{slot.location} / 定員 {slot.capacity} / 残り {metrics.remaining}</div>
+                            {slot.note ? <div className="mt-1 whitespace-pre-line text-sm text-slate-500">{slot.note}</div> : null}
+                          </div>
                         </div>
-                        <div className="mt-2 text-sm text-slate-500">{slot.location} / 定員 {slot.capacity} / 残り {metrics.remaining}</div>
-                        {slot.note ? <div className="mt-1 text-sm text-slate-500">{slot.note}</div> : null}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <button onClick={() => onEditSlot(slot)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                          <PencilIcon />
-                          編集
-                        </button>
-                        <button onClick={() => handleTogglePublished(slot)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                          {slot.isPublished === false ? "公開にする" : "非公開にする"}
-                        </button>
-                        <button onClick={() => handleDeleteSlot(slot.id)} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">
-                          削除
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button onClick={() => onEditSlot(slot)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                            <PencilIcon />
+                            編集
+                          </button>
+                          <button onClick={() => handleTogglePublished(slot)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                            {slot.isPublished === false ? "公開にする" : "非公開にする"}
+                          </button>
+                          <button onClick={() => handleDeleteSlot(slot.id)} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">
+                            削除
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
         )}
@@ -1608,6 +1927,12 @@ export default function ExperimentParticipantScheduler() {
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [toast, setToast] = useState(null);
+  const [experimentInfo, setExperimentInfo] = useState(() => normalizeExperimentInfo(DEFAULT_EXPERIMENT_INFO));
+  const [experimentInfoForm, setExperimentInfoForm] = useState(() => normalizeExperimentInfo(DEFAULT_EXPERIMENT_INFO));
+  const [savingExperimentInfo, setSavingExperimentInfo] = useState(false);
+  const [selectedSlotIds, setSelectedSlotIds] = useState([]);
+  const [bulkNote, setBulkNote] = useState("");
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [participantForm, setParticipantForm] = useState({
     name: "",
     email: "",
@@ -1674,6 +1999,35 @@ export default function ExperimentParticipantScheduler() {
       setAuthUser(user);
       setAuthReady(true);
     });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!firebaseReady) {
+      const fallback = normalizeExperimentInfo(DEFAULT_EXPERIMENT_INFO);
+      setExperimentInfo(fallback);
+      setExperimentInfoForm(fallback);
+      return;
+    }
+
+    const settingsRef = doc(firestore, "settings", "experimentInfo");
+    const unsubscribe = onSnapshot(
+      settingsRef,
+      (snapshot) => {
+        const nextInfo = snapshot.exists()
+          ? normalizeExperimentInfo(snapshot.data())
+          : normalizeExperimentInfo(DEFAULT_EXPERIMENT_INFO);
+        setExperimentInfo(nextInfo);
+        setExperimentInfoForm(nextInfo);
+      },
+      (error) => {
+        console.error(error);
+        const fallback = normalizeExperimentInfo(DEFAULT_EXPERIMENT_INFO);
+        setExperimentInfo(fallback);
+        setExperimentInfoForm(fallback);
+      }
+    );
+
     return () => unsubscribe();
   }, []);
 
@@ -1745,9 +2099,14 @@ export default function ExperimentParticipantScheduler() {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    setSelectedSlotIds((prev) => prev.filter((id) => slots.some((slot) => slot.id === id)));
+  }, [slots]);
+
   const adminAuthorized = !!authUser?.email && ALLOWED_ADMIN_EMAILS.includes(authUser.email.toLowerCase());
 
   const sortedSlots = useMemo(() => sortSlots(slots), [slots]);
+  const allSlotsSelected = sortedSlots.length > 0 && selectedSlotIds.length === sortedSlots.length;
   const days = useMemo(() => getMonthGrid(displayMonth), [displayMonth]);
   const selectedDaySlots = useMemo(
     () => sortedSlots.filter((slot) => slot.date === selectedDate && slot.isPublished !== false),
@@ -1967,6 +2326,7 @@ export default function ExperimentParticipantScheduler() {
           }))
         );
       }
+      setSelectedSlotIds((prev) => prev.filter((id) => id !== slotId));
       showToast("日程枠を削除しました。", "success");
     } catch (error) {
       console.error(error);
@@ -2205,7 +2565,7 @@ export default function ExperimentParticipantScheduler() {
   function exportJson() {
     downloadText(
       `experiment-scheduler-${new Date().toISOString().slice(0, 10)}.json`,
-      JSON.stringify({ slots, requests }, null, 2)
+      JSON.stringify({ slots, requests, experimentInfo }, null, 2)
     );
   }
 
@@ -2224,6 +2584,7 @@ export default function ExperimentParticipantScheduler() {
         setRequests(SAMPLE_REQUESTS);
       }
       setSelectedDate("");
+      setSelectedSlotIds([]);
       setPage("participant");
       showToast("データを初期化しました。", "success");
     } catch (error) {
@@ -2264,6 +2625,195 @@ export default function ExperimentParticipantScheduler() {
     return `${formatJapaneseDate(slot.date)} / ${PERIOD_MAP[slot.periodKey]?.label || slot.periodKey}`;
   }
 
+  async function handleSaveExperimentInfo(event) {
+    event.preventDefault();
+
+    const payload = {
+      title: experimentInfoForm.title.trim(),
+      description: experimentInfoForm.description.trim(),
+      duration: experimentInfoForm.duration.trim(),
+      reward: experimentInfoForm.reward.trim(),
+      organization: experimentInfoForm.organization.trim(),
+      managerName: experimentInfoForm.managerName.trim(),
+      contactEmail: experimentInfoForm.contactEmail.trim(),
+      notes: experimentInfoForm.notes,
+    };
+
+    try {
+      setSavingExperimentInfo(true);
+
+      if (firebaseReady) {
+        await setDoc(
+          doc(firestore, "settings", "experimentInfo"),
+          {
+            ...payload,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } else {
+        const nextInfo = normalizeExperimentInfo(payload);
+        setExperimentInfo(nextInfo);
+        setExperimentInfoForm(nextInfo);
+      }
+
+      showToast("実験情報を保存しました。", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("実験情報の保存に失敗しました。", "error");
+    } finally {
+      setSavingExperimentInfo(false);
+    }
+  }
+
+  function toggleSlotSelection(slotId) {
+    setSelectedSlotIds((prev) =>
+      prev.includes(slotId) ? prev.filter((id) => id !== slotId) : [...prev, slotId]
+    );
+  }
+
+  function toggleSelectAllSlots() {
+    setSelectedSlotIds((prev) =>
+      prev.length === sortedSlots.length ? [] : sortedSlots.map((slot) => slot.id)
+    );
+  }
+
+  function clearSlotSelection() {
+    setSelectedSlotIds([]);
+  }
+
+  async function handleBulkUpdateNote() {
+    if (selectedSlotIds.length === 0) {
+      showToast("一括更新する枠を選択してください。", "error");
+      return;
+    }
+
+    try {
+      setBulkActionLoading(true);
+
+      if (firebaseReady) {
+        const batch = writeBatch(firestore);
+        selectedSlotIds.forEach((slotId) => {
+          batch.update(doc(firestore, "slots", slotId), {
+            note: bulkNote,
+            updatedAt: serverTimestamp(),
+          });
+        });
+        await batch.commit();
+      } else {
+        setSlots((prev) =>
+          prev.map((slot) =>
+            selectedSlotIds.includes(slot.id) ? { ...slot, note: bulkNote } : slot
+          )
+        );
+      }
+
+      showToast("選択した枠のメモを更新しました。", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("メモの一括更新に失敗しました。", "error");
+    } finally {
+      setBulkActionLoading(false);
+    }
+  }
+
+  async function handleBulkPublishState(nextPublished) {
+    if (selectedSlotIds.length === 0) {
+      showToast("一括操作する枠を選択してください。", "error");
+      return;
+    }
+
+    try {
+      setBulkActionLoading(true);
+
+      if (firebaseReady) {
+        const batch = writeBatch(firestore);
+        selectedSlotIds.forEach((slotId) => {
+          batch.update(doc(firestore, "slots", slotId), {
+            isPublished: nextPublished,
+            updatedAt: serverTimestamp(),
+          });
+        });
+        await batch.commit();
+      } else {
+        setSlots((prev) =>
+          prev.map((slot) =>
+            selectedSlotIds.includes(slot.id) ? { ...slot, isPublished: nextPublished } : slot
+          )
+        );
+      }
+
+      showToast(nextPublished ? "選択した枠を公開しました。" : "選択した枠を非公開にしました。", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("一括公開設定の更新に失敗しました。", "error");
+    } finally {
+      setBulkActionLoading(false);
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedSlotIds.length === 0) {
+      showToast("削除する枠を選択してください。", "error");
+      return;
+    }
+
+    const ok = window.confirm(`選択した ${selectedSlotIds.length} 件の日程枠を削除しますか？ 関連する希望枠・確定情報も更新されます。`);
+    if (!ok) return;
+
+    const selectedSet = new Set(selectedSlotIds);
+
+    try {
+      setBulkActionLoading(true);
+
+      if (firebaseReady) {
+        const batch = writeBatch(firestore);
+
+        selectedSlotIds.forEach((slotId) => {
+          batch.delete(doc(firestore, "slots", slotId));
+        });
+
+        requests.forEach((request) => {
+          const nextPreferred = (request.preferredSlotIds || []).filter((id) => !selectedSet.has(id));
+          const assignedRemoved = selectedSet.has(request.assignedSlotId || "");
+          const nextAssigned = assignedRemoved ? "" : request.assignedSlotId || "";
+
+          if (nextPreferred.length !== (request.preferredSlotIds || []).length || assignedRemoved) {
+            batch.update(doc(firestore, "requests", request.id), {
+              preferredSlotIds: nextPreferred,
+              assignedSlotId: nextAssigned,
+              status: nextAssigned ? "confirmed" : "requested",
+              updatedAt: serverTimestamp(),
+            });
+          }
+        });
+
+        await batch.commit();
+      } else {
+        setSlots((prev) => prev.filter((slot) => !selectedSet.has(slot.id)));
+        setRequests((prev) =>
+          prev.map((request) => {
+            const nextPreferred = (request.preferredSlotIds || []).filter((id) => !selectedSet.has(id));
+            const assignedRemoved = selectedSet.has(request.assignedSlotId || "");
+            return {
+              ...request,
+              preferredSlotIds: nextPreferred,
+              assignedSlotId: assignedRemoved ? "" : request.assignedSlotId,
+              status: assignedRemoved ? "requested" : request.status,
+            };
+          })
+        );
+      }
+
+      setSelectedSlotIds([]);
+      showToast("選択した日程枠を削除しました。", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("日程枠の一括削除に失敗しました。", "error");
+    } finally {
+      setBulkActionLoading(false);
+    }
+  }
 
   function openAdminPage() {
     setAuthError("");
@@ -2344,6 +2894,23 @@ export default function ExperimentParticipantScheduler() {
             isLoading={slotsLoading || requestsLoading}
             onSeedSampleData={seedSampleData}
             onPrepareAssignRequest={prepareAssignRequest}
+            experimentInfo={experimentInfo}
+            experimentInfoForm={experimentInfoForm}
+            setExperimentInfoForm={setExperimentInfoForm}
+            onSaveExperimentInfo={handleSaveExperimentInfo}
+            savingExperimentInfo={savingExperimentInfo}
+            selectedSlotIds={selectedSlotIds}
+            allSlotsSelected={allSlotsSelected}
+            onToggleSlotSelection={toggleSlotSelection}
+            onToggleSelectAllSlots={toggleSelectAllSlots}
+            onClearSlotSelection={clearSlotSelection}
+            bulkNote={bulkNote}
+            setBulkNote={setBulkNote}
+            bulkActionLoading={bulkActionLoading}
+            onBulkUpdateNote={handleBulkUpdateNote}
+            onBulkPublish={() => handleBulkPublishState(true)}
+            onBulkUnpublish={() => handleBulkPublishState(false)}
+            onBulkDelete={handleBulkDelete}
           />
         ) : (
           <AdminLoginPage
@@ -2379,6 +2946,7 @@ export default function ExperimentParticipantScheduler() {
           setupMode={!firebaseReady}
           calendarView={calendarView}
           setCalendarView={setCalendarView}
+          experimentInfo={experimentInfo}
         />
       )}
 
