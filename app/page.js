@@ -937,7 +937,7 @@ function ParticipantPage({
             
           </Card>
 
-          <PrivacyNote />
+          
         </section>
 
         {isLoading ? (
