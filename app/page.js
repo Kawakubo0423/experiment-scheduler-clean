@@ -37,6 +37,7 @@ const PERIODS = [
 
 const PERIOD_MAP = Object.fromEntries(PERIODS.map((period) => [period.key, period]));
 const WEEK_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
+const MAX_PREFERRED_SLOTS = 5;
 
 const SAMPLE_SLOTS = [
   {
@@ -469,7 +470,7 @@ function HelpModal({ onClose }) {
       <div className="grid gap-4 md:grid-cols-3">
         {[
           ["1", "日付を選ぶ", "空きがある日付をカレンダーで押すと、その日の詳細枠へ自動で移動します。"],
-          ["2", "時間を選ぶ", "立命館大学の時限に合わせた枠から、希望する日時を最大3つまで選べます。"],
+          ["2", "時間を選ぶ", "立命館大学の時限に合わせた枠から、希望する日時を最大5つまで選べます。"],
           ["3", "送信する", "氏名、メールアドレス、所属・学年を入力して送信すれば申込完了です。"],
         ].map(([number, title, text]) => (
           <div key={number} className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
@@ -842,6 +843,70 @@ function AssignmentConfirmModal({ dialog, onConfirm, onClose, loading }) {
 }
 
 
+function ParticipantRequestConfirmModal({ open, participantForm, sortedSlots, onConfirm, onClose, loading }) {
+  if (!open) return null;
+
+  const selectedSlots = participantForm.preferredSlotIds
+    .map((slotId) => sortedSlots.find((slot) => slot.id === slotId))
+    .filter(Boolean);
+
+  return (
+    <ModalShell title="この内容で申し込みますか？" onClose={onClose}>
+      <div className="space-y-5">
+        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-700">
+          <div><span className="font-medium">氏名:</span> {participantForm.name}</div>
+          <div className="mt-1 break-all"><span className="font-medium">メールアドレス:</span> {participantForm.email}</div>
+          <div className="mt-1"><span className="font-medium">所属・学年:</span> {participantForm.affiliation}</div>
+          {participantForm.note.trim() ? (
+            <div className="mt-3">
+              <div className="font-medium">補足</div>
+              <div className="mt-1 whitespace-pre-line rounded-2xl bg-white px-3 py-2 text-slate-600">{participantForm.note.trim()}</div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-4">
+          <div className="text-sm font-medium text-slate-700">希望枠</div>
+          <div className="mt-3 space-y-2">
+            {selectedSlots.map((slot) => (
+              <div key={slot.id} className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                {formatJapaneseDate(slot.date)} / {PERIOD_MAP[slot.periodKey]?.label || slot.periodKey}
+                {slot.location ? ` / ${slot.location}` : ""}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-900">
+          送信後、日程の確定や変更に関する連絡を、登録したメールアドレス宛にお送りします。
+          見落としがないよう、メールをこまめに確認してください。
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
+          >
+            {loading ? "送信中..." : "この内容で送信する"}
+          </button>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            入力内容を修正する
+          </button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
+
 function ParticipantPage({
   sortedSlots,
   displayMonth,
@@ -855,6 +920,7 @@ function ParticipantPage({
   setParticipantForm,
   togglePreferredSlot,
   handleSubmitRequest,
+  participantSubmitLoading,
   message,
   detailsRef,
   onOpenAdmin,
@@ -1243,8 +1309,8 @@ function ParticipantPage({
                 <SectionHeader
                   eyebrow="FORM"
                   title="希望日時を送信する"
-                  description="氏名、メールアドレス、所属・学年、希望枠は必須です。"
-                  action={<StatusBadge tone="sky">最大3枠まで</StatusBadge>}
+                  description="氏名、メールアドレス、所属・学年、希望枠は必須です。送信前に確認画面が表示されます。"
+                  action={<StatusBadge tone="sky">最大{MAX_PREFERRED_SLOTS}枠まで</StatusBadge>}
                 />
 
                 <form onSubmit={handleSubmitRequest} className="space-y-4">
@@ -1327,8 +1393,11 @@ function ParticipantPage({
                     </div>
                   ) : null}
 
-                  <button className="w-full rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-300">
-                    希望日時を送信する
+                  <button
+                    disabled={participantSubmitLoading}
+                    className="w-full rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-300 disabled:opacity-60"
+                  >
+                    {participantSubmitLoading ? "送信中..." : "希望日時を送信する"}
                   </button>
                 </form>
               </Card>
@@ -1955,6 +2024,8 @@ export default function ExperimentParticipantScheduler() {
   const [dataError, setDataError] = useState("");
   const [assignmentDialog, setAssignmentDialog] = useState(null);
   const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [participantConfirmOpen, setParticipantConfirmOpen] = useState(false);
+  const [participantSubmitLoading, setParticipantSubmitLoading] = useState(false);
   const detailsRef = useRef(null);
   const shouldFocusDetailsRef = useRef(false);
 
@@ -2087,11 +2158,11 @@ export default function ExperimentParticipantScheduler() {
   }, [selectedDate, page]);
 
   useEffect(() => {
-    document.body.style.overflow = showHelp || !!editingSlot || !!assignmentDialog ? "hidden" : "";
+    document.body.style.overflow = showHelp || !!editingSlot || !!assignmentDialog || participantConfirmOpen ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
     };
-  }, [showHelp, editingSlot, assignmentDialog]);
+  }, [showHelp, editingSlot, assignmentDialog, participantConfirmOpen]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -2177,7 +2248,7 @@ export default function ExperimentParticipantScheduler() {
           preferredSlotIds: prev.preferredSlotIds.filter((id) => id !== slotId),
         };
       }
-      if (prev.preferredSlotIds.length >= 3) return prev;
+      if (prev.preferredSlotIds.length >= MAX_PREFERRED_SLOTS) return prev;
       return {
         ...prev,
         preferredSlotIds: [...prev.preferredSlotIds, slotId],
@@ -2186,15 +2257,14 @@ export default function ExperimentParticipantScheduler() {
 
     if (exists) {
       showToast("希望枠から外しました。", "info");
-    } else if (participantForm.preferredSlotIds.length >= 3) {
-      showToast("希望枠は最大3つまでです。", "error");
+    } else if (participantForm.preferredSlotIds.length >= MAX_PREFERRED_SLOTS) {
+      showToast(`希望枠は最大${MAX_PREFERRED_SLOTS}つまでです。`, "error");
     } else {
       showToast("希望枠に追加しました。", "success");
     }
   }
 
-  async function handleSubmitRequest(event) {
-    event.preventDefault();
+  function validateParticipantForm() {
     if (
       !participantForm.name.trim() ||
       !participantForm.email.trim() ||
@@ -2203,10 +2273,24 @@ export default function ExperimentParticipantScheduler() {
     ) {
       setMessage("氏名、メールアドレス、所属・学年、希望枠は必須です。");
       showToast("必須項目を入力してください。", "error");
-      return;
+      return false;
     }
 
+    return true;
+  }
+
+  function handleSubmitRequest(event) {
+    event.preventDefault();
+    if (!validateParticipantForm()) return;
+    setParticipantConfirmOpen(true);
+  }
+
+  async function confirmSubmitRequest() {
+    if (!validateParticipantForm()) return;
+
     try {
+      setParticipantSubmitLoading(true);
+
       if (firebaseReady) {
         await addDoc(collection(firestore, "requests"), {
           name: participantForm.name.trim(),
@@ -2235,6 +2319,7 @@ export default function ExperimentParticipantScheduler() {
         ]);
       }
 
+      setParticipantConfirmOpen(false);
       setParticipantForm({
         name: "",
         email: "",
@@ -2242,12 +2327,14 @@ export default function ExperimentParticipantScheduler() {
         note: "",
         preferredSlotIds: [],
       });
-      setMessage("希望日時を送信しました。確認後に連絡します。");
+      setMessage("希望日時を送信しました。日程の確定や変更については、登録したメールアドレス宛に連絡しますので、こまめにご確認ください。");
       showToast("希望日時を送信しました。", "success");
     } catch (error) {
       console.error(error);
       setMessage("送信に失敗しました。時間をおいて再度お試しください。");
       showToast("送信に失敗しました。", "error");
+    } finally {
+      setParticipantSubmitLoading(false);
     }
   }
 
@@ -2936,6 +3023,7 @@ export default function ExperimentParticipantScheduler() {
           setParticipantForm={setParticipantForm}
           togglePreferredSlot={togglePreferredSlot}
           handleSubmitRequest={handleSubmitRequest}
+          participantSubmitLoading={participantSubmitLoading}
           message={message}
           detailsRef={detailsRef}
           onOpenAdmin={openAdminPage}
@@ -2951,6 +3039,16 @@ export default function ExperimentParticipantScheduler() {
       )}
 
       {showHelp ? <HelpModal onClose={() => setShowHelp(false)} /> : null}
+      {participantConfirmOpen ? (
+        <ParticipantRequestConfirmModal
+          open={participantConfirmOpen}
+          participantForm={participantForm}
+          sortedSlots={sortedSlots.filter((slot) => slot.isPublished !== false)}
+          onConfirm={confirmSubmitRequest}
+          onClose={() => setParticipantConfirmOpen(false)}
+          loading={participantSubmitLoading}
+        />
+      ) : null}
       {editingSlot ? (
         <EditSlotModal
           form={editSlotForm}
