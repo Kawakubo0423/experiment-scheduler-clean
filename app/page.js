@@ -15,6 +15,7 @@ import {
   deleteDoc,
   doc,
   getFirestore,
+  getDoc,
   onSnapshot,
   query,
   runTransaction,
@@ -82,6 +83,9 @@ const SAMPLE_REQUESTS = [
     preferredSlotIds: ["sample-slot-1", "sample-slot-3"],
     assignedSlotId: "sample-slot-1",
     status: "confirmed",
+    participantResponseToken: "sample-response-token-1",
+    participantConfirmationStatus: "pending",
+    participantResponseNote: "",
   },
 ];
 
@@ -109,6 +113,28 @@ function normalizeExperimentInfo(raw = {}) {
     contactEmail: raw.contactEmail ?? DEFAULT_EXPERIMENT_INFO.contactEmail,
     notes: raw.notes ?? DEFAULT_EXPERIMENT_INFO.notes,
   };
+}
+
+
+function buildParticipantResponseUrl(token, action = "confirm") {
+  if (typeof window === "undefined") return "";
+  const url = new URL(window.location.href);
+  url.searchParams.set("token", token);
+  url.searchParams.set("action", action);
+  url.searchParams.delete("request");
+  return url.toString();
+}
+
+function getParticipantConfirmationLabel(status) {
+  if (status === "confirmed") return "確認済み";
+  if (status === "change_requested") return "変更希望";
+  return "未確認";
+}
+
+function getParticipantConfirmationTone(status) {
+  if (status === "confirmed") return "emerald";
+  if (status === "change_requested") return "rose";
+  return "amber";
 }
 
 const firebaseConfig = {
@@ -471,7 +497,7 @@ function HelpModal({ onClose }) {
         {[
           ["1", "日付を選ぶ", "空きがある日付をカレンダーで押すと、その日の詳細枠へ自動で移動します。"],
           ["2", "時間を選ぶ", "立命館大学の時限に合わせた枠から、希望する日時を最大5つまで選べます。"],
-          ["3", "送信する", "氏名、メールアドレス、所属・学年を入力して送信すれば申込完了です。"],
+          ["3", "送信する", "氏名、メールアドレス、所属・学年を入力して送信すれば申込完了です。確定連絡は迷惑メールに入る場合もあるため、送信後は受信箱と迷惑メールを両方確認してください。"],
         ].map(([number, title, text]) => (
           <div key={number} className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
             <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-sm font-semibold text-white">{number}</div>
@@ -877,9 +903,9 @@ function ParticipantRequestConfirmModal({ open, participantForm, sortedSlots, on
           </div>
         </div>
 
-        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-900">
-          送信後、日程の確定や変更に関する連絡を、登録したメールアドレス宛にお送りします。
-          見落としがないよう、メールをこまめに確認してください。
+        <div className="rounded-3xl border border-amber-300 bg-amber-50 p-4 text-sm leading-7 text-amber-950">
+          送信後、日程の確定や変更に関する重要な連絡を、登録したメールアドレス宛にお送りします。
+          通常の受信箱ではなく迷惑メールに入る場合もあるため、受信箱と迷惑メールの両方を必ず確認してください。
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -903,6 +929,150 @@ function ParticipantRequestConfirmModal({ open, participantForm, sortedSlots, on
         </div>
       </div>
     </ModalShell>
+  );
+}
+
+
+function ParticipantResponsePage({
+  loading,
+  error,
+  requestItem,
+  assignedSlot,
+  action,
+  responseNote,
+  setResponseNote,
+  onSubmitConfirm,
+  onSubmitChangeRequest,
+  submitting,
+  submitMessage,
+  onBackToTop,
+}) {
+  const confirmationStatus = requestItem?.participantConfirmationStatus || "pending";
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe_0%,_#f8fafc_38%,_#eef2ff_100%)] text-slate-900">
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+        <header className="mb-6 rounded-[32px] border border-white/70 bg-white/80 px-6 py-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+          <div className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold tracking-[0.16em] text-sky-700">
+            PARTICIPANT RESPONSE
+          </div>
+          <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">日程確認ページ</h1>
+          <p className="mt-3 text-sm leading-7 text-slate-600">
+            確定・変更された日程について、変更希望の送信ができます。確認済みの登録はメール内のボタンからそのまま行えます。
+          </p>
+        </header>
+
+        {loading ? <LoadingCard title="確認情報を読み込んでいます..." /> : null}
+
+        {error ? (
+          <Card className="p-6">
+            <div className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm leading-7 text-rose-700">
+              {error}
+            </div>
+            <button
+              type="button"
+              onClick={onBackToTop}
+              className="mt-5 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              予約ページへ戻る
+            </button>
+          </Card>
+        ) : null}
+
+        {!loading && !error && requestItem ? (
+          <div className="space-y-5">
+            <Card className="p-6">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="text-xl font-semibold text-slate-900">{requestItem.name || "参加者様"}</div>
+                <StatusBadge tone={getParticipantConfirmationTone(confirmationStatus)}>{getParticipantConfirmationLabel(confirmationStatus)}</StatusBadge>
+              </div>
+              <div className="mt-4 space-y-2 text-sm text-slate-600">
+                <div><span className="font-medium text-slate-800">登録メール:</span> {requestItem.email || "未登録"}</div>
+                <div><span className="font-medium text-slate-800">所属・学年:</span> {requestItem.affiliation || "未入力"}</div>
+              </div>
+
+              <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                <div className="text-sm font-medium text-slate-700">現在の確定日程</div>
+                <div className="mt-3 text-base font-semibold text-slate-900">
+                  {assignedSlot
+                    ? `${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}${assignedSlot.location ? ` / ${assignedSlot.location}` : ""}`
+                    : "現在、確定済みの日程はありません。"}
+                </div>
+                {assignedSlot?.note ? <div className="mt-2 whitespace-pre-line text-sm text-slate-500">{assignedSlot.note}</div> : null}
+              </div>
+
+              {submitMessage ? (
+                <div className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm leading-7 text-emerald-800">
+                  {submitMessage}
+                </div>
+              ) : null}
+
+              {requestItem.participantResponseNote ? (
+                <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-4">
+                  <div className="text-sm font-medium text-slate-700">直近の連絡内容</div>
+                  <div className="mt-2 whitespace-pre-line text-sm leading-7 text-slate-600">{requestItem.participantResponseNote}</div>
+                </div>
+              ) : null}
+            </Card>
+
+            <Card className="p-6">
+              <div className="flex flex-col gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-slate-900">{action === "change" ? "日程を確認する / 変更希望を送る" : "日程を確認する / 変更希望を送る"}</h2>
+                  <p className="mt-2 text-sm leading-7 text-slate-600">
+                    {action === "change"
+                      ? "都合が合わない場合や再調整を希望する場合は、理由や候補日時を入力して送信してください。"
+                      : "問題なければ確認済みとして登録してください。変更を希望する場合は、下のフォームから連絡できます。"}
+                  </p>
+                </div>
+
+                <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-900">
+                  一度「確認済み」を送信したあとでも、必要になれば後から「変更希望」を再度送れます。変更希望の場合は、できるだけ具体的な理由や参加可能な日時を記入してください。
+                </div>
+
+                <label className="block text-sm">
+                  <div className="mb-1.5 text-slate-600">連絡内容 / 変更内容</div>
+                  <textarea
+                    value={responseNote}
+                    onChange={(event) => setResponseNote(event.target.value)}
+                    placeholder={action === "change" ? "例）この時間は授業があるため参加できません。来週火曜3〜5限なら参加できます。" : "必要であれば一言メモを入力できます（任意）。"}
+                    className="min-h-32 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                  />
+                </label>
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={onSubmitConfirm}
+                    disabled={submitting || !assignedSlot}
+                    className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
+                  >
+                    {submitting ? "送信中..." : confirmationStatus === "confirmed" ? "もう一度、確認済みとして送信する" : "この日程で確認しました"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onSubmitChangeRequest}
+                    disabled={submitting || !assignedSlot}
+                    className="rounded-2xl bg-rose-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-rose-500 disabled:opacity-60"
+                  >
+                    {submitting ? "送信中..." : confirmationStatus === "change_requested" ? "もう一度、変更希望を送信する" : "変更希望を送信する"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onBackToTop}
+                    className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    予約ページへ戻る
+                  </button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -1309,7 +1479,7 @@ function ParticipantPage({
                 <SectionHeader
                   eyebrow="FORM"
                   title="希望日時を送信する"
-                  description="氏名、メールアドレス、所属・学年、希望枠は必須です。送信前に確認画面が表示されます。"
+                  description="氏名、メールアドレス、所属・学年、希望枠は必須です。確定連絡は迷惑メールに入る場合があるため、受信箱と迷惑メールの両方を確認してください。"
                   action={<StatusBadge tone="sky">最大{MAX_PREFERRED_SLOTS}枠まで</StatusBadge>}
                 />
 
@@ -1337,6 +1507,9 @@ function ParticipantPage({
                         placeholder="example@xxx.com"
                         autoComplete="email"
                       />
+                      <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900">
+                        確定連絡や変更連絡はこのメールアドレス宛に届きます。迷惑メールに振り分けられることもあるため、送信後は受信箱と迷惑メールの両方を必ず確認してください。
+                      </div>
                     </label>
                   </div>
 
@@ -1425,6 +1598,10 @@ function AdminPage({
   onEditSlot,
   search,
   setSearch,
+  requestStatusFilter,
+  setRequestStatusFilter,
+  participantConfirmationFilter,
+  setParticipantConfirmationFilter,
   filteredRequests,
   confirmedScheduleGroups,
   handleAssignRequest,
@@ -1799,12 +1976,33 @@ function AdminPage({
               )}
             </Card>
             <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="氏名・メール・所属で検索"
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
-              />
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_220px_220px]">
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="氏名・メール・所属・参加者連絡で検索"
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                />
+                <select
+                  value={requestStatusFilter}
+                  onChange={(event) => setRequestStatusFilter(event.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                >
+                  <option value="all">申込状態: すべて</option>
+                  <option value="pending">申込状態: 未確定のみ</option>
+                  <option value="assigned">申込状態: 確定済みのみ</option>
+                </select>
+                <select
+                  value={participantConfirmationFilter}
+                  onChange={(event) => setParticipantConfirmationFilter(event.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                >
+                  <option value="all">参加者確認: すべて</option>
+                  <option value="pending">参加者確認: 未確認のみ</option>
+                  <option value="confirmed">参加者確認: 確認済みのみ</option>
+                  <option value="change_requested">参加者確認: 変更希望のみ</option>
+                </select>
+              </div>
             </div>
 
             {filteredRequests.length === 0 ? (
@@ -1812,11 +2010,25 @@ function AdminPage({
                 条件に一致する申込はありません。
               </div>
             ) : (
-              filteredRequests.map((request) => {
+              <>
+                {filteredRequests.some((request) => (request.participantConfirmationStatus || "pending") === "change_requested") ? (
+                  <div className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm leading-7 text-rose-900">
+                    変更希望の申込は一覧の上側に表示しています。赤系のカードを優先して確認してください。
+                  </div>
+                ) : null}
+                {filteredRequests.map((request) => {
                 const preferredSlots = sortedSlots.filter((slot) => (request.preferredSlotIds || []).includes(slot.id));
                 const assignedSlot = sortedSlots.find((slot) => slot.id === request.assignedSlotId);
                 return (
-                  <div key={request.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div
+                    key={request.id}
+                    className={classNames(
+                      "rounded-3xl p-5 shadow-sm",
+                      (request.participantConfirmationStatus || "pending") === "change_requested"
+                        ? "border-2 border-rose-300 bg-rose-50/70 shadow-[0_16px_40px_rgba(244,63,94,0.12)]"
+                        : "border border-slate-200 bg-white"
+                    )}
+                  >
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -1824,10 +2036,26 @@ function AdminPage({
                           <StatusBadge tone={request.assignedSlotId ? "emerald" : "amber"}>
                             {request.assignedSlotId ? "確定済み" : "未確定"}
                           </StatusBadge>
+                          <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
+                            {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
+                          </StatusBadge>
                         </div>
                         <div className="mt-2 text-sm text-slate-500">{request.email}</div>
                         {request.affiliation ? <div className="mt-1 text-sm text-slate-500">{request.affiliation}</div> : null}
                         {request.note ? <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">{request.note}</div> : null}
+                        {request.participantResponseNote ? (
+                          <div
+                            className={classNames(
+                              "mt-3 rounded-2xl px-4 py-3 text-sm",
+                              (request.participantConfirmationStatus || "pending") === "change_requested"
+                                ? "border border-rose-200 bg-rose-100 text-rose-900"
+                                : "border border-sky-200 bg-sky-50 text-sky-900"
+                            )}
+                          >
+                            <div className="font-medium">参加者からの連絡</div>
+                            <div className="mt-1 whitespace-pre-line">{request.participantResponseNote}</div>
+                          </div>
+                        ) : null}
 
                         <div className="mt-4">
                           <div className="mb-2 text-sm font-medium text-slate-700">希望枠</div>
@@ -1885,7 +2113,8 @@ function AdminPage({
                     </div>
                   </div>
                 );
-              })
+              })}
+              </>
             )}
           </div>
         )}
@@ -2018,6 +2247,8 @@ export default function ExperimentParticipantScheduler() {
     isPublished: true,
   });
   const [search, setSearch] = useState("");
+  const [requestStatusFilter, setRequestStatusFilter] = useState("all");
+  const [participantConfirmationFilter, setParticipantConfirmationFilter] = useState("all");
   const [message, setMessage] = useState("");
   const [slotsLoading, setSlotsLoading] = useState(firebaseReady);
   const [requestsLoading, setRequestsLoading] = useState(firebaseReady);
@@ -2026,11 +2257,30 @@ export default function ExperimentParticipantScheduler() {
   const [assignmentLoading, setAssignmentLoading] = useState(false);
   const [participantConfirmOpen, setParticipantConfirmOpen] = useState(false);
   const [participantSubmitLoading, setParticipantSubmitLoading] = useState(false);
+  const [participantResponseContext, setParticipantResponseContext] = useState({ token: "", action: "confirm" });
+  const [participantResponseLoading, setParticipantResponseLoading] = useState(false);
+  const [participantResponseSubmitting, setParticipantResponseSubmitting] = useState(false);
+  const [participantResponseError, setParticipantResponseError] = useState("");
+  const [participantResponseRequest, setParticipantResponseRequest] = useState(null);
+  const [participantResponseNote, setParticipantResponseNote] = useState("");
+  const [participantResponseMessage, setParticipantResponseMessage] = useState("");
   const detailsRef = useRef(null);
   const shouldFocusDetailsRef = useRef(false);
 
   useEffect(() => {
     document.title = "実験日程予約ページ";
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token") || "";
+    const action = params.get("action") === "change" ? "change" : "confirm";
+
+    if (token) {
+      setPage("participant-response");
+      setParticipantResponseContext({ token, action });
+    }
   }, []);
 
   useEffect(() => {
@@ -2101,6 +2351,56 @@ export default function ExperimentParticipantScheduler() {
 
     return () => unsubscribe();
   }, []);
+
+
+  useEffect(() => {
+    if (page !== "participant-response") return;
+
+    if (!firebaseReady) {
+      setParticipantResponseLoading(false);
+      setParticipantResponseError("この機能は Firebase 接続時のみ利用できます。");
+      return;
+    }
+
+    const { token } = participantResponseContext;
+    if (!token) {
+      setParticipantResponseError("確認用URLが不正です。");
+      setParticipantResponseLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setParticipantResponseLoading(true);
+    setParticipantResponseError("");
+    setParticipantResponseMessage("");
+
+    getDoc(doc(firestore, "participantResponses", token))
+      .then((snapshot) => {
+        if (cancelled) return;
+        if (!snapshot.exists()) {
+          setParticipantResponseError("対象の確認ページが見つかりませんでした。最新のメールから開き直してください。");
+          setParticipantResponseRequest(null);
+          return;
+        }
+
+        const data = { id: snapshot.id, ...snapshot.data() };
+        setParticipantResponseRequest(data);
+        setParticipantResponseNote(data.participantConfirmationStatus === "change_requested" ? data.participantResponseNote || "" : "");
+      })
+      .catch((error) => {
+        console.error(error);
+        if (cancelled) return;
+        setParticipantResponseError("確認情報の取得に失敗しました。時間をおいて再度お試しください。");
+        setParticipantResponseRequest(null);
+      })
+      .finally(() => {
+        if (!cancelled) setParticipantResponseLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [page, participantResponseContext]);
 
   useEffect(() => {
     if (!firebaseReady || page !== "admin" || !authUser) return undefined;
@@ -2209,12 +2509,47 @@ export default function ExperimentParticipantScheduler() {
 
   const filteredRequests = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return requests;
-    return requests.filter((request) => {
-      const text = [request.name, request.email, request.affiliation, request.note].join(" ").toLowerCase();
-      return text.includes(keyword);
-    });
-  }, [requests, search]);
+
+    return [...requests]
+      .filter((request) => {
+        if (requestStatusFilter === "pending") return !request.assignedSlotId;
+        if (requestStatusFilter === "assigned") return !!request.assignedSlotId;
+        return true;
+      })
+      .filter((request) => {
+        const confirmationStatus = request.participantConfirmationStatus || "pending";
+        if (participantConfirmationFilter === "pending") return confirmationStatus === "pending";
+        if (participantConfirmationFilter === "confirmed") return confirmationStatus === "confirmed";
+        if (participantConfirmationFilter === "change_requested") return confirmationStatus === "change_requested";
+        return true;
+      })
+      .filter((request) => {
+        if (!keyword) return true;
+        const text = [
+          request.name,
+          request.email,
+          request.affiliation,
+          request.note,
+          request.participantResponseNote,
+        ].join(" ").toLowerCase();
+        return text.includes(keyword);
+      })
+      .sort((a, b) => {
+        const aStatus = a.participantConfirmationStatus || "pending";
+        const bStatus = b.participantConfirmationStatus || "pending";
+        const aPriority = aStatus === "change_requested" ? 0 : aStatus === "pending" ? 1 : 2;
+        const bPriority = bStatus === "change_requested" ? 0 : bStatus === "pending" ? 1 : 2;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+
+        const aAssigned = a.assignedSlotId ? 1 : 0;
+        const bAssigned = b.assignedSlotId ? 1 : 0;
+        if (aAssigned !== bAssigned) return aAssigned - bAssigned;
+
+        const aTime = a.updatedAt?.seconds ? a.updatedAt.seconds : 0;
+        const bTime = b.updatedAt?.seconds ? b.updatedAt.seconds : 0;
+        return bTime - aTime;
+      });
+  }, [requests, search, requestStatusFilter, participantConfirmationFilter]);
 
   const confirmedScheduleGroups = useMemo(() => {
     return sortSlots(
@@ -2264,6 +2599,58 @@ export default function ExperimentParticipantScheduler() {
     }
   }
 
+
+  function navigateToParticipantTop() {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("request");
+      url.searchParams.delete("token");
+      url.searchParams.delete("action");
+      window.history.replaceState({}, "", url.toString());
+    }
+    setPage("participant");
+    setParticipantResponseError("");
+    setParticipantResponseMessage("");
+    setParticipantResponseRequest(null);
+    setParticipantResponseNote("");
+  }
+
+  async function submitParticipantResponse(nextStatus) {
+    const { token } = participantResponseContext;
+    if (!firebaseReady || !token) return;
+
+    try {
+      setParticipantResponseSubmitting(true);
+      const payload = {
+        participantConfirmationStatus: nextStatus,
+        participantResponseNote: participantResponseNote.trim(),
+        participantRespondedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      await updateDoc(doc(firestore, "participantResponses", token), payload);
+
+      const nextRequest = {
+        ...(participantResponseRequest || {}),
+        participantConfirmationStatus: nextStatus,
+        participantResponseNote: participantResponseNote.trim(),
+      };
+      setParticipantResponseRequest(nextRequest);
+      setParticipantResponseMessage(
+        nextStatus === "confirmed"
+          ? "確認ありがとうございました。管理者側にも確認済みとして反映されました。"
+          : "変更希望を送信しました。管理者が内容を確認し、あらためてご連絡します。"
+      );
+      showToast(nextStatus === "confirmed" ? "確認を受け付けました。" : "変更希望を受け付けました。", "success");
+    } catch (error) {
+      console.error(error);
+      setParticipantResponseError("送信に失敗しました。時間をおいて再度お試しください。");
+      showToast("送信に失敗しました。", "error");
+    } finally {
+      setParticipantResponseSubmitting(false);
+    }
+  }
+
   function validateParticipantForm() {
     if (
       !participantForm.name.trim() ||
@@ -2292,6 +2679,7 @@ export default function ExperimentParticipantScheduler() {
       setParticipantSubmitLoading(true);
 
       if (firebaseReady) {
+        const responseToken = crypto.randomUUID();
         await addDoc(collection(firestore, "requests"), {
           name: participantForm.name.trim(),
           email: participantForm.email.trim(),
@@ -2300,21 +2688,30 @@ export default function ExperimentParticipantScheduler() {
           preferredSlotIds: participantForm.preferredSlotIds,
           assignedSlotId: "",
           status: "requested",
+          participantResponseToken: responseToken,
+          participantConfirmationStatus: "pending",
+          participantResponseNote: "",
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
       } else {
         setRequests((prev) => [
-          {
-            id: crypto.randomUUID(),
-            name: participantForm.name.trim(),
-            email: participantForm.email.trim(),
-            affiliation: participantForm.affiliation.trim(),
-            note: participantForm.note.trim(),
-            preferredSlotIds: participantForm.preferredSlotIds,
-            assignedSlotId: "",
-            status: "requested",
-          },
+          (() => {
+            const responseToken = crypto.randomUUID();
+            return {
+              id: crypto.randomUUID(),
+              name: participantForm.name.trim(),
+              email: participantForm.email.trim(),
+              affiliation: participantForm.affiliation.trim(),
+              note: participantForm.note.trim(),
+              preferredSlotIds: participantForm.preferredSlotIds,
+              assignedSlotId: "",
+              status: "requested",
+              participantResponseToken: responseToken,
+              participantConfirmationStatus: "pending",
+              participantResponseNote: "",
+            };
+          })(),
           ...prev,
         ]);
       }
@@ -2327,7 +2724,7 @@ export default function ExperimentParticipantScheduler() {
         note: "",
         preferredSlotIds: [],
       });
-      setMessage("希望日時を送信しました。日程の確定や変更については、登録したメールアドレス宛に連絡しますので、こまめにご確認ください。");
+      setMessage("希望日時を送信しました。日程の確定や変更については、登録したメールアドレス宛に連絡します。通常の受信箱だけでなく迷惑メールにも入る場合があるため、受信箱と迷惑メールの両方を必ず確認してください。");
       showToast("希望日時を送信しました。", "success");
     } catch (error) {
       console.error(error);
@@ -2971,6 +3368,10 @@ export default function ExperimentParticipantScheduler() {
             onEditSlot={openEditSlot}
             search={search}
             setSearch={setSearch}
+            requestStatusFilter={requestStatusFilter}
+            setRequestStatusFilter={setRequestStatusFilter}
+            participantConfirmationFilter={participantConfirmationFilter}
+            setParticipantConfirmationFilter={setParticipantConfirmationFilter}
             filteredRequests={filteredRequests}
             confirmedScheduleGroups={confirmedScheduleGroups}
             handleAssignRequest={handleAssignRequest}
@@ -3009,6 +3410,26 @@ export default function ExperimentParticipantScheduler() {
             onGoogleLogin={handleGoogleLogin}
           />
         )
+      ) : page === "participant-response" ? (
+        <ParticipantResponsePage
+          loading={participantResponseLoading}
+          error={participantResponseError}
+          requestItem={participantResponseRequest}
+          assignedSlot={participantResponseRequest ? {
+            date: participantResponseRequest.assignedDate || "",
+            periodKey: participantResponseRequest.assignedPeriodKey || "",
+            location: participantResponseRequest.assignedLocation || "",
+            note: participantResponseRequest.assignedNote || "",
+          } : null}
+          action={participantResponseContext.action}
+          responseNote={participantResponseNote}
+          setResponseNote={setParticipantResponseNote}
+          onSubmitConfirm={() => submitParticipantResponse("confirmed")}
+          onSubmitChangeRequest={() => submitParticipantResponse("change_requested")}
+          submitting={participantResponseSubmitting}
+          submitMessage={participantResponseMessage}
+          onBackToTop={navigateToParticipantTop}
+        />
       ) : (
         <ParticipantPage
           sortedSlots={sortedSlots.filter((slot) => slot.isPublished !== false)}
