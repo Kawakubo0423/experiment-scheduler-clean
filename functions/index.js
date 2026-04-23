@@ -454,7 +454,6 @@ exports.notifyAdminOnParticipantResponse = onDocumentUpdated("participantRespons
   const afterNote = after.participantResponseNote || "";
 
   if (beforeStatus === afterStatus && beforeNote === afterNote) return;
-  if (afterStatus !== "confirmed" && afterStatus !== "change_requested") return;
 
   const requestId = after.requestId || before.requestId || "";
   if (!requestId) return;
@@ -462,10 +461,11 @@ exports.notifyAdminOnParticipantResponse = onDocumentUpdated("participantRespons
   await db.collection("requests").doc(requestId).set({
     participantConfirmationStatus: afterStatus,
     participantResponseNote: afterNote,
-    participantRespondedAt: after.participantRespondedAt || FieldValue.serverTimestamp(),
+    participantRespondedAt: afterStatus === "pending" ? null : (after.participantRespondedAt || FieldValue.serverTimestamp()),
     updatedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
 
+  if (afterStatus !== "confirmed" && afterStatus !== "change_requested") return;
   if (!NOTIFY_ADMIN_EMAIL) return;
 
   const assignedSlot = {

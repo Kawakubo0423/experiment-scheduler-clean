@@ -948,6 +948,11 @@ function ParticipantResponsePage({
   onBackToTop,
 }) {
   const confirmationStatus = requestItem?.participantConfirmationStatus || "pending";
+  const [activeTab, setActiveTab] = useState(action === "confirm" ? "confirm" : "change");
+
+  useEffect(() => {
+    setActiveTab(action === "confirm" ? "confirm" : "change");
+  }, [action]);
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe_0%,_#f8fafc_38%,_#eef2ff_100%)] text-slate-900">
@@ -958,7 +963,7 @@ function ParticipantResponsePage({
           </div>
           <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">日程確認ページ</h1>
           <p className="mt-3 text-sm leading-7 text-slate-600">
-            確定・変更された日程について、変更希望の送信ができます。確認済みの登録はメール内のボタンからそのまま行えます。
+            このページでは主に変更希望を送れます。確認済みの登録はメール内の青いボタンからそのまま行えますが、必要ならこのページからも登録できます。
           </p>
         </header>
 
@@ -1016,57 +1021,112 @@ function ParticipantResponsePage({
             </Card>
 
             <Card className="p-6">
-              <div className="flex flex-col gap-4">
+              <div className="space-y-5">
                 <div>
-                  <h2 className="text-xl font-semibold text-slate-900">{action === "change" ? "日程を確認する / 変更希望を送る" : "日程を確認する / 変更希望を送る"}</h2>
+                  <h2 className="text-xl font-semibold text-slate-900">ご対応内容を選んでください</h2>
                   <p className="mt-2 text-sm leading-7 text-slate-600">
-                    {action === "change"
-                      ? "都合が合わない場合や再調整を希望する場合は、理由や候補日時を入力して送信してください。"
-                      : "問題なければ確認済みとして登録してください。変更を希望する場合は、下のフォームから連絡できます。"}
+                    このページでは主に変更希望を受け付けます。確認済みの登録はメール内の青いボタンから行うのが最も簡単ですが、必要に応じてこのページからも送信できます。
                   </p>
                 </div>
 
                 <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-900">
-                  一度「確認済み」を送信したあとでも、必要になれば後から「変更希望」を再度送れます。変更希望の場合は、できるだけ具体的な理由や参加可能な日時を記入してください。
+                  管理者が日程を変更・解除した場合、参加者確認ステータスは未確認に戻ります。変更希望の場合は、できるだけ具体的な理由や参加可能な日時を記入してください。
                 </div>
 
-                <label className="block text-sm">
-                  <div className="mb-1.5 text-slate-600">連絡内容 / 変更内容</div>
-                  <textarea
-                    value={responseNote}
-                    onChange={(event) => setResponseNote(event.target.value)}
-                    placeholder={action === "change" ? "例）この時間は授業があるため参加できません。来週火曜3〜5限なら参加できます。" : "必要であれば一言メモを入力できます（任意）。"}
-                    className="min-h-32 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
-                  />
-                </label>
-
-                <div className="flex flex-wrap gap-3">
+                <div className="inline-flex w-full flex-wrap gap-2 rounded-3xl border border-slate-200 bg-slate-50 p-2">
                   <button
                     type="button"
-                    onClick={onSubmitConfirm}
-                    disabled={submitting || !assignedSlot}
-                    className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
+                    onClick={() => setActiveTab("change")}
+                    className={`rounded-2xl px-4 py-2.5 text-sm font-medium transition ${activeTab === "change" ? "bg-rose-600 text-white shadow-sm" : "bg-white text-slate-700 hover:bg-slate-100"}`}
                   >
-                    {submitting ? "送信中..." : confirmationStatus === "confirmed" ? "もう一度、確認済みとして送信する" : "この日程で確認しました"}
+                    変更希望を送る
                   </button>
-
                   <button
                     type="button"
-                    onClick={onSubmitChangeRequest}
-                    disabled={submitting || !assignedSlot}
-                    className="rounded-2xl bg-rose-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-rose-500 disabled:opacity-60"
+                    onClick={() => setActiveTab("confirm")}
+                    className={`rounded-2xl px-4 py-2.5 text-sm font-medium transition ${activeTab === "confirm" ? "bg-sky-600 text-white shadow-sm" : "bg-white text-slate-700 hover:bg-slate-100"}`}
                   >
-                    {submitting ? "送信中..." : confirmationStatus === "change_requested" ? "もう一度、変更希望を送信する" : "変更希望を送信する"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={onBackToTop}
-                    className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    予約ページへ戻る
+                    日程確認を登録する
                   </button>
                 </div>
+
+                {activeTab === "change" ? (
+                  <div className="space-y-4 rounded-3xl border border-rose-200 bg-rose-50/60 p-5">
+                    <div>
+                      <h3 className="text-lg font-semibold text-rose-950">変更希望</h3>
+                      <p className="mt-2 text-sm leading-7 text-rose-900/80">
+                        参加が難しい場合や再調整を希望する場合は、理由や参加可能な日時を書いて送信してください。こちらのタブを主にご利用ください。
+                      </p>
+                    </div>
+
+                    <label className="block text-sm">
+                      <div className="mb-1.5 text-rose-900">変更内容・ご都合</div>
+                      <textarea
+                        value={responseNote}
+                        onChange={(event) => setResponseNote(event.target.value)}
+                        placeholder="例）この時間は授業があるため参加できません。来週火曜3〜5限なら参加できます。"
+                        className="min-h-36 w-full rounded-2xl border border-rose-200 bg-white px-4 py-3 outline-none transition focus:border-rose-400"
+                      />
+                    </label>
+
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={onSubmitChangeRequest}
+                        disabled={submitting || !assignedSlot}
+                        className="rounded-2xl bg-rose-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-rose-500 disabled:opacity-60"
+                      >
+                        {submitting ? "送信中..." : confirmationStatus === "change_requested" ? "もう一度、変更希望を送信する" : "変更希望を送信する"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={onBackToTop}
+                        className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        予約ページへ戻る
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4 rounded-3xl border border-sky-200 bg-sky-50/70 p-5">
+                    <div>
+                      <h3 className="text-lg font-semibold text-sky-950">日程確認</h3>
+                      <p className="mt-2 text-sm leading-7 text-sky-900/80">
+                        通常はメール内の青い「この日程で確認しました」ボタンを押すだけで登録できます。必要な場合のみ、このページから確認済みとして送信してください。
+                      </p>
+                    </div>
+
+                    <label className="block text-sm">
+                      <div className="mb-1.5 text-sky-900">任意メモ</div>
+                      <textarea
+                        value={responseNote}
+                        onChange={(event) => setResponseNote(event.target.value)}
+                        placeholder="必要であれば一言メモを入力できます（任意）。"
+                        className="min-h-28 w-full rounded-2xl border border-sky-200 bg-white px-4 py-3 outline-none transition focus:border-sky-400"
+                      />
+                    </label>
+
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={onSubmitConfirm}
+                        disabled={submitting || !assignedSlot}
+                        className="rounded-2xl bg-sky-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-sky-500 disabled:opacity-60"
+                      >
+                        {submitting ? "送信中..." : confirmationStatus === "confirmed" ? "もう一度、確認済みとして送信する" : "この日程で確認しました"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("change")}
+                        className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        変更希望タブへ移動
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </Card>
           </div>
@@ -2385,7 +2445,7 @@ export default function ExperimentParticipantScheduler() {
 
         const data = { id: snapshot.id, ...snapshot.data() };
         setParticipantResponseRequest(data);
-        setParticipantResponseNote(data.participantConfirmationStatus === "change_requested" ? data.participantResponseNote || "" : "");
+        setParticipantResponseNote(data.participantResponseNote || "");
       })
       .catch((error) => {
         console.error(error);
@@ -2965,6 +3025,9 @@ export default function ExperimentParticipantScheduler() {
           transaction.update(requestRef, {
             assignedSlotId: slotId,
             status: slotId ? "confirmed" : "requested",
+            participantConfirmationStatus: "pending",
+            participantResponseNote: "",
+            participantRespondedAt: null,
             updatedAt: serverTimestamp(),
           });
         });
@@ -2975,7 +3038,7 @@ export default function ExperimentParticipantScheduler() {
           if (slot.id === slotId) return { ...slot, confirmedCount: Number(slot.confirmedCount || 0) + 1 };
           return slot;
         }));
-        setRequests((prev) => prev.map((item) => item.id === requestId ? { ...item, assignedSlotId: slotId, status: slotId ? "confirmed" : "requested" } : item));
+        setRequests((prev) => prev.map((item) => item.id === requestId ? { ...item, assignedSlotId: slotId, status: slotId ? "confirmed" : "requested", participantConfirmationStatus: "pending", participantResponseNote: "", participantRespondedAt: null } : item));
       }
       if (!previousSlotId && slotId) {
         showToast("日程を確定しました。", "success");
