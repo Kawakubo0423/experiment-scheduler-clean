@@ -3027,7 +3027,6 @@ export default function ExperimentParticipantScheduler() {
             status: slotId ? "confirmed" : "requested",
             participantConfirmationStatus: "pending",
             participantResponseNote: "",
-            participantRespondedAt: null,
             updatedAt: serverTimestamp(),
           });
         });
