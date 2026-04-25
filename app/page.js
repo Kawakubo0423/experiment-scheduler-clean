@@ -2451,7 +2451,7 @@ export default function ExperimentParticipantScheduler() {
 
         if (data.participantConfirmationStatus === "invalid") {
           setParticipantResponseError(
-            "すでにこの申し込みは無効になっています。管理者側で申込が削除された、または現在は利用できない状態です。心当たりがある場合は、届いたメールへの返信でお問い合わせください。"
+            "すでにこの申し込みは無効になっています。管理者側で申込が削除された、または現在は利用できない状態です。あらためて参加を希望する場合は、予約サイトから再び日程を申し込んでください。"
           );
         }
       })
@@ -2722,7 +2722,7 @@ export default function ExperimentParticipantScheduler() {
       console.error(error);
       if (error?.code === "permission-denied") {
         setParticipantResponseError(
-          "すでにこの申し込みは無効になっている可能性があります。最新のメールから開き直すか、届いたメールへの返信でお問い合わせください。"
+          "すでにこの申し込みは無効になっている可能性があります。最新のメールから開き直すか、あらためて参加を希望する場合は、予約サイトから再び日程を申し込んでください。"
         );
       } else {
         setParticipantResponseError("送信に失敗しました。時間をおいて再度お試しください。");

@@ -385,7 +385,7 @@ function renderInvalidParticipantResponsePage() {
               このボタンを押しても、日程確認や変更希望は登録されません。
             </p>
             <div style="margin-top:20px;padding:16px;border:1px solid #fecaca;background:#fff1f2;border-radius:16px;line-height:1.9;color:#991b1b;">
-              心当たりがある場合や、あらためて参加を希望する場合は、届いたメールへの返信でお問い合わせください。
+              あらためて参加を希望する場合は、予約サイトから再び日程を申し込んでください。
             </div>
           </div>
         </div>
