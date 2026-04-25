@@ -3037,7 +3037,7 @@ export default function ExperimentParticipantScheduler() {
           if (slot.id === slotId) return { ...slot, confirmedCount: Number(slot.confirmedCount || 0) + 1 };
           return slot;
         }));
-        setRequests((prev) => prev.map((item) => item.id === requestId ? { ...item, assignedSlotId: slotId, status: slotId ? "confirmed" : "requested", participantConfirmationStatus: "pending", participantResponseNote: "", participantRespondedAt: null } : item));
+        setRequests((prev) => prev.map((item) => item.id === requestId ? { ...item, assignedSlotId: slotId, status: slotId ? "confirmed" : "requested", participantConfirmationStatus: "pending", participantResponseNote: "", } : item));
       }
       if (!previousSlotId && slotId) {
         showToast("日程を確定しました。", "success");
