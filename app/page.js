@@ -3048,13 +3048,12 @@ export default function ExperimentParticipantScheduler() {
         showToast("確定を解除しました。", "success");
       }
     } catch (error) {
-      console.error("handleAssignRequest error:", error);
-      if (String(error?.message).includes("slot-full")) {
-        showToast("その枠はすでに満席です。最新状態を確認してください。", "error");
-      } else {
-        showToast(`確定処理に失敗しました: ${error?.message || "unknown error"}`, "error");
-      }
-    }
+  console.error("handleAssignRequest error:", error);
+  showToast(
+    `確定処理に失敗しました: ${error?.code || ""} ${error?.message || "unknown error"}`,
+    "error"
+  );
+}
   }
 
   async function confirmAssignmentDialog() {
