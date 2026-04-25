@@ -12,6 +12,7 @@ import {
 import {
   addDoc,
   collection,
+  deleteField,
   deleteDoc,
   doc,
   getFirestore,
@@ -125,6 +126,17 @@ function buildParticipantResponseUrl(token, action = "confirm") {
   return url.toString();
 }
 
+function generateLineLinkCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+
+  for (let i = 0; i < 8; i += 1) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+
+  return code;
+}
+
 function getParticipantConfirmationLabel(status) {
   if (status === "confirmed") return "確認済み";
   if (status === "change_requested") return "変更希望";
@@ -152,6 +164,8 @@ const ALLOWED_ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
   .split(",")
   .map((item) => item.trim().toLowerCase())
   .filter(Boolean);
+
+const LINE_OFFICIAL_ACCOUNT_URL = process.env.NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_URL || "";
 
 const firebaseReady = Object.values(firebaseConfig).every(Boolean);
 
@@ -1094,6 +1108,7 @@ function ParticipantPage({
   handleSubmitRequest,
   participantSubmitLoading,
   message,
+  lineLinkInfo,
   detailsRef,
   onOpenAdmin,
   onOpenHelp,
@@ -1565,6 +1580,38 @@ function ParticipantPage({
                   {message ? (
                     <div className="rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
                       {message}
+                    </div>
+                  ) : null}
+
+                  {lineLinkInfo?.code ? (
+                    <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm leading-7 text-emerald-900">
+                      <div className="font-semibold text-emerald-950">LINEでも通知を受け取る場合（任意）</div>
+                      <p className="mt-2">
+                        日程の確定・変更・確認の案内をLINEでも受け取りたい方は、公式LINEを友だち追加し、以下の連携コードを送信してください。
+                      </p>
+
+                      <div className="mt-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-center text-2xl font-bold tracking-[0.25em] text-emerald-800">
+                        {lineLinkInfo.code}
+                      </div>
+
+                      {LINE_OFFICIAL_ACCOUNT_URL ? (
+                        <a
+                          href={LINE_OFFICIAL_ACCOUNT_URL}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-4 inline-flex rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-emerald-500"
+                        >
+                          公式LINEを友だち追加する
+                        </a>
+                      ) : (
+                        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900">
+                          公式LINEのURLがまだ設定されていません。管理者側で NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_URL を設定してください。
+                        </div>
+                      )}
+
+                      <p className="mt-3 text-xs leading-6 text-emerald-800">
+                        LINE連携は任意です。連携しない場合でも、これまで通りメールで日程のご連絡をお送りします。
+                      </p>
                     </div>
                   ) : null}
 
@@ -2252,6 +2299,7 @@ export default function ExperimentParticipantScheduler() {
   const [requestStatusFilter, setRequestStatusFilter] = useState("all");
   const [participantConfirmationFilter, setParticipantConfirmationFilter] = useState("all");
   const [message, setMessage] = useState("");
+  const [lastLineLinkInfo, setLastLineLinkInfo] = useState(null);
   const [slotsLoading, setSlotsLoading] = useState(firebaseReady);
   const [requestsLoading, setRequestsLoading] = useState(firebaseReady);
   const [dataError, setDataError] = useState("");
@@ -2697,6 +2745,7 @@ export default function ExperimentParticipantScheduler() {
 
     try {
       setParticipantSubmitLoading(true);
+      const lineLinkCode = generateLineLinkCode();
 
       if (firebaseReady) {
         const responseToken = crypto.randomUUID();
@@ -2711,6 +2760,10 @@ export default function ExperimentParticipantScheduler() {
           participantResponseToken: responseToken,
           participantConfirmationStatus: "pending",
           participantResponseNote: "",
+          lineLinkCode,
+          lineUserId: "",
+          lineDisplayName: "",
+          lineNotifyEnabled: false,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
@@ -2730,6 +2783,10 @@ export default function ExperimentParticipantScheduler() {
               participantResponseToken: responseToken,
               participantConfirmationStatus: "pending",
               participantResponseNote: "",
+              lineLinkCode,
+              lineUserId: "",
+              lineDisplayName: "",
+              lineNotifyEnabled: false,
             };
           })(),
           ...prev,
@@ -2744,7 +2801,8 @@ export default function ExperimentParticipantScheduler() {
         note: "",
         preferredSlotIds: [],
       });
-      setMessage("希望日時を送信しました。日程の確定や変更については、登録したメールアドレス宛に連絡します。通常の受信箱だけでなく迷惑メールにも入る場合があるため、受信箱と迷惑メールの両方を必ず確認してください。");
+      setLastLineLinkInfo({ code: lineLinkCode });
+      setMessage("希望日時を送信しました。日程の確定や変更については、登録したメールアドレス宛に連絡します。通常の受信箱だけでなく迷惑メールにも入る場合があるため、受信箱と迷惑メールの両方を必ず確認してください。LINE通知を希望する場合は、下に表示された連携コードを公式LINEへ送信してください。");
       showToast("希望日時を送信しました。", "success");
     } catch (error) {
       console.error(error);
@@ -2987,6 +3045,7 @@ export default function ExperimentParticipantScheduler() {
             status: slotId ? "confirmed" : "requested",
             participantConfirmationStatus: "pending",
             participantResponseNote: "",
+            participantRespondedAt: deleteField(),
             updatedAt: serverTimestamp(),
           });
         });
@@ -3488,6 +3547,7 @@ export default function ExperimentParticipantScheduler() {
           handleSubmitRequest={handleSubmitRequest}
           participantSubmitLoading={participantSubmitLoading}
           message={message}
+          lineLinkInfo={lastLineLinkInfo}
           detailsRef={detailsRef}
           onOpenAdmin={openAdminPage}
           onOpenHelp={() => setShowHelp(true)}

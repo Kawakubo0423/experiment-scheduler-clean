@@ -2,6 +2,7 @@ const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/
 const { onRequest } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const crypto = require("crypto");
 
 initializeApp();
 const db = getFirestore();
@@ -13,6 +14,8 @@ const FROM_NAME = process.env.FROM_NAME || "実験予約システム";
 const REPLY_TO = process.env.REPLY_TO || "is0611xi@ed.ritsumei.ac.jp";
 const APP_BASE_URL = process.env.APP_BASE_URL || "";
 const PARTICIPANT_CONFIRM_ENDPOINT_URL = process.env.PARTICIPANT_CONFIRM_ENDPOINT_URL || "";
+const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || "";
+const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || "";
 
 const CONTACT_TEXT = [
   "----------------------------------------------------------------------------------------",
@@ -156,6 +159,140 @@ async function enqueueMail({ to, subject, text, html }) {
     },
     createdAt: FieldValue.serverTimestamp(),
   });
+}
+
+function verifyLineSignature(req) {
+  if (!LINE_CHANNEL_SECRET) return false;
+
+  const signature = req.get("x-line-signature") || "";
+  if (!signature || !req.rawBody) return false;
+
+  const hash = crypto
+    .createHmac("sha256", LINE_CHANNEL_SECRET)
+    .update(req.rawBody)
+    .digest("base64");
+
+  const expected = Buffer.from(hash);
+  const received = Buffer.from(signature);
+
+  if (expected.length !== received.length) return false;
+  return crypto.timingSafeEqual(expected, received);
+}
+
+function normalizeLineLinkCode(text = "") {
+  return String(text)
+    .trim()
+    .replace(/^予約コード[:：]\s*/i, "")
+    .replace(/^連携コード[:：]\s*/i, "")
+    .replace(/^LINE連携コード[:：]\s*/i, "")
+    .replace(/\s/g, "")
+    .toUpperCase();
+}
+
+async function replyLineMessage(replyToken, messages) {
+  if (!LINE_CHANNEL_ACCESS_TOKEN || !replyToken || !Array.isArray(messages) || messages.length === 0) return;
+
+  const response = await fetch("https://api.line.me/v2/bot/message/reply", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+    },
+    body: JSON.stringify({
+      replyToken,
+      messages,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("LINE reply failed:", response.status, errorText);
+  }
+}
+
+async function pushLineMessage(lineUserId, messages) {
+  if (!LINE_CHANNEL_ACCESS_TOKEN || !lineUserId || !Array.isArray(messages) || messages.length === 0) return;
+
+  const response = await fetch("https://api.line.me/v2/bot/message/push", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+    },
+    body: JSON.stringify({
+      to: lineUserId,
+      messages,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("LINE push failed:", response.status, errorText);
+  }
+}
+
+async function getLineProfile(lineUserId) {
+  if (!LINE_CHANNEL_ACCESS_TOKEN || !lineUserId) return null;
+
+  const response = await fetch(`https://api.line.me/v2/bot/profile/${encodeURIComponent(lineUserId)}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("LINE profile failed:", response.status, errorText);
+    return null;
+  }
+
+  return response.json();
+}
+
+function canSendLine(requestData) {
+  return Boolean(requestData?.lineNotifyEnabled && requestData?.lineUserId);
+}
+
+async function sendLineReservationNotice({ requestData, title, body, links, includeActions = true }) {
+  if (!canSendLine(requestData)) return;
+
+  const messages = [
+    {
+      type: "text",
+      text: `${title}\n\n${body}`,
+    },
+  ];
+
+  if (includeActions && (links?.confirmUrl || links?.changeUrl)) {
+    messages.push({
+      type: "template",
+      altText: title,
+      template: {
+        type: "buttons",
+        title: "実験日程予約",
+        text: "日程を確認してください。",
+        actions: [
+          links.confirmUrl
+            ? {
+                type: "uri",
+                label: "この日程で確認",
+                uri: links.confirmUrl,
+              }
+            : null,
+          links.changeUrl
+            ? {
+                type: "uri",
+                label: "変更を希望する",
+                uri: links.changeUrl,
+              }
+            : null,
+        ].filter(Boolean),
+      },
+    });
+  }
+
+  await pushLineMessage(requestData.lineUserId, messages);
 }
 
 
@@ -362,6 +499,52 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
     text,
     html,
   });
+
+  try {
+    let lineBody = "";
+
+    if (!beforeAssigned && afterAssigned) {
+      lineBody = [
+        `${recipientName} さん`,
+        "実験日程が確定しました。",
+        "",
+        `【確定日時】${slotToText(afterSlot)}`,
+        "",
+        "ご都合をご確認のうえ、問題なければ確認ボタンを押してください。",
+        "変更を希望する場合も、下のボタンから送信できます。",
+      ].join("\n");
+    } else if (beforeAssigned && afterAssigned) {
+      lineBody = [
+        `${recipientName} さん`,
+        "実験日程が変更されました。",
+        "",
+        `【変更前】${slotToText(beforeSlot)}`,
+        `【変更後】${slotToText(afterSlot)}`,
+        "",
+        "新しい日程をご確認のうえ、問題なければ確認ボタンを押してください。",
+        "変更を希望する場合も、下のボタンから送信できます。",
+      ].join("\n");
+    } else if (beforeAssigned && !afterAssigned) {
+      lineBody = [
+        `${recipientName} さん`,
+        "実験日程の再調整が必要になりました。",
+        "",
+        `【直前の確定日時】${slotToText(beforeSlot)}`,
+        "",
+        "新しい日程が決まり次第、あらためてご連絡します。",
+      ].join("\n");
+    }
+
+    await sendLineReservationNotice({
+      requestData: after,
+      title: subject,
+      body: lineBody,
+      links,
+      includeActions: Boolean(afterAssigned),
+    });
+  } catch (lineError) {
+    console.error("LINE notification failed:", lineError);
+  }
 });
 
 
@@ -577,4 +760,105 @@ exports.notifyAdminOnParticipantResponse = onDocumentUpdated("participantRespons
     text,
     html,
   });
+});
+
+exports.lineWebhook = onRequest(async (req, res) => {
+  try {
+    if (req.method !== "POST") {
+      res.status(405).send("Method Not Allowed");
+      return;
+    }
+
+    if (!verifyLineSignature(req)) {
+      res.status(401).send("Invalid signature");
+      return;
+    }
+
+    const events = Array.isArray(req.body?.events) ? req.body.events : [];
+
+    for (const event of events) {
+      const replyToken = event.replyToken || "";
+      const lineUserId = event.source?.userId || "";
+
+      if (event.type === "follow") {
+        await replyLineMessage(replyToken, [
+          {
+            type: "text",
+            text: "友だち追加ありがとうございます。予約サイトで申込後に表示された8桁のLINE連携コードを送ると、日程確定や変更の案内をLINEでも受け取れるようになります。",
+          },
+        ]);
+        continue;
+      }
+
+      if (event.type !== "message" || event.message?.type !== "text") continue;
+
+      const code = normalizeLineLinkCode(event.message.text || "");
+      if (!lineUserId || !code) continue;
+
+      const requestSnap = await db
+        .collection("requests")
+        .where("lineLinkCode", "==", code)
+        .limit(1)
+        .get();
+
+      if (requestSnap.empty) {
+        await replyLineMessage(replyToken, [
+          {
+            type: "text",
+            text: "連携コードが見つかりませんでした。予約サイトで申込後に表示された8桁のコードをもう一度送ってください。",
+          },
+        ]);
+        continue;
+      }
+
+      const requestDoc = requestSnap.docs[0];
+      const requestData = requestDoc.data() || {};
+
+      if (requestData.lineUserId && requestData.lineUserId !== lineUserId) {
+        await replyLineMessage(replyToken, [
+          {
+            type: "text",
+            text: "この連携コードは、すでに別のLINEアカウントと連携されています。心当たりがない場合は、実験担当者へメールでお問い合わせください。",
+          },
+        ]);
+        continue;
+      }
+
+      const profile = await getLineProfile(lineUserId);
+      const displayName = profile?.displayName || "";
+
+      await requestDoc.ref.update({
+        lineUserId,
+        lineDisplayName: displayName,
+        lineNotifyEnabled: true,
+        lineLinkedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      const lineUserRef = db.collection("lineUsers").doc(lineUserId);
+      const lineUserSnap = await lineUserRef.get();
+      const lineUserPayload = {
+        lineUserId,
+        displayName,
+        linkedRequestIds: FieldValue.arrayUnion(requestDoc.id),
+        updatedAt: FieldValue.serverTimestamp(),
+      };
+      if (!lineUserSnap.exists) {
+        lineUserPayload.createdAt = FieldValue.serverTimestamp();
+      }
+      await lineUserRef.set(lineUserPayload, { merge: true });
+
+      await replyLineMessage(replyToken, [
+        {
+          type: "text",
+          text: `${requestData.name || "参加者"}さんの実験予約とLINEを連携しました。今後、日程の確定や変更があった場合は、メールに加えてLINEでもお知らせします。`,
+        },
+      ]);
+    }
+
+    res.status(200).send("OK");
+  } catch (error) {
+    console.error("lineWebhook error:", error);
+    res.status(500).send("Internal Server Error");
+  }
 });
