@@ -956,17 +956,22 @@ function ParticipantRequestConfirmModal({ open, participantForm, sortedSlots, on
 }
 
 
-function LineLinkGuideModal({ lineLinkInfo, onClose }) {
+function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
   const [copied, setCopied] = useState(false);
 
   if (!lineLinkInfo?.code) return null;
+
+  const showCopiedFeedback = () => {
+    setCopied(true);
+    onToast?.({ tone: "success", message: "連携コードをコピーしました。公式LINEのトーク画面に貼り付けて送信してください。" });
+    window.setTimeout(() => setCopied(false), 1800);
+  };
 
   const handleCopyCode = async () => {
     try {
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(lineLinkInfo.code);
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1800);
+        showCopiedFeedback();
         return;
       }
     } catch (error) {
@@ -983,24 +988,49 @@ function LineLinkGuideModal({ lineLinkInfo, onClose }) {
       textArea.select();
       document.execCommand("copy");
       document.body.removeChild(textArea);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
+      showCopiedFeedback();
     } catch (error) {
       console.error("Fallback copy failed:", error);
+      onToast?.({ tone: "error", message: "コピーに失敗しました。連携コードを手動で選択してコピーしてください。" });
     }
   };
 
+  const LineIcon = ({ className = "" }) => (
+    <span className={classNames("inline-flex items-center justify-center rounded-full bg-[#06C755] text-white", className)}>
+      <span className="rounded-full bg-white px-1.5 py-1 text-[10px] font-black leading-none tracking-tight text-[#06C755]">
+        LINE
+      </span>
+    </span>
+  );
+
+  const CopyIcon = () => (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
+      <path
+        d="M8 7.5A2.5 2.5 0 0 1 10.5 5H17a2.5 2.5 0 0 1 2.5 2.5V14a2.5 2.5 0 0 1-2.5 2.5h-1.5v-2H17a.5.5 0 0 0 .5-.5V7.5A.5.5 0 0 0 17 7h-6.5a.5.5 0 0 0-.5.5V9H8V7.5Z"
+        fill="currentColor"
+      />
+      <path
+        d="M4.5 10A2.5 2.5 0 0 1 7 7.5h6.5A2.5 2.5 0 0 1 16 10v6.5A2.5 2.5 0 0 1 13.5 19H7a2.5 2.5 0 0 1-2.5-2.5V10Zm2.5-.5a.5.5 0 0 0-.5.5v6.5a.5.5 0 0 0 .5.5h6.5a.5.5 0 0 0 .5-.5V10a.5.5 0 0 0-.5-.5H7Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+
   return (
-    <ModalShell title="LINEでも通知を受け取る場合（任意）" onClose={onClose}>
+    <ModalShell title="LINEでも通知を受け取る（オススメ）" onClose={onClose}>
       <div className="space-y-5 text-sm leading-7 text-slate-700">
-        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950 sm:p-6">
-          <div className="text-lg font-semibold">申込が完了しました</div>
-          <p className="mt-2">
-            日程の確定・変更・確認の案内をLINEでも受け取りたい方は、以下の手順で公式LINEと申込情報を連携してください。
-          </p>
-          <p className="mt-3 text-xs leading-6 text-emerald-800 sm:text-sm">
-            LINE連携は任意です。連携しない場合でも、これまで通りメールで日程のご連絡をお送りします。
-          </p>
+        <div className="rounded-[28px] border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 text-emerald-950 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div className="min-w-0 flex-1">
+              <div className="text-xl font-bold text-slate-900">申込が完了しました</div>
+              <p className="mt-2 text-sm leading-7 text-slate-700">
+                日程の確定・変更・確認の案内をLINEでも受け取りたい方は、以下の手順で公式LINEと申込情報を連携してください。
+              </p>
+              <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-6 text-emerald-800 sm:text-sm">
+                LINE連携は任意です。連携しない場合でも、これまで通りメールで日程のご連絡をお送りします。
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -1012,14 +1042,14 @@ function LineLinkGuideModal({ lineLinkInfo, onClose }) {
               <div className="min-w-0 flex-1">
                 <div className="text-lg font-semibold text-slate-900">公式LINEを追加</div>
                 <p className="mt-2 text-sm leading-7 text-slate-600">
-                  まずは、QRコードを読み取るか、下の友だち追加ボタンから公式LINEを追加してください。
+                  QRコードを読み取るか、友だち追加ボタンから公式LINEを追加してください。
                 </p>
               </div>
             </div>
 
-            <div className="mt-5 rounded-3xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.9fr)] lg:items-center">
               {LINE_QR_IMAGE_URL ? (
-                <div className="text-center">
+                <div className="rounded-3xl border border-emerald-200 bg-white p-4 text-center shadow-sm sm:p-5">
                   <img
                     src={LINE_QR_IMAGE_URL}
                     alt="公式LINE友だち追加用QRコード"
@@ -1029,20 +1059,23 @@ function LineLinkGuideModal({ lineLinkInfo, onClose }) {
                 </div>
               ) : null}
 
-              <div className={`mt-${LINE_QR_IMAGE_URL ? '5' : '0'} flex flex-col items-center gap-3 sm:items-start`}>
+              <div className={classNames("space-y-3", !LINE_QR_IMAGE_URL && "lg:col-span-2")}>
                 {LINE_ADD_FRIEND_URL ? (
                   <a
                     href={LINE_ADD_FRIEND_URL}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 shadow-sm transition hover:bg-emerald-50"
+                    className="inline-flex w-full max-w-sm items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 py-4 shadow-sm transition hover:bg-emerald-50 active:scale-[0.99] sm:w-auto sm:min-w-[260px]"
+                    aria-label="公式LINEを友だち追加する"
                   >
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#06C755] text-[11px] font-bold tracking-wide text-white">
-                      LINE
-                    </span>
-                    <span className="text-sm font-semibold text-slate-800">友だち追加する</span>
+                    <img
+                      src="https://scdn.line-apps.com/n/line_add_friends/btn/ja.png"
+                      alt="友だち追加"
+                      className="h-10 w-auto"
+                    />
                   </a>
                 ) : null}
+
 
                 {LINE_OFFICIAL_ACCOUNT_ID ? (
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-6 text-emerald-900 sm:text-sm">
@@ -1072,27 +1105,32 @@ function LineLinkGuideModal({ lineLinkInfo, onClose }) {
               <div className="min-w-0 flex-1">
                 <div className="text-lg font-semibold text-slate-900">連携コードを送信</div>
                 <p className="mt-2 text-sm leading-7 text-slate-600">
-                  公式LINEを追加したあと、以下の8桁の連携コードをそのまま送信してください。ボタンを押すとコードをコピーできます。
+                  公式LINEを追加したあと、以下の8桁の連携コードをそのまま送信してください。
                 </p>
               </div>
             </div>
 
             <div className="mt-5 rounded-3xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-5">
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-center text-3xl font-bold tracking-[0.22em] text-emerald-800 sm:px-6 sm:text-5xl">
-                {lineLinkInfo.code}
-              </div>
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs leading-6 text-slate-500 sm:text-sm">
-                  コピーしたコードを、公式LINEのトーク画面にそのまま貼り付けて送信してください。
-                </p>
+              <div className="flex items-stretch gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-2 sm:gap-3 sm:p-3">
+                <div className="min-w-0 flex-1 px-2 py-3 text-center text-3xl font-bold tracking-[0.18em] text-emerald-800 sm:px-4 sm:text-5xl">
+                  {lineLinkInfo.code}
+                </div>
                 <button
                   type="button"
                   onClick={handleCopyCode}
-                  className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-emerald-500"
+                  title="連携コードをコピー"
+                  aria-label="連携コードをコピー"
+                  className={classNames(
+                    "flex w-14 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm transition sm:w-16",
+                    copied ? "bg-emerald-700" : "bg-emerald-600 hover:bg-emerald-500"
+                  )}
                 >
-                  {copied ? "コピーしました" : "コードをコピー"}
+                  <CopyIcon />
                 </button>
               </div>
+              <p className="mt-3 text-xs leading-6 text-slate-500 sm:text-sm">
+                連携コードをコピーし、公式LINEのトーク画面に貼り付けて送信してください。
+              </p>
             </div>
           </div>
 
@@ -1106,9 +1144,6 @@ function LineLinkGuideModal({ lineLinkInfo, onClose }) {
                 <p className="mt-2 text-sm leading-7 text-slate-600">
                   LINEに連携完了メッセージが届けば設定は完了です。以後、日程の確定や変更の案内もLINEで受け取れます。
                 </p>
-                <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-6 text-emerald-900 sm:text-sm">
-                  もちろん、LINE連携をしない場合でも、これまで通りメール通知は届きます。
-                </div>
               </div>
             </div>
           </div>
@@ -1152,7 +1187,7 @@ function ParticipantResponsePage({
           </div>
           <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">変更希望ページ</h1>
           <p className="mt-3 text-sm leading-7 text-slate-600">
-            このページでは、確定済みの日程に対する変更希望だけを送信できます。日程を確認済みにする場合は、メール内の青い「この日程で確認しました」ボタンを押してください。
+            このページでは、確定済みの日程に対する変更希望を送信できます。
           </p>
         </header>
 
@@ -1773,8 +1808,11 @@ function ParticipantPage({
                       <button
                         type="button"
                         onClick={onOpenLineGuide}
-                        className="mt-3 inline-flex rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500"
+                        className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500"
                       >
+                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-[8px] font-black tracking-tight text-[#06C755]">
+                          LINE
+                        </span>
                         公式LINEの案内をもう一度見る
                       </button>
                     </div>
@@ -3744,6 +3782,7 @@ export default function ExperimentParticipantScheduler() {
         <LineLinkGuideModal
           lineLinkInfo={lastLineLinkInfo}
           onClose={() => setLineGuideOpen(false)}
+          onToast={setToast}
         />
       ) : null}
       {editingSlot ? (
