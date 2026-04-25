@@ -165,7 +165,14 @@ const ALLOWED_ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
   .map((item) => item.trim().toLowerCase())
   .filter(Boolean);
 
+const LINE_OFFICIAL_ACCOUNT_ID = process.env.NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_ID || "";
 const LINE_OFFICIAL_ACCOUNT_URL = process.env.NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_URL || "";
+const LINE_QR_IMAGE_URL = process.env.NEXT_PUBLIC_LINE_QR_IMAGE_URL || "";
+const LINE_ADD_FRIEND_URL =
+  LINE_OFFICIAL_ACCOUNT_URL ||
+  (LINE_OFFICIAL_ACCOUNT_ID
+    ? `https://line.me/R/ti/p/${encodeURIComponent(LINE_OFFICIAL_ACCOUNT_ID)}`
+    : "");
 
 const firebaseReady = Object.values(firebaseConfig).every(Boolean);
 
@@ -1594,20 +1601,44 @@ function ParticipantPage({
                         {lineLinkInfo.code}
                       </div>
 
-                      {LINE_OFFICIAL_ACCOUNT_URL ? (
-                        <a
-                          href={LINE_OFFICIAL_ACCOUNT_URL}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-4 inline-flex rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-emerald-500"
-                        >
-                          公式LINEを友だち追加する
-                        </a>
-                      ) : (
-                        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900">
-                          公式LINEのURLがまだ設定されていません。管理者側で NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_URL を設定してください。
+                      <div className="mt-4 grid gap-4 md:grid-cols-[auto,1fr] md:items-center">
+                        {LINE_QR_IMAGE_URL ? (
+                          <div className="rounded-3xl border border-emerald-200 bg-white p-3 text-center shadow-sm">
+                            <img
+                              src={LINE_QR_IMAGE_URL}
+                              alt="公式LINE友だち追加用QRコード"
+                              className="mx-auto h-40 w-40 rounded-2xl object-contain"
+                            />
+                            <div className="mt-2 text-xs font-medium text-emerald-800">QRコードで追加</div>
+                          </div>
+                        ) : null}
+
+                        <div>
+                          {LINE_ADD_FRIEND_URL ? (
+                            <a
+                              href={LINE_ADD_FRIEND_URL}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-emerald-500 md:w-auto"
+                            >
+                              公式LINEを友だち追加する
+                            </a>
+                          ) : null}
+
+                          {LINE_OFFICIAL_ACCOUNT_ID ? (
+                            <div className="mt-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-xs leading-6 text-emerald-900">
+                              LINEアプリでID検索する場合：
+                              <span className="ml-1 font-semibold">{LINE_OFFICIAL_ACCOUNT_ID}</span>
+                            </div>
+                          ) : null}
+
+                          {!LINE_QR_IMAGE_URL && !LINE_ADD_FRIEND_URL ? (
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900">
+                              公式LINEのQRコード・追加ボタンがまだ設定されていません。管理者側で NEXT_PUBLIC_LINE_QR_IMAGE_URL または NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_ID を設定してください。
+                            </div>
+                          ) : null}
                         </div>
-                      )}
+                      </div>
 
                       <p className="mt-3 text-xs leading-6 text-emerald-800">
                         LINE連携は任意です。連携しない場合でも、これまで通りメールで日程のご連絡をお送りします。
