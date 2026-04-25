@@ -957,104 +957,170 @@ function ParticipantRequestConfirmModal({ open, participantForm, sortedSlots, on
 
 
 function LineLinkGuideModal({ lineLinkInfo, onClose }) {
+  const [copied, setCopied] = useState(false);
+
   if (!lineLinkInfo?.code) return null;
+
+  const handleCopyCode = async () => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(lineLinkInfo.code);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1800);
+        return;
+      }
+    } catch (error) {
+      console.error("Failed to copy LINE link code:", error);
+    }
+
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = lineLinkInfo.code;
+      textArea.setAttribute("readonly", "");
+      textArea.style.position = "absolute";
+      textArea.style.left = "-9999px";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch (error) {
+      console.error("Fallback copy failed:", error);
+    }
+  };
 
   return (
     <ModalShell title="LINEでも通知を受け取る場合（任意）" onClose={onClose}>
       <div className="space-y-5 text-sm leading-7 text-slate-700">
-        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
-          <div className="text-base font-semibold">申込が完了しました</div>
+        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950 sm:p-6">
+          <div className="text-lg font-semibold">申込が完了しました</div>
           <p className="mt-2">
             日程の確定・変更・確認の案内をLINEでも受け取りたい方は、以下の手順で公式LINEと申込情報を連携してください。
           </p>
-          <p className="mt-2 text-xs leading-6 text-emerald-800">
+          <p className="mt-3 text-xs leading-6 text-emerald-800 sm:text-sm">
             LINE連携は任意です。連携しない場合でも、これまで通りメールで日程のご連絡をお送りします。
           </p>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          {[
-            ["1", "公式LINEを追加", "QRコードを読み取るか、友だち追加ボタンから公式LINEを追加します。"],
-            ["2", "コードを送信", "下に表示されている8桁の連携コードを公式LINEに送ります。"],
-            ["3", "連携完了", "LINEに連携完了メッセージが届けば、以後LINE通知も受け取れます。"],
-          ].map(([number, title, text]) => (
-            <div key={number} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-              <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-2xl bg-emerald-600 text-sm font-semibold text-white">
-                {number}
+        <div className="space-y-4">
+          <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 sm:p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-base font-bold text-white shadow-sm">
+                1
               </div>
-              <div className="font-semibold text-slate-900">{title}</div>
-              <div className="mt-2 text-xs leading-6 text-slate-600">{text}</div>
+              <div className="min-w-0 flex-1">
+                <div className="text-lg font-semibold text-slate-900">公式LINEを追加</div>
+                <p className="mt-2 text-sm leading-7 text-slate-600">
+                  まずは、QRコードを読み取るか、下の友だち追加ボタンから公式LINEを追加してください。
+                </p>
+              </div>
             </div>
-          ))}
-        </div>
 
-        <div className="rounded-3xl border border-emerald-200 bg-white p-5">
-          <div className="text-sm font-semibold text-slate-800">LINEに送信する連携コード</div>
-          <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-center text-3xl font-bold tracking-[0.28em] text-emerald-800 sm:text-4xl">
-            {lineLinkInfo.code}
-          </div>
-          <p className="mt-3 text-xs leading-6 text-slate-500">
-            公式LINEを追加した後、このコードだけをそのまま送信してください。
-          </p>
-        </div>
+            <div className="mt-5 rounded-3xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-5">
+              {LINE_QR_IMAGE_URL ? (
+                <div className="text-center">
+                  <img
+                    src={LINE_QR_IMAGE_URL}
+                    alt="公式LINE友だち追加用QRコード"
+                    className="mx-auto h-44 w-44 rounded-2xl object-contain sm:h-52 sm:w-52"
+                  />
+                  <div className="mt-3 text-sm font-medium text-emerald-800">QRコードで友だち追加</div>
+                </div>
+              ) : null}
 
-        <div className="grid gap-4 md:grid-cols-[auto,1fr] md:items-center">
-          {LINE_QR_IMAGE_URL ? (
-            <div className="rounded-3xl border border-emerald-200 bg-white p-3 text-center shadow-sm">
-              <img
-                src={LINE_QR_IMAGE_URL}
-                alt="公式LINE友だち追加用QRコード"
-                className="mx-auto h-44 w-44 rounded-2xl object-contain"
-              />
-              <div className="mt-2 text-xs font-medium text-emerald-800">QRコードで友だち追加</div>
+              <div className={`mt-${LINE_QR_IMAGE_URL ? '5' : '0'} flex flex-col items-center gap-3 sm:items-start`}>
+                {LINE_ADD_FRIEND_URL ? (
+                  <a
+                    href={LINE_ADD_FRIEND_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 shadow-sm transition hover:bg-emerald-50"
+                  >
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#06C755] text-[11px] font-bold tracking-wide text-white">
+                      LINE
+                    </span>
+                    <span className="text-sm font-semibold text-slate-800">友だち追加する</span>
+                  </a>
+                ) : null}
+
+                {LINE_OFFICIAL_ACCOUNT_ID ? (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-6 text-emerald-900 sm:text-sm">
+                    LINEアプリでID検索する場合：
+                    <span className="ml-1 font-semibold">{LINE_OFFICIAL_ACCOUNT_ID}</span>
+                  </div>
+                ) : null}
+
+                {!LINE_QR_IMAGE_URL && !LINE_ADD_FRIEND_URL ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-amber-900 sm:text-sm">
+                    公式LINEのQRコードまたは友だち追加ボタンがまだ設定されていません。管理者側で
+                    <span className="mx-1 font-semibold">NEXT_PUBLIC_LINE_QR_IMAGE_URL</span>
+                    または
+                    <span className="mx-1 font-semibold">NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_URL</span>
+                    を設定してください。
+                  </div>
+                ) : null}
+              </div>
             </div>
-          ) : null}
+          </div>
 
-          <div className="space-y-3">
-            {LINE_ADD_FRIEND_URL ? (
-              <a
-                href={LINE_ADD_FRIEND_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 py-3 shadow-sm transition hover:bg-emerald-50"
-              >
-                <img
-                  src="https://scdn.line-apps.com/n/line_add_friends/btn/ja.png"
-                  alt="友だち追加"
-                  className="h-9 w-auto"
-                />
-              </a>
-            ) : null}
-
-            {LINE_OFFICIAL_ACCOUNT_ID ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-6 text-emerald-900">
-                LINEアプリでID検索する場合：
-                <span className="ml-1 font-semibold">{LINE_OFFICIAL_ACCOUNT_ID}</span>
+          <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 sm:p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-base font-bold text-white shadow-sm">
+                2
               </div>
-            ) : null}
-
-            {!LINE_QR_IMAGE_URL && !LINE_ADD_FRIEND_URL ? (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900">
-                公式LINEのQRコード・追加ボタンがまだ設定されていません。管理者側で NEXT_PUBLIC_LINE_QR_IMAGE_URL または NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_URL を設定してください。
+              <div className="min-w-0 flex-1">
+                <div className="text-lg font-semibold text-slate-900">連携コードを送信</div>
+                <p className="mt-2 text-sm leading-7 text-slate-600">
+                  公式LINEを追加したあと、以下の8桁の連携コードをそのまま送信してください。ボタンを押すとコードをコピーできます。
+                </p>
               </div>
-            ) : null}
+            </div>
+
+            <div className="mt-5 rounded-3xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-center text-3xl font-bold tracking-[0.22em] text-emerald-800 sm:px-6 sm:text-5xl">
+                {lineLinkInfo.code}
+              </div>
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs leading-6 text-slate-500 sm:text-sm">
+                  コピーしたコードを、公式LINEのトーク画面にそのまま貼り付けて送信してください。
+                </p>
+                <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-emerald-500"
+                >
+                  {copied ? "コピーしました" : "コードをコピー"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 sm:p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-base font-bold text-white shadow-sm">
+                3
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-lg font-semibold text-slate-900">連携完了</div>
+                <p className="mt-2 text-sm leading-7 text-slate-600">
+                  LINEに連携完了メッセージが届けば設定は完了です。以後、日程の確定や変更の案内もLINEで受け取れます。
+                </p>
+                <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-6 text-emerald-900 sm:text-sm">
+                  もちろん、LINE連携をしない場合でも、これまで通りメール通知は届きます。
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3 pt-1">
+        <div className="flex justify-center pt-1 sm:justify-start">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+            className="inline-flex min-w-[180px] items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
           >
             閉じる
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            LINE連携せずに進む
           </button>
         </div>
       </div>
