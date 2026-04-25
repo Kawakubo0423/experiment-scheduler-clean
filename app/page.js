@@ -1025,7 +1025,7 @@ function ParticipantResponsePage({
                 <div>
                   <h2 className="text-xl font-semibold text-slate-900">変更希望を送信する</h2>
                   <p className="mt-2 text-sm leading-7 text-slate-600">
-                    参加が難しい場合や再調整を希望する場合は、理由や参加可能な日時を入力して送信してください。このページから「確認済み」には変更できません。
+                    参加が難しい場合や再調整を希望する場合は、理由や参加可能な日時を入力して送信してください。
                   </p>
                 </div>
 
