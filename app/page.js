@@ -956,6 +956,113 @@ function ParticipantRequestConfirmModal({ open, participantForm, sortedSlots, on
 }
 
 
+function LineLinkGuideModal({ lineLinkInfo, onClose }) {
+  if (!lineLinkInfo?.code) return null;
+
+  return (
+    <ModalShell title="LINEでも通知を受け取る場合（任意）" onClose={onClose}>
+      <div className="space-y-5 text-sm leading-7 text-slate-700">
+        <div className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
+          <div className="text-base font-semibold">申込が完了しました</div>
+          <p className="mt-2">
+            日程の確定・変更・確認の案内をLINEでも受け取りたい方は、以下の手順で公式LINEと申込情報を連携してください。
+          </p>
+          <p className="mt-2 text-xs leading-6 text-emerald-800">
+            LINE連携は任意です。連携しない場合でも、これまで通りメールで日程のご連絡をお送りします。
+          </p>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          {[
+            ["1", "公式LINEを追加", "QRコードを読み取るか、友だち追加ボタンから公式LINEを追加します。"],
+            ["2", "コードを送信", "下に表示されている8桁の連携コードを公式LINEに送ります。"],
+            ["3", "連携完了", "LINEに連携完了メッセージが届けば、以後LINE通知も受け取れます。"],
+          ].map(([number, title, text]) => (
+            <div key={number} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-2xl bg-emerald-600 text-sm font-semibold text-white">
+                {number}
+              </div>
+              <div className="font-semibold text-slate-900">{title}</div>
+              <div className="mt-2 text-xs leading-6 text-slate-600">{text}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="rounded-3xl border border-emerald-200 bg-white p-5">
+          <div className="text-sm font-semibold text-slate-800">LINEに送信する連携コード</div>
+          <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-center text-3xl font-bold tracking-[0.28em] text-emerald-800 sm:text-4xl">
+            {lineLinkInfo.code}
+          </div>
+          <p className="mt-3 text-xs leading-6 text-slate-500">
+            公式LINEを追加した後、このコードだけをそのまま送信してください。
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-[auto,1fr] md:items-center">
+          {LINE_QR_IMAGE_URL ? (
+            <div className="rounded-3xl border border-emerald-200 bg-white p-3 text-center shadow-sm">
+              <img
+                src={LINE_QR_IMAGE_URL}
+                alt="公式LINE友だち追加用QRコード"
+                className="mx-auto h-44 w-44 rounded-2xl object-contain"
+              />
+              <div className="mt-2 text-xs font-medium text-emerald-800">QRコードで友だち追加</div>
+            </div>
+          ) : null}
+
+          <div className="space-y-3">
+            {LINE_ADD_FRIEND_URL ? (
+              <a
+                href={LINE_ADD_FRIEND_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 py-3 shadow-sm transition hover:bg-emerald-50"
+              >
+                <img
+                  src="https://scdn.line-apps.com/n/line_add_friends/btn/ja.png"
+                  alt="友だち追加"
+                  className="h-9 w-auto"
+                />
+              </a>
+            ) : null}
+
+            {LINE_OFFICIAL_ACCOUNT_ID ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-6 text-emerald-900">
+                LINEアプリでID検索する場合：
+                <span className="ml-1 font-semibold">{LINE_OFFICIAL_ACCOUNT_ID}</span>
+              </div>
+            ) : null}
+
+            {!LINE_QR_IMAGE_URL && !LINE_ADD_FRIEND_URL ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900">
+                公式LINEのQRコード・追加ボタンがまだ設定されていません。管理者側で NEXT_PUBLIC_LINE_QR_IMAGE_URL または NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_URL を設定してください。
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            閉じる
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            LINE連携せずに進む
+          </button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
+
 function ParticipantResponsePage({
   loading,
   error,
@@ -1116,6 +1223,7 @@ function ParticipantPage({
   participantSubmitLoading,
   message,
   lineLinkInfo,
+  onOpenLineGuide,
   detailsRef,
   onOpenAdmin,
   onOpenHelp,
@@ -1591,58 +1699,18 @@ function ParticipantPage({
                   ) : null}
 
                   {lineLinkInfo?.code ? (
-                    <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm leading-7 text-emerald-900">
-                      <div className="font-semibold text-emerald-950">LINEでも通知を受け取る場合（任意）</div>
-                      <p className="mt-2">
-                        日程の確定・変更・確認の案内をLINEでも受け取りたい方は、公式LINEを友だち追加し、以下の連携コードを送信してください。
+                    <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-7 text-emerald-900">
+                      <div className="font-semibold text-emerald-950">LINE連携コードを発行しました</div>
+                      <p className="mt-1">
+                        公式LINEで通知を受け取りたい場合は、申込完了後に表示された案内に従って連携してください。
                       </p>
-
-                      <div className="mt-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-center text-2xl font-bold tracking-[0.25em] text-emerald-800">
-                        {lineLinkInfo.code}
-                      </div>
-
-                      <div className="mt-4 grid gap-4 md:grid-cols-[auto,1fr] md:items-center">
-                        {LINE_QR_IMAGE_URL ? (
-                          <div className="rounded-3xl border border-emerald-200 bg-white p-3 text-center shadow-sm">
-                            <img
-                              src={LINE_QR_IMAGE_URL}
-                              alt="公式LINE友だち追加用QRコード"
-                              className="mx-auto h-40 w-40 rounded-2xl object-contain"
-                            />
-                            <div className="mt-2 text-xs font-medium text-emerald-800">QRコードで追加</div>
-                          </div>
-                        ) : null}
-
-                        <div>
-                          {LINE_ADD_FRIEND_URL ? (
-                            <a
-                              href={LINE_ADD_FRIEND_URL}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-emerald-500 md:w-auto"
-                            >
-                              公式LINEを友だち追加する
-                            </a>
-                          ) : null}
-
-                          {LINE_OFFICIAL_ACCOUNT_ID ? (
-                            <div className="mt-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-xs leading-6 text-emerald-900">
-                              LINEアプリでID検索する場合：
-                              <span className="ml-1 font-semibold">{LINE_OFFICIAL_ACCOUNT_ID}</span>
-                            </div>
-                          ) : null}
-
-                          {!LINE_QR_IMAGE_URL && !LINE_ADD_FRIEND_URL ? (
-                            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900">
-                              公式LINEのQRコード・追加ボタンがまだ設定されていません。管理者側で NEXT_PUBLIC_LINE_QR_IMAGE_URL または NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_ID を設定してください。
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <p className="mt-3 text-xs leading-6 text-emerald-800">
-                        LINE連携は任意です。連携しない場合でも、これまで通りメールで日程のご連絡をお送りします。
-                      </p>
+                      <button
+                        type="button"
+                        onClick={onOpenLineGuide}
+                        className="mt-3 inline-flex rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500"
+                      >
+                        公式LINEの案内をもう一度見る
+                      </button>
                     </div>
                   ) : null}
 
@@ -2331,6 +2399,7 @@ export default function ExperimentParticipantScheduler() {
   const [participantConfirmationFilter, setParticipantConfirmationFilter] = useState("all");
   const [message, setMessage] = useState("");
   const [lastLineLinkInfo, setLastLineLinkInfo] = useState(null);
+  const [lineGuideOpen, setLineGuideOpen] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(firebaseReady);
   const [requestsLoading, setRequestsLoading] = useState(firebaseReady);
   const [dataError, setDataError] = useState("");
@@ -2833,7 +2902,8 @@ export default function ExperimentParticipantScheduler() {
         preferredSlotIds: [],
       });
       setLastLineLinkInfo({ code: lineLinkCode });
-      setMessage("希望日時を送信しました。日程の確定や変更については、登録したメールアドレス宛に連絡します。通常の受信箱だけでなく迷惑メールにも入る場合があるため、受信箱と迷惑メールの両方を必ず確認してください。LINE通知を希望する場合は、下に表示された連携コードを公式LINEへ送信してください。");
+      setLineGuideOpen(true);
+      setMessage("希望日時を送信しました。日程の確定や変更については、登録したメールアドレス宛に連絡します。通常の受信箱だけでなく迷惑メールにも入る場合があるため、受信箱と迷惑メールの両方を必ず確認してください。LINE通知を希望する場合は、表示された案内に従って公式LINEと連携してください。");
       showToast("希望日時を送信しました。", "success");
     } catch (error) {
       console.error(error);
@@ -3579,6 +3649,7 @@ export default function ExperimentParticipantScheduler() {
           participantSubmitLoading={participantSubmitLoading}
           message={message}
           lineLinkInfo={lastLineLinkInfo}
+          onOpenLineGuide={() => setLineGuideOpen(true)}
           detailsRef={detailsRef}
           onOpenAdmin={openAdminPage}
           onOpenHelp={() => setShowHelp(true)}
@@ -3601,6 +3672,12 @@ export default function ExperimentParticipantScheduler() {
           onConfirm={confirmSubmitRequest}
           onClose={() => setParticipantConfirmOpen(false)}
           loading={participantSubmitLoading}
+        />
+      ) : null}
+      {lineGuideOpen && lastLineLinkInfo?.code ? (
+        <LineLinkGuideModal
+          lineLinkInfo={lastLineLinkInfo}
+          onClose={() => setLineGuideOpen(false)}
         />
       ) : null}
       {editingSlot ? (
