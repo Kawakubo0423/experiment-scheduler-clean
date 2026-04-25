@@ -1510,7 +1510,7 @@ function ParticipantPage({
                         autoComplete="email"
                       />
                       <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900">
-                        確定連絡や変更連絡はこのメールアドレス宛に届きます。迷惑メールに振り分けられることもあるため、送信後は受信箱と迷惑メールの両方を必ず確認してください。
+                        送信後は、受信箱と迷惑メールの両方を必ず確認してください。
                       </div>
                     </label>
                   </div>
