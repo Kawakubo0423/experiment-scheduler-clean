@@ -128,12 +128,14 @@ function buildParticipantResponseUrl(token, action = "confirm") {
 function getParticipantConfirmationLabel(status) {
   if (status === "confirmed") return "確認済み";
   if (status === "change_requested") return "変更希望";
+  if (status === "invalid") return "無効";
   return "未確認";
 }
 
 function getParticipantConfirmationTone(status) {
   if (status === "confirmed") return "emerald";
   if (status === "change_requested") return "rose";
+  if (status === "invalid") return "slate";
   return "amber";
 }
 
@@ -2446,6 +2448,12 @@ export default function ExperimentParticipantScheduler() {
         const data = { id: snapshot.id, ...snapshot.data() };
         setParticipantResponseRequest(data);
         setParticipantResponseNote(data.participantResponseNote || "");
+
+        if (data.participantConfirmationStatus === "invalid") {
+          setParticipantResponseError(
+            "すでにこの申し込みは無効になっています。管理者側で申込が削除された、または現在は利用できない状態です。心当たりがある場合は、届いたメールへの返信でお問い合わせください。"
+          );
+        }
       })
       .catch((error) => {
         console.error(error);
@@ -2679,6 +2687,14 @@ export default function ExperimentParticipantScheduler() {
     const { token } = participantResponseContext;
     if (!firebaseReady || !token) return;
 
+    if (participantResponseRequest?.participantConfirmationStatus === "invalid") {
+      setParticipantResponseError(
+        "すでにこの申し込みは無効になっています。確認や変更希望は登録できません。"
+      );
+      showToast("この申し込みは無効です。", "error");
+      return;
+    }
+
     try {
       setParticipantResponseSubmitting(true);
       const payload = {
@@ -2704,7 +2720,13 @@ export default function ExperimentParticipantScheduler() {
       showToast(nextStatus === "confirmed" ? "確認を受け付けました。" : "変更希望を受け付けました。", "success");
     } catch (error) {
       console.error(error);
-      setParticipantResponseError("送信に失敗しました。時間をおいて再度お試しください。");
+      if (error?.code === "permission-denied") {
+        setParticipantResponseError(
+          "すでにこの申し込みは無効になっている可能性があります。最新のメールから開き直すか、届いたメールへの返信でお問い合わせください。"
+        );
+      } else {
+        setParticipantResponseError("送信に失敗しました。時間をおいて再度お試しください。");
+      }
       showToast("送信に失敗しました。", "error");
     } finally {
       setParticipantResponseSubmitting(false);
@@ -3105,6 +3127,16 @@ export default function ExperimentParticipantScheduler() {
               });
             }
           }
+
+          const responseToken = requestData.participantResponseToken || "";
+          if (responseToken) {
+            transaction.set(doc(firestore, "participantResponses", responseToken), {
+              participantConfirmationStatus: "invalid",
+              participantResponseNote: "この申込は管理者により削除されたか、無効になりました。",
+              updatedAt: serverTimestamp(),
+            }, { merge: true });
+          }
+
           transaction.delete(requestRef);
         });
       } else {

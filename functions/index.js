@@ -366,6 +366,34 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
 
 
 
+
+function renderInvalidParticipantResponsePage() {
+  return `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>この申込は無効です</title>
+      </head>
+      <body style="margin:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;">
+        <div style="max-width:720px;margin:0 auto;padding:40px 20px;">
+          <div style="background:#ffffff;border:1px solid #fecaca;border-radius:24px;padding:28px;box-shadow:0 20px 60px rgba(15,23,42,0.08);">
+            <div style="display:inline-block;padding:6px 12px;border-radius:9999px;background:#fee2e2;color:#b91c1c;font-size:12px;font-weight:700;letter-spacing:0.12em;">INVALID</div>
+            <h1 style="margin:16px 0 0;font-size:28px;line-height:1.4;">すでにこの申し込みは無効になっています</h1>
+            <p style="margin:16px 0 0;line-height:1.9;color:#334155;">
+              この確認用リンクに対応する申込は、管理者側で削除されたか、現在は利用できない状態です。<br/>
+              このボタンを押しても、日程確認や変更希望は登録されません。
+            </p>
+            <div style="margin-top:20px;padding:16px;border:1px solid #fecaca;background:#fff1f2;border-radius:16px;line-height:1.9;color:#991b1b;">
+              心当たりがある場合や、あらためて参加を希望する場合は、届いたメールへの返信でお問い合わせください。
+            </div>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
 exports.acknowledgeParticipantResponse = onRequest(async (req, res) => {
   res.set("Cache-Control", "no-store");
 
@@ -396,6 +424,33 @@ exports.acknowledgeParticipantResponse = onRequest(async (req, res) => {
 
     const data = snapshot.data() || {};
     const currentStatus = data.participantConfirmationStatus || "pending";
+    const requestId = data.requestId || "";
+
+    if (currentStatus === "invalid") {
+      res.status(410).send(renderInvalidParticipantResponsePage());
+      return;
+    }
+
+    if (!requestId) {
+      await responseRef.set({
+        participantConfirmationStatus: "invalid",
+        participantResponseNote: "この申込は管理者により削除されたか、無効になりました。",
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      res.status(410).send(renderInvalidParticipantResponsePage());
+      return;
+    }
+
+    const requestSnap = await db.collection("requests").doc(requestId).get();
+    if (!requestSnap.exists) {
+      await responseRef.set({
+        participantConfirmationStatus: "invalid",
+        participantResponseNote: "この申込は管理者により削除されたか、無効になりました。",
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      res.status(410).send(renderInvalidParticipantResponsePage());
+      return;
+    }
 
     if (currentStatus !== "confirmed") {
       await responseRef.set({
@@ -459,12 +514,25 @@ exports.notifyAdminOnParticipantResponse = onDocumentUpdated("participantRespons
   const requestId = after.requestId || before.requestId || "";
   if (!requestId) return;
 
-  await db.collection("requests").doc(requestId).set({
+  const requestRef = db.collection("requests").doc(requestId);
+  const requestSnap = await requestRef.get();
+
+  if (!requestSnap.exists) {
+    await db.collection("participantResponses").doc(event.params.token).set({
+      participantConfirmationStatus: "invalid",
+      participantResponseNote: "この申込は管理者により削除されたか、無効になりました。",
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    console.warn(`Participant response ignored because request was deleted: ${requestId}`);
+    return;
+  }
+
+  await requestRef.update({
     participantConfirmationStatus: afterStatus,
     participantResponseNote: afterNote,
     participantRespondedAt: after.participantRespondedAt || FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
-  }, { merge: true });
+  });
 
   if (!NOTIFY_ADMIN_EMAIL) return;
 
