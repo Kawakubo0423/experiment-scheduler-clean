@@ -178,7 +178,7 @@ async function upsertParticipantResponseDoc({ token, requestId, requestData, ass
   if (resetStatus) {
     payload.participantConfirmationStatus = "pending";
     payload.participantResponseNote = "";
-    payload.participantRespondedAt = null;
+    payload.participantRespondedAt = FieldValue.delete();
   }
 
   await db.collection("participantResponses").doc(token).set(payload, { merge: true });
