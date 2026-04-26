@@ -56,6 +56,16 @@ const PERIOD_LABELS = {
   p7: "7時限 20:10〜21:45",
 };
 
+const PERIOD_SHORT_LABELS = {
+  p1: "1時限",
+  p2: "2時限",
+  p3: "3時限",
+  p4: "4時限",
+  p5: "5時限",
+  p6: "6時限",
+  p7: "7時限",
+};
+
 function formatDateJP(dateString) {
   const date = new Date(`${dateString}T00:00:00`);
   return date.toLocaleDateString("ja-JP", {
@@ -64,6 +74,24 @@ function formatDateJP(dateString) {
     day: "numeric",
     weekday: "short",
   });
+}
+
+function formatDateShortJP(dateString) {
+  if (!dateString) return "日付未定";
+
+  const date = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return dateString;
+
+  const weekdays = ["日", "月", "火", "水", "木", "金", "土"];
+  return `${date.getMonth() + 1}/${date.getDate()}(${weekdays[date.getDay()]})`;
+}
+
+function slotToShortText(slot) {
+  if (!slot) return "未確定";
+
+  const date = formatDateShortJP(slot.date);
+  const period = PERIOD_SHORT_LABELS[slot.periodKey] || slot.periodKey || "時限未定";
+  return `${date} ${period}`;
 }
 
 function escapeHtml(value = "") {
@@ -197,15 +225,16 @@ function isLikelyLineLinkCode(code = "") {
 function buildUnknownLineMessage() {
   return [
     "メッセージを確認しましたが、操作内容を判別できませんでした。",
-    "",
     "以下のいずれかを送信してください。",
-    "🗓️予約状況：連携中の申込を確認できます。",
-    "🙋変更希望：確定通知のボタンから変更希望を送れます。",
-    "🔓LINE連携解除：申込ごとにLINE通知を解除できます。",
+    "",
+    "🗓️ 予約状況：連携中の申込を確認できます。",
+    "🙋 変更希望：変更希望を送る申込を選べます。",
+    "🔕 LINE連携解除：LINE通知を停止する申込を選べます。",
     "",
     "新しくLINE連携する場合は、予約サイトの申込完了画面に表示された8桁の連携コードを送信してください。",
   ].join("\n");
 }
+
 
 async function replyLineMessage(replyToken, messages) {
   if (!LINE_CHANNEL_ACCESS_TOKEN || !replyToken || !Array.isArray(messages) || messages.length === 0) return;
@@ -386,7 +415,7 @@ async function handleLineConfirmPostback({ lineUserId, replyToken, requestId, to
   await replyLineMessage(replyToken, [
     {
       type: "text",
-      text: "この日程で確認済みとして登録しました。ご対応ありがとうございます。",
+      text: "✅ この日程で確認済みとして登録しました。ご対応ありがとうございます。",
     },
   ]);
 }
@@ -423,11 +452,12 @@ async function handleLineStartChangeRequestPostback({ lineUserId, replyToken, re
     {
       type: "text",
       text: [
-        "変更希望を受け付けます。",
+        "🙋 変更希望を受け付けます。",
         "",
         `対象日程：${slotToText(assignedSlot)}`,
         "",
         "変更を希望する理由や、参加できる候補日時をこのトークに送ってください。",
+        "例：別日の午後を希望します。",
         `※${LINE_CHANGE_SESSION_TTL_MINUTES}分以内に送信してください。中止する場合は「キャンセル」と送ってください。`,
       ].join("\n"),
     },
@@ -456,7 +486,7 @@ async function handleLineWaitingChangeRequestNote({ lineUserId, replyToken, text
     await replyLineMessage(replyToken, [
       {
         type: "text",
-        text: "変更希望の入力時間が過ぎたため、受付を中止しました。もう一度、該当する日程通知の「変更を希望する」ボタンからやり直してください。",
+        text: "変更希望の入力時間が過ぎたため、受付を中止しました。もう一度「変更希望」メニューからやり直してください。",
       },
     ]);
     return true;
@@ -510,7 +540,7 @@ async function handleLineWaitingChangeRequestNote({ lineUserId, replyToken, text
     {
       type: "text",
       text: [
-        "変更希望を受け付けました。",
+        "✅ 変更希望を受け付けました。",
         "管理者に内容を通知します。",
         "",
         "【送信内容】",
@@ -557,6 +587,13 @@ function participantStatusLabel(status = "") {
   return "未確認";
 }
 
+function participantStatusGuide(status = "") {
+  if (status === "confirmed") return "必要に応じて変更希望を送れます";
+  if (status === "change_requested") return "変更希望を送信済みです";
+  if (status === "invalid") return "この申込は無効です";
+  return "確認待ちです";
+}
+
 function safeLineText(value = "", maxLength = 300) {
   const text = String(value || "").replace(/[\r\n]+/g, " ").trim();
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
@@ -599,6 +636,10 @@ async function getLineLinkedRequests(lineUserId) {
       slot: item.data.assignedSlotId ? slotMap.get(item.data.assignedSlotId) : null,
     }))
     .sort((a, b) => {
+      const aSlotDate = a.slot?.date || "9999-12-31";
+      const bSlotDate = b.slot?.date || "9999-12-31";
+      if (aSlotDate !== bSlotDate) return aSlotDate.localeCompare(bSlotDate);
+
       const aTime = a.data.createdAt?.toMillis?.() || 0;
       const bTime = b.data.createdAt?.toMillis?.() || 0;
       return bTime - aTime;
@@ -613,29 +654,41 @@ function buildReservationStatusLines(items = []) {
     ].join("\n");
   }
 
-  return [
-      "現在、このLINEアカウントに連携されている申込は以下です。",
-      "",
-      "確認や変更希望は、確定通知に表示されるボタンから操作できます。LINE通知をやめたい場合は「LINE連携解除」と送信してください。",
-    ].join("\n");
+  return "🗓️ 現在、このLINEアカウントに連携されている申込は以下です。";
 }
 
-function buildRequestTitleForLine(item) {
+function buildRequestTitleForLine(item, mode = "status") {
   const data = item?.data || {};
-  const assignedText = data.assignedSlotId ? slotToText(item.slot) : "未確定";
-  return safeLineText(`${data.name || "参加者"}さん / ${assignedText}`, 40);
+  const name = data.name || "参加者";
+  const shortSlot = data.assignedSlotId ? slotToShortText(item.slot) : "未確定";
+
+  if (mode === "change") return safeLineText(`${shortSlot} / 変更希望`, 40);
+  if (mode === "unlink") return safeLineText(`${shortSlot} / 連携解除`, 40);
+  return safeLineText(`${shortSlot} / ${name}さん`, 40);
 }
 
-function buildRequestSummaryForLine(item) {
+function buildRequestSummaryForLine(item, mode = "status") {
   const data = item?.data || {};
   const assignedText = data.assignedSlotId ? slotToText(item.slot) : "未確定";
-  return safeLineText(`状態：${participantStatusLabel(data.participantConfirmationStatus || "pending")}\n日程：${assignedText}`, 55);
+  const status = data.participantConfirmationStatus || "pending";
+
+  if (mode === "change") {
+    return safeLineText(`対象：${data.name || "参加者"}さん\n日程：${assignedText}`, 58);
+  }
+
+  if (mode === "unlink") {
+    return safeLineText(`対象：${data.name || "参加者"}さん\n解除してもメール通知は届きます`, 58);
+  }
+
+  return safeLineText(`状態：${participantStatusLabel(status)}（${participantStatusGuide(status)}）\n日程：${assignedText}`, 58);
 }
 
 function buildRequestActionColumns(items = [], mode = "status") {
   return items.slice(0, 10).map((item) => {
     const data = item.data || {};
     const token = data.participantResponseToken || "";
+    const status = data.participantConfirmationStatus || "pending";
+    const hasAssignedSlot = Boolean(data.assignedSlotId && token);
     const actions = [];
 
     if (mode === "unlink") {
@@ -645,21 +698,34 @@ function buildRequestActionColumns(items = [], mode = "status") {
         data: buildLinePostbackData({ action: "unlink_confirm", requestId: item.id, token }),
         displayText: "この申込のLINE連携を解除します",
       });
+    } else if (mode === "change") {
+      if (hasAssignedSlot) {
+        actions.push({
+          type: "postback",
+          label: "変更希望を送る",
+          data: buildLinePostbackData({ action: "start_change_request", requestId: item.id, token }),
+          displayText: "変更希望を送ります",
+        });
+      }
     } else {
-      if (data.assignedSlotId && token) {
+      if (hasAssignedSlot && status !== "confirmed") {
         actions.push({
           type: "postback",
           label: "この日程で確認",
           data: buildLinePostbackData({ action: "confirm", requestId: item.id, token }),
           displayText: "この日程で確認します",
         });
+      }
+
+      if (hasAssignedSlot) {
         actions.push({
           type: "postback",
-          label: "変更を希望する",
+          label: status === "change_requested" ? "変更希望を再送" : "変更を希望する",
           data: buildLinePostbackData({ action: "start_change_request", requestId: item.id, token }),
-          displayText: "変更を希望します",
+          displayText: "変更希望を送ります",
         });
       }
+
       actions.push({
         type: "postback",
         label: "LINE連携解除",
@@ -669,12 +735,13 @@ function buildRequestActionColumns(items = [], mode = "status") {
     }
 
     return {
-      title: buildRequestTitleForLine(item),
-      text: buildRequestSummaryForLine(item),
+      title: buildRequestTitleForLine(item, mode),
+      text: buildRequestSummaryForLine(item, mode),
       actions: actions.slice(0, 3),
     };
   }).filter((column) => column.actions.length > 0);
 }
+
 
 async function handleLineReservationStatus({ lineUserId, replyToken }) {
   if (!lineUserId) return;
@@ -709,9 +776,9 @@ async function handleLineHelp({ replyToken }) {
       text: [
         "実験日程予約LINEで使える機能です。",
         "",
-        "🗓️予約状況：連携中の申込を確認できます。",
-        "🙋変更希望：確定通知のボタンから変更希望を送れます。",
-        "🔓LINE連携解除：申込ごとにLINE通知を解除できます。",
+        "🗓️ 予約状況：連携中の申込を確認できます。",
+        "🙋 変更希望：変更希望を送る申込を選べます。",
+        "🔕 LINE連携解除：LINE通知を停止する申込を選べます。",
         "",
         "新しくLINE連携する場合は、予約サイトで申込後に表示される8桁の連携コードを送信してください。",
       ].join("\n"),
@@ -732,12 +799,12 @@ async function handleLineChangeRequestCommand({ lineUserId, replyToken }) {
     return;
   }
 
-  const columns = buildRequestActionColumns(items.filter((item) => item.data?.assignedSlotId), "status");
+  const columns = buildRequestActionColumns(items.filter((item) => item.data?.assignedSlotId), "change");
   if (!columns.length) {
     await replyLineMessage(replyToken, [
       {
         type: "text",
-        text: "現在、変更希望を送信できる確定済み日程はありません。日程が確定すると、LINE通知から変更希望を送れるようになります。",
+        text: "現在、変更希望を送信できる確定済み日程はありません。日程が確定すると、LINEから変更希望を送れるようになります。",
       },
     ]);
     return;
@@ -746,7 +813,7 @@ async function handleLineChangeRequestCommand({ lineUserId, replyToken }) {
   await replyLineMessage(replyToken, [
     {
       type: "text",
-      text: "変更希望を送る申込を選び、「変更を希望する」を押してください。",
+      text: "🙋 変更希望を送る申込を選んでください。選択後、このトークに希望内容を送信できます。",
     },
     {
       type: "template",
@@ -777,7 +844,7 @@ async function handleLineStartUnlink({ lineUserId, replyToken }) {
   await replyLineMessage(replyToken, [
     {
       type: "text",
-      text: "LINE通知を解除する申込を選んでください。解除しても、メール通知はこれまで通り届きます。",
+      text: "🔕 LINE通知を解除する申込を選んでください。解除しても、メール通知はこれまで通り届きます。",
     },
     {
       type: "template",
@@ -789,6 +856,7 @@ async function handleLineStartUnlink({ lineUserId, replyToken }) {
     },
   ]);
 }
+
 
 async function handleLineUnlinkConfirmPostback({ lineUserId, replyToken, requestId, token }) {
   const valid = await getValidLineLinkedRequest({ requestId, token, lineUserId });
@@ -816,7 +884,7 @@ async function handleLineUnlinkConfirmPostback({ lineUserId, replyToken, request
   await replyLineMessage(replyToken, [
     {
       type: "text",
-      text: "この申込のLINE連携を解除しました。今後この申込に関するLINE通知は送信されません。メール通知は引き続き届きます。",
+      text: "🔕 この申込のLINE連携を解除しました。今後この申込に関するLINE通知は送信されません。メール通知は引き続き届きます。",
     },
   ]);
 }
@@ -872,7 +940,7 @@ async function sendLineReservationNotice({ requestData, requestId = "", token = 
         template: {
           type: "buttons",
           title: "実験日程予約",
-          text: "LINE上で回答できます。",
+          text: "LINE上で確認・変更希望を送れます。",
           actions,
         },
       });
@@ -1531,7 +1599,7 @@ exports.lineWebhook = onRequest(async (req, res) => {
       await replyLineMessage(replyToken, [
         {
           type: "text",
-          text: `${requestData.name || "参加者"}さんの実験予約とLINEを連携しました。今後、日程の確定や変更があった場合は、メールに加えてLINEでもお知らせします。`,
+          text: `✅ ${requestData.name || "参加者"}さんの実験予約とLINEを連携しました。今後、日程の確定や変更があった場合は、メールに加えてLINEでもお知らせします。`,
         },
       ]);
     }
