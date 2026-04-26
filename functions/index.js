@@ -190,6 +190,25 @@ function normalizeLineLinkCode(text = "") {
     .toUpperCase();
 }
 
+function isLikelyLineLinkCode(code = "") {
+  return /^[A-Z2-9]{8}$/.test(String(code || ""));
+}
+
+function buildUnknownLineMessage() {
+  return [
+    "メッセージを確認しましたが、操作内容を判別できませんでした。",
+    "",
+    "以下のいずれかを送信してください。",
+    "・予約状況：連携中の申込を確認できます。",
+    "・変更希望：変更希望を送る申込を選択できます。",
+    "・LINE連携解除：LINE通知を停止できます。",
+    "",
+    "新しくLINE連携する場合は、予約サイトの申込完了画面に表示された8桁の連携コードを送信してください。",
+    "",
+    CONTACT_TEXT,
+  ].join("\n");
+}
+
 async function replyLineMessage(replyToken, messages) {
   if (!LINE_CHANNEL_ACCESS_TOKEN || !replyToken || !Array.isArray(messages) || messages.length === 0) return;
 
@@ -596,22 +615,12 @@ function buildReservationStatusLines(items = []) {
     ].join("\n");
   }
 
-  const lines = ["現在、このLINEアカウントに連携されている申込は以下です。", ""];
-
-  items.forEach((item, index) => {
-    const data = item.data || {};
-    const assignedText = data.assignedSlotId ? slotToText(item.slot) : "未確定";
-    lines.push(`${index + 1}. ${data.name || "参加者"} さん`);
-    lines.push(`   日程：${assignedText}`);
-    lines.push(`   状態：${participantStatusLabel(data.participantConfirmationStatus || "pending")}`);
-    if (data.email) lines.push(`   メール：${data.email}`);
-    lines.push("");
-  });
-
-  lines.push("確認や変更希望は、確定通知に表示されるボタンから操作できます。");
-  lines.push("LINE通知をやめたい場合は「LINE連携解除」と送信してください。");
-
-  return lines.join("\n");
+  return [
+      "現在、このLINEアカウントに連携されている申込は以下です。",
+      "",
+      "確認や変更希望は、確定通知に表示されるボタンから操作できます。",
+      "LINE通知をやめたい場合は「LINE連携解除」と送信してください。",
+    ].join("\n");
 }
 
 function buildRequestTitleForLine(item) {
@@ -977,7 +986,7 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
 
   if (!beforeAssigned && afterAssigned) {
     await upsertParticipantResponseDoc({ token: responseToken, requestId, requestData: after, assignedSlot: afterSlot, resetStatus: true });
-    subject = "【要確認】実験日程が確定しました（立命館大学）";
+    subject = "【要確認】実験日程が確定しました";
     text = withSignatureText([
       `${recipientName} さん`,
       "",
@@ -1012,7 +1021,7 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
     `);
   } else if (beforeAssigned && afterAssigned) {
     await upsertParticipantResponseDoc({ token: responseToken, requestId, requestData: after, assignedSlot: afterSlot, resetStatus: true });
-    subject = "【要確認】実験日程が変更されました（立命館大学）";
+    subject = "【要確認】実験日程が変更されました";
     text = withSignatureText([
       `${recipientName} さん`,
       "",
@@ -1048,7 +1057,7 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
     `);
   } else if (beforeAssigned && !afterAssigned) {
     await upsertParticipantResponseDoc({ token: responseToken, requestId, requestData: after, assignedSlot: null, resetStatus: true });
-    subject = "【要確認】参加日程の再調整について（立命館大学）";
+    subject = "【要確認】参加日程の再調整について";
     text = withSignatureText([
       `${recipientName} さん`,
       "",
@@ -1459,7 +1468,17 @@ exports.lineWebhook = onRequest(async (req, res) => {
       }
 
       const code = normalizeLineLinkCode(messageText);
-      if (!lineUserId || !code) continue;
+      if (!lineUserId) continue;
+
+      if (!isLikelyLineLinkCode(code)) {
+        await replyLineMessage(replyToken, [
+          {
+            type: "text",
+            text: buildUnknownLineMessage(),
+          },
+        ]);
+        continue;
+      }
 
       const requestSnap = await db
         .collection("requests")
@@ -1471,7 +1490,7 @@ exports.lineWebhook = onRequest(async (req, res) => {
         await replyLineMessage(replyToken, [
           {
             type: "text",
-            text: "連携コードが見つかりませんでした。予約サイトで申込後に表示された8桁のコードをもう一度送ってください。",
+            text: "この連携コードは見つかりませんでした。予約サイトで申込後に表示された8桁のコードをもう一度確認して送信してください。",
           },
         ]);
         continue;
