@@ -1,7 +1,7 @@
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onRequest } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const crypto = require("crypto");
 
 initializeApp();
@@ -16,6 +16,7 @@ const APP_BASE_URL = process.env.APP_BASE_URL || "";
 const PARTICIPANT_CONFIRM_ENDPOINT_URL = process.env.PARTICIPANT_CONFIRM_ENDPOINT_URL || "";
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || "";
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || "";
+const LINE_CHANGE_SESSION_TTL_MINUTES = 30;
 
 const CONTACT_TEXT = [
   "----------------------------------------------------------------------------------------",
@@ -254,7 +255,257 @@ function canSendLine(requestData) {
   return Boolean(requestData?.lineNotifyEnabled && requestData?.lineUserId);
 }
 
-async function sendLineReservationNotice({ requestData, title, body, links, includeActions = true }) {
+function buildLinePostbackData({ action, requestId, token }) {
+  const params = new URLSearchParams();
+  params.set("action", action || "");
+  params.set("requestId", requestId || "");
+  params.set("token", token || "");
+  return params.toString();
+}
+
+function parseLinePostbackData(data = "") {
+  const params = new URLSearchParams(String(data || ""));
+  return {
+    action: params.get("action") || "",
+    requestId: params.get("requestId") || "",
+    token: params.get("token") || "",
+  };
+}
+
+function getLineSessionExpiresAt() {
+  return Timestamp.fromDate(new Date(Date.now() + LINE_CHANGE_SESSION_TTL_MINUTES * 60 * 1000));
+}
+
+function isExpiredLineSession(sessionData = {}) {
+  const expiresAt = sessionData.expiresAt;
+  return Boolean(expiresAt && typeof expiresAt.toMillis === "function" && expiresAt.toMillis() < Date.now());
+}
+
+async function markParticipantResponseInvalid(token) {
+  if (!token) return;
+  await db.collection("participantResponses").doc(token).set({
+    participantConfirmationStatus: "invalid",
+    participantResponseNote: "この申込は管理者により削除されたか、無効になりました。",
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+}
+
+async function getValidLineLinkedRequest({ requestId, token, lineUserId }) {
+  if (!requestId || !token || !lineUserId) {
+    return { ok: false, reason: "missing" };
+  }
+
+  const requestRef = db.collection("requests").doc(requestId);
+  const requestSnap = await requestRef.get();
+
+  if (!requestSnap.exists) {
+    await markParticipantResponseInvalid(token);
+    return { ok: false, reason: "deleted" };
+  }
+
+  const requestData = requestSnap.data() || {};
+
+  if ((requestData.participantResponseToken || "") !== token) {
+    return { ok: false, reason: "token_mismatch" };
+  }
+
+  if (!requestData.lineNotifyEnabled || !requestData.lineUserId) {
+    return { ok: false, reason: "line_not_linked" };
+  }
+
+  if (requestData.lineUserId !== lineUserId) {
+    return { ok: false, reason: "line_user_mismatch" };
+  }
+
+  const responseRef = db.collection("participantResponses").doc(token);
+  const responseSnap = await responseRef.get();
+
+  if (!responseSnap.exists) {
+    return { ok: false, reason: "response_not_found" };
+  }
+
+  const responseData = responseSnap.data() || {};
+
+  if ((responseData.requestId || "") !== requestId) {
+    return { ok: false, reason: "response_request_mismatch" };
+  }
+
+  if ((responseData.participantConfirmationStatus || "pending") === "invalid") {
+    return { ok: false, reason: "invalid" };
+  }
+
+  return { ok: true, requestRef, requestData, responseRef, responseData };
+}
+
+function lineInvalidRequestMessage(reason = "") {
+  if (reason === "line_user_mismatch") {
+    return "この操作は、別のLINEアカウントに連携されている申込には使用できません。心当たりがない場合は、実験担当者へメールでお問い合わせください。";
+  }
+
+  if (reason === "deleted" || reason === "invalid") {
+    return "この申込はすでに無効になっています。確認や変更希望は登録されません。あらためて参加を希望する場合は、予約サイトから再度お申し込みください。";
+  }
+
+  return "この申込を確認できませんでした。古いLINE通知の可能性があります。最新の案内をご確認いただくか、実験担当者へメールでお問い合わせください。";
+}
+
+async function handleLineConfirmPostback({ lineUserId, replyToken, requestId, token }) {
+  const valid = await getValidLineLinkedRequest({ requestId, token, lineUserId });
+
+  if (!valid.ok) {
+    await replyLineMessage(replyToken, [{ type: "text", text: lineInvalidRequestMessage(valid.reason) }]);
+    return;
+  }
+
+  await valid.responseRef.set({
+    participantConfirmationStatus: "confirmed",
+    participantResponseNote: "",
+    participantRespondedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  await db.collection("lineSessions").doc(lineUserId).delete().catch(() => {});
+
+  await replyLineMessage(replyToken, [
+    {
+      type: "text",
+      text: "この日程で確認済みとして登録しました。ご対応ありがとうございます。",
+    },
+  ]);
+}
+
+async function handleLineStartChangeRequestPostback({ lineUserId, replyToken, requestId, token }) {
+  const valid = await getValidLineLinkedRequest({ requestId, token, lineUserId });
+
+  if (!valid.ok) {
+    await replyLineMessage(replyToken, [{ type: "text", text: lineInvalidRequestMessage(valid.reason) }]);
+    return;
+  }
+
+  const assignedSlot = {
+    id: valid.responseData.assignedSlotId || "",
+    date: valid.responseData.assignedDate || "",
+    periodKey: valid.responseData.assignedPeriodKey || "",
+    location: valid.responseData.assignedLocation || "",
+    note: valid.responseData.assignedNote || "",
+  };
+
+  await db.collection("lineSessions").doc(lineUserId).set({
+    mode: "waiting_change_request_note",
+    requestId,
+    token,
+    lineUserId,
+    name: valid.requestData.name || "",
+    assignedSlotText: slotToText(assignedSlot),
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+    expiresAt: getLineSessionExpiresAt(),
+  }, { merge: true });
+
+  await replyLineMessage(replyToken, [
+    {
+      type: "text",
+      text: [
+        "変更希望を受け付けます。",
+        "",
+        `対象日程：${slotToText(assignedSlot)}`,
+        "",
+        "変更を希望する理由や、参加できる候補日時をこのトークに送ってください。",
+        `※${LINE_CHANGE_SESSION_TTL_MINUTES}分以内に送信してください。中止する場合は「キャンセル」と送ってください。`,
+      ].join("\n"),
+    },
+  ]);
+}
+
+async function handleLineWaitingChangeRequestNote({ lineUserId, replyToken, text }) {
+  if (!lineUserId) return false;
+
+  const sessionRef = db.collection("lineSessions").doc(lineUserId);
+  const sessionSnap = await sessionRef.get();
+
+  if (!sessionSnap.exists) return false;
+
+  const sessionData = sessionSnap.data() || {};
+
+  if (sessionData.mode !== "waiting_change_request_note") {
+    await sessionRef.delete().catch(() => {});
+    return false;
+  }
+
+  const trimmedText = String(text || "").trim();
+
+  if (isExpiredLineSession(sessionData)) {
+    await sessionRef.delete().catch(() => {});
+    await replyLineMessage(replyToken, [
+      {
+        type: "text",
+        text: "変更希望の入力時間が過ぎたため、受付を中止しました。もう一度、該当する日程通知の「変更を希望する」ボタンからやり直してください。",
+      },
+    ]);
+    return true;
+  }
+
+  if (["キャンセル", "中止", "cancel", "Cancel", "CANCEL"].includes(trimmedText)) {
+    await sessionRef.delete().catch(() => {});
+    await replyLineMessage(replyToken, [
+      {
+        type: "text",
+        text: "変更希望の入力をキャンセルしました。",
+      },
+    ]);
+    return true;
+  }
+
+  if (!trimmedText) {
+    await replyLineMessage(replyToken, [
+      {
+        type: "text",
+        text: "変更希望の内容が空になっています。変更を希望する理由や、参加できる候補日時を文章で送ってください。",
+      },
+    ]);
+    return true;
+  }
+
+  const valid = await getValidLineLinkedRequest({
+    requestId: sessionData.requestId || "",
+    token: sessionData.token || "",
+    lineUserId,
+  });
+
+  if (!valid.ok) {
+    await sessionRef.delete().catch(() => {});
+    await replyLineMessage(replyToken, [{ type: "text", text: lineInvalidRequestMessage(valid.reason) }]);
+    return true;
+  }
+
+  const note = trimmedText.slice(0, 1000);
+
+  await valid.responseRef.set({
+    participantConfirmationStatus: "change_requested",
+    participantResponseNote: note,
+    participantRespondedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  await sessionRef.delete().catch(() => {});
+
+  await replyLineMessage(replyToken, [
+    {
+      type: "text",
+      text: [
+        "変更希望を受け付けました。",
+        "管理者に内容を通知します。",
+        "",
+        "【送信内容】",
+        note,
+      ].join("\n"),
+    },
+  ]);
+
+  return true;
+}
+
+async function sendLineReservationNotice({ requestData, requestId = "", token = "", title, body, links, includeActions = true }) {
   if (!canSendLine(requestData)) return;
 
   const messages = [
@@ -264,32 +515,52 @@ async function sendLineReservationNotice({ requestData, title, body, links, incl
     },
   ];
 
-  if (includeActions && (links?.confirmUrl || links?.changeUrl)) {
-    messages.push({
-      type: "template",
-      altText: title,
-      template: {
-        type: "buttons",
-        title: "実験日程予約",
-        text: "日程を確認してください。",
-        actions: [
-          links.confirmUrl
-            ? {
-                type: "uri",
-                label: "この日程で確認",
-                uri: links.confirmUrl,
-              }
-            : null,
-          links.changeUrl
-            ? {
-                type: "uri",
-                label: "変更を希望する",
-                uri: links.changeUrl,
-              }
-            : null,
-        ].filter(Boolean),
-      },
-    });
+  if (includeActions) {
+    const responseToken = token || requestData.participantResponseToken || "";
+    const actions = [];
+
+    if (requestId && responseToken) {
+      actions.push({
+        type: "postback",
+        label: "この日程で確認",
+        data: buildLinePostbackData({ action: "confirm", requestId, token: responseToken }),
+        displayText: "この日程で確認します",
+      });
+      actions.push({
+        type: "postback",
+        label: "変更を希望する",
+        data: buildLinePostbackData({ action: "start_change_request", requestId, token: responseToken }),
+        displayText: "変更を希望します",
+      });
+    } else {
+      if (links?.confirmUrl) {
+        actions.push({
+          type: "uri",
+          label: "この日程で確認",
+          uri: links.confirmUrl,
+        });
+      }
+      if (links?.changeUrl) {
+        actions.push({
+          type: "uri",
+          label: "変更を希望する",
+          uri: links.changeUrl,
+        });
+      }
+    }
+
+    if (actions.length > 0) {
+      messages.push({
+        type: "template",
+        altText: title,
+        template: {
+          type: "buttons",
+          title: "実験日程予約",
+          text: "LINE上で回答できます。",
+          actions,
+        },
+      });
+    }
   }
 
   await pushLineMessage(requestData.lineUserId, messages);
@@ -537,6 +808,8 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
 
     await sendLineReservationNotice({
       requestData: after,
+      requestId,
+      token: responseToken,
       title: subject,
       body: lineBody,
       links,
@@ -790,9 +1063,50 @@ exports.lineWebhook = onRequest(async (req, res) => {
         continue;
       }
 
+      if (event.type === "postback") {
+        const { action, requestId, token } = parseLinePostbackData(event.postback?.data || "");
+
+        if (!lineUserId || !action) {
+          await replyLineMessage(replyToken, [
+            {
+              type: "text",
+              text: "操作内容を確認できませんでした。最新のLINE通知からもう一度お試しください。",
+            },
+          ]);
+          continue;
+        }
+
+        if (action === "confirm") {
+          await handleLineConfirmPostback({ lineUserId, replyToken, requestId, token });
+          continue;
+        }
+
+        if (action === "start_change_request") {
+          await handleLineStartChangeRequestPostback({ lineUserId, replyToken, requestId, token });
+          continue;
+        }
+
+        await replyLineMessage(replyToken, [
+          {
+            type: "text",
+            text: "未対応の操作です。最新のLINE通知からもう一度お試しください。",
+          },
+        ]);
+        continue;
+      }
+
       if (event.type !== "message" || event.message?.type !== "text") continue;
 
-      const code = normalizeLineLinkCode(event.message.text || "");
+      const messageText = event.message.text || "";
+
+      const handledAsChangeRequest = await handleLineWaitingChangeRequestNote({
+        lineUserId,
+        replyToken,
+        text: messageText,
+      });
+      if (handledAsChangeRequest) continue;
+
+      const code = normalizeLineLinkCode(messageText);
       if (!lineUserId || !code) continue;
 
       const requestSnap = await db
