@@ -505,6 +505,318 @@ async function handleLineWaitingChangeRequestNote({ lineUserId, replyToken, text
   return true;
 }
 
+
+function normalizeLineCommand(text = "") {
+  return String(text || "")
+    .trim()
+    .replace(/\s/g, "")
+    .toLowerCase();
+}
+
+function isLineStatusCommand(text = "") {
+  const command = normalizeLineCommand(text);
+  return ["予約状況", "状況", "予約確認", "日程確認", "status"].includes(command);
+}
+
+function isLineUnlinkCommand(text = "") {
+  const command = normalizeLineCommand(text);
+  return ["line連携解除", "連携解除", "解除", "通知解除", "line解除", "unlink"].includes(command);
+}
+
+function isLineHelpCommand(text = "") {
+  const command = normalizeLineCommand(text);
+  return ["ヘルプ", "help", "メニュー", "使い方", "問い合わせ", "問合せ"].includes(command);
+}
+
+function isLineChangeRequestCommand(text = "") {
+  const command = normalizeLineCommand(text);
+  return ["変更希望", "日程変更", "変更", "change"].includes(command);
+}
+
+function participantStatusLabel(status = "") {
+  if (status === "confirmed") return "確認済み";
+  if (status === "change_requested") return "変更希望あり";
+  if (status === "invalid") return "無効";
+  return "未確認";
+}
+
+function safeLineText(value = "", maxLength = 300) {
+  const text = String(value || "").replace(/[\r\n]+/g, " ").trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+async function getLineLinkedRequests(lineUserId) {
+  if (!lineUserId) return [];
+
+  const idSet = new Set();
+
+  const lineUserSnap = await db.collection("lineUsers").doc(lineUserId).get();
+  const lineUserData = lineUserSnap.exists ? (lineUserSnap.data() || {}) : {};
+  const linkedRequestIds = Array.isArray(lineUserData.linkedRequestIds) ? lineUserData.linkedRequestIds : [];
+  linkedRequestIds.filter(Boolean).forEach((id) => idSet.add(id));
+
+  const byLineUserSnap = await db
+    .collection("requests")
+    .where("lineUserId", "==", lineUserId)
+    .limit(30)
+    .get();
+  byLineUserSnap.docs.forEach((docSnap) => idSet.add(docSnap.id));
+
+  const requestDocs = await Promise.all(
+    [...idSet].map(async (requestId) => {
+      const snap = await db.collection("requests").doc(requestId).get();
+      return snap.exists ? { id: snap.id, data: snap.data() || {} } : null;
+    })
+  );
+
+  const activeRequests = requestDocs
+    .filter(Boolean)
+    .filter((item) => item.data.lineUserId === lineUserId && item.data.lineNotifyEnabled === true);
+
+  const slotIds = activeRequests.map((item) => item.data.assignedSlotId || "").filter(Boolean);
+  const slotMap = await getSlotMap(slotIds);
+
+  return activeRequests
+    .map((item) => ({
+      ...item,
+      slot: item.data.assignedSlotId ? slotMap.get(item.data.assignedSlotId) : null,
+    }))
+    .sort((a, b) => {
+      const aTime = a.data.createdAt?.toMillis?.() || 0;
+      const bTime = b.data.createdAt?.toMillis?.() || 0;
+      return bTime - aTime;
+    });
+}
+
+function buildReservationStatusLines(items = []) {
+  if (!items.length) {
+    return [
+      "現在、このLINEアカウントに連携されている申込はありません。",
+      "予約サイトで申込後に表示される8桁のLINE連携コードを送信すると、LINE通知を受け取れるようになります。",
+    ].join("\n");
+  }
+
+  const lines = ["現在、このLINEアカウントに連携されている申込は以下です。", ""];
+
+  items.forEach((item, index) => {
+    const data = item.data || {};
+    const assignedText = data.assignedSlotId ? slotToText(item.slot) : "未確定";
+    lines.push(`${index + 1}. ${data.name || "参加者"} さん`);
+    lines.push(`   日程：${assignedText}`);
+    lines.push(`   状態：${participantStatusLabel(data.participantConfirmationStatus || "pending")}`);
+    if (data.email) lines.push(`   メール：${data.email}`);
+    lines.push("");
+  });
+
+  lines.push("確認や変更希望は、確定通知に表示されるボタンから操作できます。");
+  lines.push("LINE通知をやめたい場合は「LINE連携解除」と送信してください。");
+
+  return lines.join("\n");
+}
+
+function buildRequestTitleForLine(item) {
+  const data = item?.data || {};
+  const assignedText = data.assignedSlotId ? slotToText(item.slot) : "未確定";
+  return safeLineText(`${data.name || "参加者"}さん / ${assignedText}`, 40);
+}
+
+function buildRequestSummaryForLine(item) {
+  const data = item?.data || {};
+  const assignedText = data.assignedSlotId ? slotToText(item.slot) : "未確定";
+  return safeLineText(`状態：${participantStatusLabel(data.participantConfirmationStatus || "pending")}\n日程：${assignedText}`, 55);
+}
+
+function buildRequestActionColumns(items = [], mode = "status") {
+  return items.slice(0, 10).map((item) => {
+    const data = item.data || {};
+    const token = data.participantResponseToken || "";
+    const actions = [];
+
+    if (mode === "unlink") {
+      actions.push({
+        type: "postback",
+        label: "この連携を解除",
+        data: buildLinePostbackData({ action: "unlink_confirm", requestId: item.id, token }),
+        displayText: "この申込のLINE連携を解除します",
+      });
+    } else {
+      if (data.assignedSlotId && token) {
+        actions.push({
+          type: "postback",
+          label: "この日程で確認",
+          data: buildLinePostbackData({ action: "confirm", requestId: item.id, token }),
+          displayText: "この日程で確認します",
+        });
+        actions.push({
+          type: "postback",
+          label: "変更を希望する",
+          data: buildLinePostbackData({ action: "start_change_request", requestId: item.id, token }),
+          displayText: "変更を希望します",
+        });
+      }
+      actions.push({
+        type: "postback",
+        label: "LINE連携解除",
+        data: buildLinePostbackData({ action: "unlink_confirm", requestId: item.id, token }),
+        displayText: "この申込のLINE連携を解除します",
+      });
+    }
+
+    return {
+      title: buildRequestTitleForLine(item),
+      text: buildRequestSummaryForLine(item),
+      actions: actions.slice(0, 3),
+    };
+  }).filter((column) => column.actions.length > 0);
+}
+
+async function handleLineReservationStatus({ lineUserId, replyToken }) {
+  if (!lineUserId) return;
+
+  const items = await getLineLinkedRequests(lineUserId);
+  const messages = [
+    {
+      type: "text",
+      text: buildReservationStatusLines(items),
+    },
+  ];
+
+  const columns = buildRequestActionColumns(items, "status");
+  if (columns.length > 0) {
+    messages.push({
+      type: "template",
+      altText: "予約状況",
+      template: {
+        type: "carousel",
+        columns,
+      },
+    });
+  }
+
+  await replyLineMessage(replyToken, messages);
+}
+
+async function handleLineHelp({ replyToken }) {
+  await replyLineMessage(replyToken, [
+    {
+      type: "text",
+      text: [
+        "実験日程予約LINEで使える機能です。",
+        "",
+        "・予約状況：連携中の申込を確認できます。",
+        "・LINE連携解除：申込ごとにLINE通知を解除できます。",
+        "・変更希望：確定通知のボタンから変更希望を送れます。",
+        "",
+        "新しくLINE連携する場合は、予約サイトで申込後に表示される8桁の連携コードを送信してください。",
+        "",
+        CONTACT_TEXT,
+      ].join("\n"),
+    },
+  ]);
+}
+
+async function handleLineChangeRequestCommand({ lineUserId, replyToken }) {
+  const items = await getLineLinkedRequests(lineUserId);
+
+  if (!items.length) {
+    await replyLineMessage(replyToken, [
+      {
+        type: "text",
+        text: "現在、このLINEアカウントに連携されている申込はありません。予約サイトで申込後に表示される8桁のLINE連携コードを送信してください。",
+      },
+    ]);
+    return;
+  }
+
+  const columns = buildRequestActionColumns(items.filter((item) => item.data?.assignedSlotId), "status");
+  if (!columns.length) {
+    await replyLineMessage(replyToken, [
+      {
+        type: "text",
+        text: "現在、変更希望を送信できる確定済み日程はありません。日程が確定すると、LINE通知から変更希望を送れるようになります。",
+      },
+    ]);
+    return;
+  }
+
+  await replyLineMessage(replyToken, [
+    {
+      type: "text",
+      text: "変更希望を送る申込を選び、「変更を希望する」を押してください。",
+    },
+    {
+      type: "template",
+      altText: "変更希望を送る申込の選択",
+      template: {
+        type: "carousel",
+        columns,
+      },
+    },
+  ]);
+}
+
+async function handleLineStartUnlink({ lineUserId, replyToken }) {
+  const items = await getLineLinkedRequests(lineUserId);
+
+  if (!items.length) {
+    await replyLineMessage(replyToken, [
+      {
+        type: "text",
+        text: "現在、このLINEアカウントに連携されている申込はありません。",
+      },
+    ]);
+    return;
+  }
+
+  const columns = buildRequestActionColumns(items, "unlink");
+
+  await replyLineMessage(replyToken, [
+    {
+      type: "text",
+      text: "LINE通知を解除する申込を選んでください。解除しても、メール通知はこれまで通り届きます。",
+    },
+    {
+      type: "template",
+      altText: "LINE連携解除",
+      template: {
+        type: "carousel",
+        columns,
+      },
+    },
+  ]);
+}
+
+async function handleLineUnlinkConfirmPostback({ lineUserId, replyToken, requestId, token }) {
+  const valid = await getValidLineLinkedRequest({ requestId, token, lineUserId });
+
+  if (!valid.ok) {
+    await replyLineMessage(replyToken, [{ type: "text", text: lineInvalidRequestMessage(valid.reason) }]);
+    return;
+  }
+
+  await valid.requestRef.update({
+    lineNotifyEnabled: false,
+    lineUserId: FieldValue.delete(),
+    lineDisplayName: FieldValue.delete(),
+    lineLinkedAt: FieldValue.delete(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  await db.collection("lineUsers").doc(lineUserId).set({
+    linkedRequestIds: FieldValue.arrayRemove(requestId),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  await db.collection("lineSessions").doc(lineUserId).delete().catch(() => {});
+
+  await replyLineMessage(replyToken, [
+    {
+      type: "text",
+      text: "この申込のLINE連携を解除しました。今後この申込に関するLINE通知は送信されません。メール通知は引き続き届きます。",
+    },
+  ]);
+}
+
 async function sendLineReservationNotice({ requestData, requestId = "", token = "", title, body, links, includeActions = true }) {
   if (!canSendLine(requestData)) return;
 
@@ -1086,6 +1398,26 @@ exports.lineWebhook = onRequest(async (req, res) => {
           continue;
         }
 
+        if (action === "reservation_status") {
+          await handleLineReservationStatus({ lineUserId, replyToken });
+          continue;
+        }
+
+        if (action === "unlink_start") {
+          await handleLineStartUnlink({ lineUserId, replyToken });
+          continue;
+        }
+
+        if (action === "unlink_confirm") {
+          await handleLineUnlinkConfirmPostback({ lineUserId, replyToken, requestId, token });
+          continue;
+        }
+
+        if (action === "help") {
+          await handleLineHelp({ replyToken });
+          continue;
+        }
+
         await replyLineMessage(replyToken, [
           {
             type: "text",
@@ -1105,6 +1437,26 @@ exports.lineWebhook = onRequest(async (req, res) => {
         text: messageText,
       });
       if (handledAsChangeRequest) continue;
+
+      if (isLineStatusCommand(messageText)) {
+        await handleLineReservationStatus({ lineUserId, replyToken });
+        continue;
+      }
+
+      if (isLineUnlinkCommand(messageText)) {
+        await handleLineStartUnlink({ lineUserId, replyToken });
+        continue;
+      }
+
+      if (isLineHelpCommand(messageText)) {
+        await handleLineHelp({ replyToken });
+        continue;
+      }
+
+      if (isLineChangeRequestCommand(messageText)) {
+        await handleLineChangeRequestCommand({ lineUserId, replyToken });
+        continue;
+      }
 
       const code = normalizeLineLinkCode(messageText);
       if (!lineUserId || !code) continue;
