@@ -10,7 +10,8 @@ const db = getFirestore();
 const NOTIFY_ADMIN_EMAIL = process.env.NOTIFY_ADMIN_EMAIL || "";
 const MAIL_COLLECTION = process.env.MAIL_COLLECTION || "mail";
 const FROM_ADDRESS = process.env.FROM_ADDRESS || "is0611xi@ed.ritsumei.ac.jp";
-const FROM_NAME = process.env.FROM_NAME || "実験予約システム";
+const SERVICE_NAME = "LabLink";
+const FROM_NAME = process.env.FROM_NAME || "LabLink 実験日程連絡";
 const REPLY_TO = process.env.REPLY_TO || "is0611xi@ed.ritsumei.ac.jp";
 const APP_BASE_URL = process.env.APP_BASE_URL || "";
 const PARTICIPANT_CONFIRM_ENDPOINT_URL = process.env.PARTICIPANT_CONFIRM_ENDPOINT_URL || "";
@@ -123,7 +124,7 @@ function responseLinksTextBlock(links) {
   return [
     "",
     "【ご対応のお願い】",
-    "以下のURLから、日程を確認したことの登録、または変更希望の送信ができます。確認ボタンは押した時点で登録が完了します。",
+    "以下のURLから、日程確認または変更希望の送信ができます。確認リンクは押した時点で登録が完了します。",
     links.confirmUrl ? `この日程で確認しました: ${links.confirmUrl}` : null,
     links.changeUrl ? `変更を希望する: ${links.changeUrl}` : null,
     "",
@@ -136,7 +137,7 @@ function responseLinksHtmlBlock(links) {
   return `
     <div style="margin-top: 20px; padding: 16px; border: 1px solid #bfdbfe; background: #eff6ff; border-radius: 16px;">
       <div style="font-weight: 700; color: #1e3a8a; margin-bottom: 10px;">【ご対応のお願い】</div>
-      <p style="margin: 0 0 14px; color: #1e40af;">以下のボタンから、日程を確認したことの登録、または変更希望の送信ができます。青い確認ボタンは押した時点で登録が完了します。</p>
+      <p style="margin: 0 0 14px; color: #1e40af;">以下のボタンから、日程確認または変更希望の送信ができます。青い確認ボタンは押した時点で登録が完了します。</p>
       <div style="display:flex; flex-wrap:wrap; gap:10px;">
         ${links.confirmUrl ? `<a href="${escapeHtml(links.confirmUrl)}" style="display:inline-block; padding:12px 16px; border-radius:12px; background:#2563eb; color:#ffffff; text-decoration:none; font-weight:700;">この日程で確認しました</a>` : ""}
         ${links.changeUrl ? `<a href="${escapeHtml(links.changeUrl)}" style="display:inline-block; padding:12px 16px; border-radius:12px; background:#ffffff; color:#b91c1c; border:1px solid #fecaca; text-decoration:none; font-weight:600;">変更を希望する</a>` : ""}
@@ -196,14 +197,14 @@ function isLikelyLineLinkCode(code = "") {
 
 function buildUnknownLineMessage() {
   return [
-    "メッセージを確認しましたが、操作内容を判別できませんでした。",
+    "LabLinkです。操作内容を判別できませんでした。",
     "",
     "以下のいずれかを送信してください。",
-    "🗓️予約状況：連携中の申込を確認できます。",
-    "🔄変更希望：確定通知のボタンから変更希望を送れます。",
-    "🔕LINE連携解除：申込ごとにLINE通知を解除できます。",
+    "🗓️ 予約状況：連携中の申込を確認",
+    "🔄 変更希望：変更希望を送信",
+    "🔕 LINE連携解除：通知を停止",
     "",
-    "新しくLINE連携する場合は、予約サイトの申込完了画面に表示された8桁の連携コードを送信してください。",
+    "新しく連携する場合は、申込完了画面の8桁コードを送信してください。",
   ].join("\n");
 }
 
@@ -427,7 +428,7 @@ async function handleLineConfirmPostback({ lineUserId, replyToken, requestId, to
     {
       type: "text",
       text: [
-        "✅ この日程で確認済みとして登録しました。ご対応ありがとうございます。",
+        "✅ LabLinkで確認済みにしました。ありがとうございます。",
         "",
         target.text,
       ].join("\n"),
@@ -467,7 +468,7 @@ async function handleLineStartChangeRequestPostback({ lineUserId, replyToken, re
     {
       type: "text",
       text: [
-        "変更希望を受け付けます。",
+        "LabLinkで変更希望を受け付けます。",
         "",
         `対象日程：${slotToText(assignedSlot)}`,
         "",
@@ -556,7 +557,7 @@ async function handleLineWaitingChangeRequestNote({ lineUserId, replyToken, text
     {
       type: "text",
       text: [
-        "🙋 変更希望を受け付けました。管理者に内容を通知します。",
+        "🙋 変更希望を受け付けました。管理者へ通知します。",
         "",
         target.text,
         "",
@@ -655,12 +656,12 @@ async function getLineLinkedRequests(lineUserId) {
 function buildReservationStatusLines(items = []) {
   if (!items.length) {
     return [
-      "現在、このLINEアカウントに連携されている申込はありません。",
-      "予約サイトで申込後に表示される8桁のLINE連携コードを送信すると、LINE通知を受け取れるようになります。",
+      "現在、LabLinkに連携中の申込はありません。",
+      "申込完了画面の8桁コードを送るとLINE連携できます。",
     ].join("\n");
   }
 
-  return "🗓️ 現在、このLINEアカウントに連携されている申込は以下です。";
+  return "🗓️ LabLinkに連携中の申込です。";
 }
 
 function formatLineShortDate(dateString = "") {
@@ -895,7 +896,7 @@ function buildRequestFlexCarousel(items = [], mode = "status") {
 
   return {
     type: "flex",
-    altText: mode === "change" ? "変更希望を送る申込の選択" : mode === "unlink" ? "LINE連携解除" : "予約状況",
+    altText: mode === "change" ? "LabLink：変更希望" : mode === "unlink" ? "LabLink：LINE連携解除" : "LabLink：予約状況",
     contents: {
       type: "carousel",
       contents: bubbles,
@@ -921,7 +922,7 @@ function buildLineNoticeFlexMessage({ requestData, requestId, token, noticeType 
   const afterParts = getLineSlotParts(afterSlot);
   const beforeParts = beforeSlot ? getLineSlotParts(beforeSlot) : null;
   const isChanged = noticeType === "changed";
-  const title = isChanged ? "日程が変更されました" : "日程が確定しました";
+  const title = isChanged ? "LabLink：日程変更" : "LabLink：日程確定";
   const accentColor = isChanged ? "#2563EB" : "#059669";
   const accentBg = isChanged ? "#EFF6FF" : "#ECFDF5";
   const actions = [];
@@ -1034,13 +1035,13 @@ async function handleLineHelp({ replyToken }) {
     {
       type: "text",
       text: [
-        "実験日程予約LINEで使える機能です。",
+        "LabLinkで使える機能です。",
         "",
-        "🗓️ 予約状況：連携中の申込を確認できます。",
-        "🔄 変更希望：変更希望を送る申込を選べます。",
-        "🔕 LINE連携解除：申込ごとにLINE通知を解除できます。",
+        "🗓️ 予約状況：申込を確認",
+        "🔄 変更希望：変更希望を送信",
+        "🔕 LINE連携解除：通知を停止",
         "",
-        "新しくLINE連携する場合は、予約サイトで申込後に表示される8桁の連携コードを送信してください。",
+        "新しく連携する場合は、申込完了画面の8桁コードを送信してください。",
       ].join("\n"),
     },
   ]);
@@ -1053,7 +1054,7 @@ async function handleLineChangeRequestCommand({ lineUserId, replyToken }) {
     await replyLineMessage(replyToken, [
       {
         type: "text",
-        text: "現在、このLINEアカウントに連携されている申込はありません。予約サイトで申込後に表示される8桁のLINE連携コードを送信してください。",
+        text: "現在、LabLinkに連携中の申込はありません。申込完了画面の8桁コードを送信してください。",
       },
     ]);
     return;
@@ -1066,7 +1067,7 @@ async function handleLineChangeRequestCommand({ lineUserId, replyToken }) {
     await replyLineMessage(replyToken, [
       {
         type: "text",
-        text: "現在、変更希望を送信できる確定済み日程はありません。日程が確定すると、LINE通知から変更希望を送れるようになります。",
+        text: "変更希望を送信できる確定済み日程はありません。日程確定後に送信できます。",
       },
     ]);
     return;
@@ -1075,7 +1076,7 @@ async function handleLineChangeRequestCommand({ lineUserId, replyToken }) {
   await replyLineMessage(replyToken, [
     {
       type: "text",
-      text: "🔄 変更希望を送る申込を選んでください。選択後、このトークに希望内容を送信できます。",
+      text: "🔄 変更希望を送る申込を選んでください。",
     },
     carousel,
   ]);
@@ -1088,7 +1089,7 @@ async function handleLineStartUnlink({ lineUserId, replyToken }) {
     await replyLineMessage(replyToken, [
       {
         type: "text",
-        text: "現在、このLINEアカウントに連携されている申込はありません。",
+        text: "現在、LabLinkに連携中の申込はありません。",
       },
     ]);
     return;
@@ -1099,7 +1100,7 @@ async function handleLineStartUnlink({ lineUserId, replyToken }) {
   await replyLineMessage(replyToken, [
     {
       type: "text",
-      text: "🔕 LINE通知を解除する申込を選んでください。解除しても、メール通知はこれまで通り届きます。",
+      text: "🔕 LINE通知を解除する申込を選んでください。メール通知は継続します。",
     },
     carousel,
   ]);
@@ -1191,7 +1192,7 @@ async function handleLinePrepareUnlinkPostback({ lineUserId, replyToken, request
       type: "text",
       text: [
         "🔕 LINE連携解除の確認です。",
-        "解除すると、この申込に関するLINE通知は届かなくなります。",
+        "解除すると、この申込のLINE通知は止まります。",
         "",
         target.text,
       ].join("\n"),
@@ -1238,7 +1239,7 @@ async function handleLineUnlinkConfirmPostback({ lineUserId, replyToken, request
     {
       type: "text",
       text: [
-        "🔕 LINE連携を解除しました。今後この申込に関するLINE通知は送信されません。",
+        "🔕 LINE連携を解除しました。",
         "メール通知は引き続き届きます。",
         "",
         target.text,
@@ -1264,7 +1265,7 @@ async function sendLineReservationNotice({
   const messages = [
     {
       type: "text",
-      text: body || title || "実験日程に関するお知らせです。",
+      text: body || title || "【LabLink】実験日程のお知らせです。",
     },
   ];
 
@@ -1317,7 +1318,7 @@ async function sendLineReservationNotice({
         altText: title,
         template: {
           type: "buttons",
-          title: "実験日程予約",
+          title: SERVICE_NAME,
           text: "LINE上で回答できます。",
           actions,
         },
@@ -1364,7 +1365,7 @@ exports.notifyAdminOnNewRequest = onDocumentCreated("requests/{requestId}", asyn
     ? preferredSlotIds.map((slotId, index) => `${index + 1}. ${slotToText(slotMap.get(slotId))}`)
     : ["希望枠なし"];
 
-  const subject = `【実験日程予約】新しい申込が届きました（${data.name || "氏名未入力"}）`;
+  const subject = `【LabLink】新しい実験申込が届きました（${data.name || "氏名未入力"}）`;
 
   const text = [
     "新しい申込が届きました。",
@@ -1427,12 +1428,12 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
 
   if (!beforeAssigned && afterAssigned) {
     await upsertParticipantResponseDoc({ token: responseToken, requestId, requestData: after, assignedSlot: afterSlot, resetStatus: true });
-    subject = "【要確認】実験日程が確定しました";
+    subject = "【LabLink】要確認：実験日程が確定しました";
     text = withSignatureText([
       `${recipientName} さん`,
       "",
       "このたびは実験へのご協力ありがとうございます。",
-      "以下の通り、参加日程が確定しましたのでご連絡いたします。",
+      "LabLinkより、参加日程の確定をご連絡します。",
       "",
       `【確定日時】 ${slotToText(afterSlot)}`,
       "",
@@ -1448,7 +1449,7 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
     html = withSignatureHtml(`
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.8; color: #0f172a;">
         <p>${escapeHtml(recipientName)} さん</p>
-        <p>このたびは実験へのご協力ありがとうございます。<br/>以下の通り、参加日程が確定しましたのでご連絡いたします。</p>
+        <p>このたびは実験へのご協力ありがとうございます。<br/>LabLinkより、参加日程の確定をご連絡します。</p>
         <div style="margin: 16px 0; padding: 14px 16px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
           <strong>【確定日時】</strong><br/>
           ${escapeHtml(slotToText(afterSlot))}
@@ -1462,11 +1463,11 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
     `);
   } else if (beforeAssigned && afterAssigned) {
     await upsertParticipantResponseDoc({ token: responseToken, requestId, requestData: after, assignedSlot: afterSlot, resetStatus: true });
-    subject = "【要確認】実験日程が変更されました";
+    subject = "【LabLink】要確認：実験日程が変更されました";
     text = withSignatureText([
       `${recipientName} さん`,
       "",
-      "実験日程について変更がありましたので、ご連絡いたします。",
+      "LabLinkより、実験日程の変更をご連絡します。",
       "以下の内容をご確認ください。",
       "",
       `【変更前】 ${slotToText(beforeSlot)}`,
@@ -1484,7 +1485,7 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
     html = withSignatureHtml(`
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.8; color: #0f172a;">
         <p>${escapeHtml(recipientName)} さん</p>
-        <p>実験日程について変更がありましたので、ご連絡いたします。<br/>以下の内容をご確認ください。</p>
+        <p>LabLinkより、実験日程の変更をご連絡します。<br/>以下の内容をご確認ください。</p>
         <div style="margin: 16px 0; padding: 14px 16px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
           <div><strong>【変更前】</strong> ${escapeHtml(slotToText(beforeSlot))}</div>
           <div style="margin-top: 8px;"><strong>【変更後】</strong> ${escapeHtml(slotToText(afterSlot))}</div>
@@ -1498,11 +1499,11 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
     `);
   } else if (beforeAssigned && !afterAssigned) {
     await upsertParticipantResponseDoc({ token: responseToken, requestId, requestData: after, assignedSlot: null, resetStatus: true });
-    subject = "【要確認】参加日程の再調整について";
+    subject = "【LabLink】要確認：参加日程の再調整について";
     text = withSignatureText([
       `${recipientName} さん`,
       "",
-      "実験日程について再調整が必要となりましたため、ご連絡いたします。",
+      "LabLinkより、実験日程の再調整についてご連絡します。",
       "現在、確定済みだった日程をいったん見直しております。",
       "",
       `【直前の確定日時】 ${slotToText(beforeSlot)}`,
@@ -1514,7 +1515,7 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
     html = withSignatureHtml(`
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.8; color: #0f172a;">
         <p>${escapeHtml(recipientName)} さん</p>
-        <p>実験日程について再調整が必要となりましたため、ご連絡いたします。<br/>現在、確定済みだった日程をいったん見直しております。</p>
+        <p>LabLinkより、実験日程の再調整についてご連絡します。<br/>現在、確定済みだった日程をいったん見直しております。</p>
         <div style="margin: 16px 0; padding: 14px 16px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
           <strong>【直前の確定日時】</strong><br/>
           ${escapeHtml(slotToText(beforeSlot))}
@@ -1539,15 +1540,15 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
 
     if (!beforeAssigned && afterAssigned) {
       noticeType = "assigned";
-      lineBody = `✅ ${recipientName}さんの実験日程が確定しました。詳細は下のカードをご確認ください。`;
+      lineBody = `【LabLink】\n✅ ${recipientName}さんの実験日程が確定しました。`;
     } else if (beforeAssigned && afterAssigned) {
       noticeType = "changed";
-      lineBody = `🔄 ${recipientName}さんの実験日程が変更されました。詳細は下のカードをご確認ください。`;
+      lineBody = `【LabLink】\n🔄 ${recipientName}さんの実験日程が変更されました。`;
     } else if (beforeAssigned && !afterAssigned) {
       noticeType = "unassigned";
       lineBody = [
-        `🔄 ${recipientName}さんの実験日程は再調整中です。`,
-        "新しい日程が決まり次第、あらためてご連絡します。",
+        `【LabLink】\n🔄 ${recipientName}さんの実験日程は再調整中です。`,
+        "新しい日程が決まり次第、ご連絡します。",
       ].join("\n");
     }
 
@@ -1577,7 +1578,7 @@ function renderInvalidParticipantResponsePage() {
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>この申込は無効です</title>
+        <title>LabLink | この申込は無効です</title>
       </head>
       <body style="margin:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;">
         <div style="max-width:720px;margin:0 auto;padding:40px 20px;">
@@ -1671,7 +1672,7 @@ exports.acknowledgeParticipantResponse = onRequest(async (req, res) => {
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>日程確認を受け付けました</title>
+          <title>LabLink | 日程確認を受け付けました</title>
         </head>
         <body style="margin:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;">
           <div style="max-width:720px;margin:0 auto;padding:40px 20px;">
@@ -1749,8 +1750,8 @@ exports.notifyAdminOnParticipantResponse = onDocumentUpdated("participantRespons
   };
 
   const subject = afterStatus === "confirmed"
-    ? `【実験日程予約】参加者が日程を確認しました（${after.name || "氏名未入力"}）`
-    : `【実験日程予約】参加者から変更希望が届きました（${after.name || "氏名未入力"}）`;
+    ? `【LabLink】参加者が日程を確認しました（${after.name || "氏名未入力"}）`
+    : `【LabLink】参加者から変更希望が届きました（${after.name || "氏名未入力"}）`;
 
   const text = [
     afterStatus === "confirmed" ? "参加者が確定日程を確認しました。" : "参加者から変更希望が届きました。",
@@ -1805,7 +1806,7 @@ exports.lineWebhook = onRequest(async (req, res) => {
         await replyLineMessage(replyToken, [
           {
             type: "text",
-            text: "友だち追加ありがとうございます。予約サイトで申込後に表示された8桁のLINE連携コードを送ると、日程確定や変更の案内をLINEでも受け取れるようになります。",
+            text: "友だち追加ありがとうございます。LabLinkです。申込完了画面の8桁コードを送ると、日程案内をLINEでも受け取れます。",
           },
         ]);
         continue;
@@ -1926,7 +1927,7 @@ exports.lineWebhook = onRequest(async (req, res) => {
         await replyLineMessage(replyToken, [
           {
             type: "text",
-            text: "この連携コードは見つかりませんでした。予約サイトで申込後に表示された8桁のコードをもう一度確認して送信してください。",
+            text: "連携コードが見つかりませんでした。申込完了画面の8桁コードを確認してください。",
           },
         ]);
         continue;
@@ -1972,7 +1973,7 @@ exports.lineWebhook = onRequest(async (req, res) => {
       await replyLineMessage(replyToken, [
         {
           type: "text",
-          text: `${requestData.name || "参加者"}さんの実験予約とLINEを連携しました。今後、日程の確定や変更があった場合は、メールに加えてLINEでもお知らせします。`,
+          text: `LabLink連携が完了しました。${requestData.name || "参加者"}さんの日程案内をLINEでもお送りします。`,
         },
       ]);
     }

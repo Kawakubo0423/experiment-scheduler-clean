@@ -1,0 +1,21 @@
+{
+  "name": "LabLink",
+  "short_name": "LabLink",
+  "description": "大学研究の実験日程を確認・予約するためのWebサイトです。",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#10B981",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

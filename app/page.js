@@ -196,6 +196,11 @@ const LINE_ADD_FRIEND_URL =
     ? `https://line.me/R/ti/p/${encodeURIComponent(LINE_OFFICIAL_ACCOUNT_ID)}`
     : "");
 
+const SITE_NAME = "LabLink";
+const SITE_DESCRIPTION = "大学研究の実験日程予約サイト";
+const SITE_TITLE = `${SITE_NAME} | ${SITE_DESCRIPTION}`;
+const SITE_OGP_IMAGE = "/lablink-ogp.png";
+
 const firebaseReady = Object.values(firebaseConfig).every(Boolean);
 
 let firebaseApp;
@@ -987,7 +992,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
 
   const showCopiedFeedback = () => {
     setCopied(true);
-    onToast?.({ tone: "success", message: "連携コードをコピーしました。公式LINEのトーク画面に貼り付けて送信してください。" });
+    onToast?.({ tone: "success", message: "連携コードをコピーしました。LabLink公式LINEのトーク画面に貼り付けて送信してください。" });
     window.setTimeout(() => setCopied(false), 1800);
   };
 
@@ -1048,7 +1053,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
             <div className="min-w-0 flex-1">
               <div className="text-xl font-bold text-slate-900">申込が完了しました</div>
               <p className="mt-2 text-sm leading-7 text-slate-700">
-                日程の確定・変更・確認の案内をLINEでも受け取りたい方は、以下の手順で公式LINEと申込情報を連携してください。
+                日程の確定・変更・確認の案内をLINEでも受け取りたい方は、以下の手順でLabLink公式LINEと申込情報を連携してください。
               </p>
               <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-6 text-emerald-800 sm:text-sm">
                 LINE連携は任意です。連携しない場合でも、これまで通りメールで日程のご連絡をお送りします。
@@ -1064,9 +1069,9 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
                 1
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-lg font-semibold text-slate-900">公式LINEを追加</div>
+                <div className="text-lg font-semibold text-slate-900">LabLink公式LINEを追加</div>
                 <p className="mt-2 text-sm leading-7 text-slate-600">
-                  QRコードを読み取るか、友だち追加ボタンから公式LINEを追加してください。
+                  QRコードを読み取るか、友だち追加ボタンからLabLink公式LINEを追加してください。
                 </p>
               </div>
             </div>
@@ -1076,7 +1081,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
                 <div className="rounded-3xl border border-emerald-200 bg-white p-4 text-center shadow-sm sm:p-5">
                   <img
                     src={LINE_QR_IMAGE_URL}
-                    alt="公式LINE友だち追加用QRコード"
+                    alt="LabLink公式LINE友だち追加用QRコード"
                     className="mx-auto h-36 w-36 rounded-2xl object-contain sm:h-52 sm:w-52"
                   />
                   <div className="mt-3 text-sm font-medium text-emerald-800">QRコードで友だち追加</div>
@@ -1090,7 +1095,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex w-full items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 py-4 shadow-sm transition hover:bg-emerald-50 active:scale-[0.99] sm:w-auto sm:min-w-[260px]"
-                    aria-label="公式LINEを友だち追加する"
+                    aria-label="LabLink公式LINEを友だち追加する"
                   >
                     <img
                       src="https://scdn.line-apps.com/n/line_add_friends/btn/ja.png"
@@ -1110,7 +1115,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
 
                 {!LINE_QR_IMAGE_URL && !LINE_ADD_FRIEND_URL ? (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-amber-900 sm:text-sm">
-                    公式LINEのQRコードまたは友だち追加ボタンがまだ設定されていません。管理者側で
+                    LabLink公式LINEのQRコードまたは友だち追加ボタンがまだ設定されていません。管理者側で
                     <span className="mx-1 font-semibold">NEXT_PUBLIC_LINE_QR_IMAGE_URL</span>
                     または
                     <span className="mx-1 font-semibold">NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_URL</span>
@@ -1129,7 +1134,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
               <div className="min-w-0 flex-1">
                 <div className="text-lg font-semibold text-slate-900">連携コードを送信</div>
                 <p className="mt-2 text-sm leading-7 text-slate-600">
-                  公式LINEを追加したあと、以下の8桁の連携コードをそのまま送信してください。
+                  LabLink公式LINEを追加したあと、以下の8桁の連携コードをそのまま送信してください。
                 </p>
               </div>
             </div>
@@ -1156,7 +1161,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
                 </div>
               </div>
               <p className="mt-3 text-xs leading-6 text-slate-500 sm:text-sm">
-                連携コードをコピーし、公式LINEのトーク画面に貼り付けて送信してください。
+                連携コードをコピーし、LabLink公式LINEのトーク画面に貼り付けて送信してください。
               </p>
             </div>
           </div>
@@ -1830,7 +1835,7 @@ function ParticipantPage({
                     <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-7 text-emerald-900">
                       <div className="font-semibold text-emerald-950">LINE連携コードを発行しました</div>
                       <p className="mt-1">
-                        公式LINEで通知を受け取りたい場合は、申込完了後に表示された案内に従って連携してください。
+                        LabLink公式LINEで通知を受け取りたい場合は、申込完了後に表示された案内に従って連携してください。
                       </p>
                       <button
                         type="button"
@@ -1840,7 +1845,7 @@ function ParticipantPage({
                         <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-[8px] font-black tracking-tight text-[#06C755]">
                           LINE
                         </span>
-                        公式LINEの案内をもう一度見る
+                        LabLink公式LINEの案内をもう一度見る
                       </button>
                     </div>
                   ) : null}
@@ -2338,7 +2343,7 @@ function AdminPage({
                             {request.lineUserId ? (
                               <div className="mt-1 break-all text-xs opacity-70">ID: {request.lineUserId}</div>
                             ) : (
-                              <div className="mt-1 text-xs opacity-70">参加者が公式LINEに連携コードを送ると連携済みになります。</div>
+                              <div className="mt-1 text-xs opacity-70">参加者がLabLink公式LINEに連携コードを送ると連携済みになります。</div>
                             )}
                           </div>
 
@@ -2353,7 +2358,7 @@ function AdminPage({
                               </span>
                             </div>
                             <p className="mt-2 text-xs leading-5 text-slate-500">
-                              参加者がLINE連携できない場合は、このコードを公式LINEに送るよう案内してください。
+                              参加者がLINE連携できない場合は、このコードをLabLink公式LINEに送るよう案内してください。
                             </p>
                           </div>
                         </div>
@@ -2586,7 +2591,51 @@ export default function ExperimentParticipantScheduler() {
   const shouldFocusDetailsRef = useRef(false);
 
   useEffect(() => {
-    document.title = "実験日程予約ページ";
+    document.title = SITE_TITLE;
+
+    const upsertMeta = (attribute, key, content) => {
+      if (!content) return;
+      let element = document.head.querySelector(`meta[${attribute}=\"${key}\"]`);
+      if (!element) {
+        element = document.createElement("meta");
+        element.setAttribute(attribute, key);
+        document.head.appendChild(element);
+      }
+      element.setAttribute("content", content);
+    };
+
+    const upsertLink = (rel, href, attributes = {}) => {
+      if (!href) return;
+      let element = document.head.querySelector(`link[rel=\"${rel}\"][href=\"${href}\"]`);
+      if (!element) {
+        element = document.createElement("link");
+        element.setAttribute("rel", rel);
+        element.setAttribute("href", href);
+        document.head.appendChild(element);
+      }
+      Object.entries(attributes).forEach(([key, value]) => {
+        element.setAttribute(key, value);
+      });
+    };
+
+    upsertMeta("name", "description", `${SITE_NAME}は、大学研究の実験日程を確認・予約するためのWebサイトです。`);
+    upsertMeta("name", "application-name", SITE_NAME);
+    upsertMeta("name", "theme-color", "#10B981");
+    upsertMeta("property", "og:site_name", SITE_NAME);
+    upsertMeta("property", "og:title", SITE_TITLE);
+    upsertMeta("property", "og:description", `${SITE_NAME}は、大学研究の実験日程を確認・予約するためのWebサイトです。`);
+    upsertMeta("property", "og:type", "website");
+    upsertMeta("property", "og:image", SITE_OGP_IMAGE);
+    upsertMeta("name", "twitter:card", "summary_large_image");
+    upsertMeta("name", "twitter:title", SITE_TITLE);
+    upsertMeta("name", "twitter:description", `${SITE_NAME}は、大学研究の実験日程を確認・予約するためのWebサイトです。`);
+    upsertMeta("name", "twitter:image", SITE_OGP_IMAGE);
+
+    upsertLink("icon", "/favicon.ico");
+    upsertLink("icon", "/favicon-32x32.png", { sizes: "32x32", type: "image/png" });
+    upsertLink("icon", "/favicon-16x16.png", { sizes: "16x16", type: "image/png" });
+    upsertLink("apple-touch-icon", "/apple-touch-icon.png", { sizes: "180x180" });
+    upsertLink("manifest", "/site.webmanifest");
   }, []);
 
   useEffect(() => {
