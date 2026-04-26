@@ -151,6 +151,18 @@ function getParticipantConfirmationTone(status) {
   return "amber";
 }
 
+function getLineLinkLabel(request) {
+  if (request?.lineNotifyEnabled && request?.lineUserId) return "LINE連携済み";
+  if (request?.lineUserId) return "LINE通知OFF";
+  return "LINE未連携";
+}
+
+function getLineLinkTone(request) {
+  if (request?.lineNotifyEnabled && request?.lineUserId) return "emerald";
+  if (request?.lineUserId) return "amber";
+  return "slate";
+}
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -2291,9 +2303,39 @@ function AdminPage({
                           <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
                             {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
                           </StatusBadge>
+                          <StatusBadge tone={getLineLinkTone(request)}>
+                            {getLineLinkLabel(request)}
+                          </StatusBadge>
                         </div>
                         <div className="mt-2 text-sm text-slate-500">{request.email}</div>
                         {request.affiliation ? <div className="mt-1 text-sm text-slate-500">{request.affiliation}</div> : null}
+                        <div className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600 sm:text-sm">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#06C755] text-[9px] font-bold tracking-wide text-white">
+                            LINE
+                          </span>
+                          {request.lineNotifyEnabled && request.lineUserId ? (
+                            <span>
+                              LINE通知：
+                              <span className="font-semibold text-emerald-700">連携済み</span>
+                              {request.lineDisplayName ? (
+                                <span className="ml-1 text-slate-500">（{request.lineDisplayName}）</span>
+                              ) : null}
+                            </span>
+                          ) : request.lineUserId ? (
+                            <span>
+                              LINE通知：
+                              <span className="font-semibold text-amber-700">通知OFF</span>
+                              {request.lineDisplayName ? (
+                                <span className="ml-1 text-slate-500">（{request.lineDisplayName}）</span>
+                              ) : null}
+                            </span>
+                          ) : (
+                            <span>
+                              LINE通知：
+                              <span className="font-semibold text-slate-600">未連携</span>
+                            </span>
+                          )}
+                        </div>
                         {request.note ? <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">{request.note}</div> : null}
                         {request.participantResponseNote ? (
                           <div
