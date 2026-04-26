@@ -200,8 +200,8 @@ function buildUnknownLineMessage() {
     "",
     "以下のいずれかを送信してください。",
     "🗓️予約状況：連携中の申込を確認できます。",
-    "🙋変更希望：確定通知のボタンから変更希望を送れます。",
-    "🔓LINE連携解除：申込ごとにLINE通知を解除できます。",
+    "🔄変更希望：確定通知のボタンから変更希望を送れます。",
+    "🔕LINE連携解除：申込ごとにLINE通知を解除できます。",
     "",
     "新しくLINE連携する場合は、予約サイトの申込完了画面に表示された8桁の連携コードを送信してください。",
   ].join("\n");
@@ -307,7 +307,7 @@ async function markParticipantResponseInvalid(token) {
   }, { merge: true });
 }
 
-async function getValidLineLinkedRequest({ requestId, token, lineUserId }) {
+async function getValidLineLinkedRequest({ requestId, token, lineUserId, requireResponse = true }) {
   if (!requestId || !token || !lineUserId) {
     return { ok: false, reason: "missing" };
   }
@@ -338,7 +338,11 @@ async function getValidLineLinkedRequest({ requestId, token, lineUserId }) {
   const responseSnap = await responseRef.get();
 
   if (!responseSnap.exists) {
-    return { ok: false, reason: "response_not_found" };
+    if (requireResponse) {
+      return { ok: false, reason: "response_not_found" };
+    }
+
+    return { ok: true, requestRef, requestData, responseRef, responseData: {} };
   }
 
   const responseData = responseSnap.data() || {};
@@ -359,11 +363,45 @@ function lineInvalidRequestMessage(reason = "") {
     return "この操作は、別のLINEアカウントに連携されている申込には使用できません。心当たりがない場合は、実験担当者へメールでお問い合わせください。";
   }
 
+  if (reason === "line_not_linked") {
+    return "この申込は現在LINE連携されていません。すでに解除済みの可能性があります。";
+  }
+
   if (reason === "deleted" || reason === "invalid") {
     return "この申込はすでに無効になっています。確認や変更希望は登録されません。あらためて参加を希望する場合は、予約サイトから再度お申し込みください。";
   }
 
   return "この申込を確認できませんでした。古いLINE通知の可能性があります。最新の案内をご確認いただくか、実験担当者へメールでお問い合わせください。";
+}
+
+function getAssignedSlotFromLineValid(valid = {}) {
+  const responseData = valid.responseData || {};
+
+  if (!responseData.assignedSlotId && !responseData.assignedDate && !responseData.assignedPeriodKey) {
+    return null;
+  }
+
+  return {
+    id: responseData.assignedSlotId || "",
+    date: responseData.assignedDate || "",
+    periodKey: responseData.assignedPeriodKey || "",
+    location: responseData.assignedLocation || "",
+    note: responseData.assignedNote || "",
+  };
+}
+
+function getLineTargetText(valid = {}) {
+  const requestData = valid.requestData || {};
+  const name = requestData.name || "参加者";
+  const assignedSlot = getAssignedSlotFromLineValid(valid);
+  const slotText = assignedSlot ? slotToText(assignedSlot) : "未確定（まだ日程は確定していません）";
+
+  return {
+    name,
+    slotText,
+    text: `対象：${name}さん
+日程：${slotText}`,
+  };
 }
 
 async function handleLineConfirmPostback({ lineUserId, replyToken, requestId, token }) {
@@ -383,10 +421,16 @@ async function handleLineConfirmPostback({ lineUserId, replyToken, requestId, to
 
   await db.collection("lineSessions").doc(lineUserId).delete().catch(() => {});
 
+  const target = getLineTargetText(valid);
+
   await replyLineMessage(replyToken, [
     {
       type: "text",
-      text: "この日程で確認済みとして登録しました。ご対応ありがとうございます。",
+      text: [
+        "✅ この日程で確認済みとして登録しました。ご対応ありがとうございます。",
+        "",
+        target.text,
+      ].join("\n"),
     },
   ]);
 }
@@ -506,12 +550,15 @@ async function handleLineWaitingChangeRequestNote({ lineUserId, replyToken, text
 
   await sessionRef.delete().catch(() => {});
 
+  const target = getLineTargetText(valid);
+
   await replyLineMessage(replyToken, [
     {
       type: "text",
       text: [
-        "変更希望を受け付けました。",
-        "管理者に内容を通知します。",
+        "🙋 変更希望を受け付けました。管理者に内容を通知します。",
+        "",
+        target.text,
         "",
         "【送信内容】",
         note,
@@ -722,12 +769,12 @@ function buildRequestFlexBubble(item, mode = "status") {
 
   if (mode === "unlink") {
     actions.push(buildLineFlexButton({
-      label: "この連携を解除",
-      action: "unlink_confirm",
+      label: "解除内容を確認",
+      action: "unlink_start",
       requestId: item.id,
       token,
       style: "primary",
-      displayText: "この申込のLINE連携を解除します",
+      displayText: "この申込のLINE連携解除を確認します",
     }));
   } else if (mode === "change") {
     if (data.assignedSlotId && token) {
@@ -757,11 +804,11 @@ function buildRequestFlexBubble(item, mode = "status") {
 
     actions.push(buildLineFlexButton({
       label: "LINE連携解除",
-      action: "unlink_confirm",
+      action: "unlink_start",
       requestId: item.id,
       token,
       style: "link",
-      displayText: "この申込のLINE連携を解除します",
+      displayText: "この申込のLINE連携解除を確認します",
     }));
   }
 
@@ -990,7 +1037,7 @@ async function handleLineHelp({ replyToken }) {
         "実験日程予約LINEで使える機能です。",
         "",
         "🗓️ 予約状況：連携中の申込を確認できます。",
-        "🙋 変更希望：変更希望を送る申込を選べます。",
+        "🔄 変更希望：変更希望を送る申込を選べます。",
         "🔕 LINE連携解除：申込ごとにLINE通知を解除できます。",
         "",
         "新しくLINE連携する場合は、予約サイトで申込後に表示される8桁の連携コードを送信してください。",
@@ -1028,7 +1075,7 @@ async function handleLineChangeRequestCommand({ lineUserId, replyToken }) {
   await replyLineMessage(replyToken, [
     {
       type: "text",
-      text: "🙋 変更希望を送る申込を選んでください。選択後、このトークに希望内容を送信できます。",
+      text: "🔄 変更希望を送る申込を選んでください。選択後、このトークに希望内容を送信できます。",
     },
     carousel,
   ]);
@@ -1058,8 +1105,112 @@ async function handleLineStartUnlink({ lineUserId, replyToken }) {
   ]);
 }
 
+function buildLineUnlinkConfirmMessage({ valid, requestId, token }) {
+  const target = getLineTargetText(valid);
+
+  return {
+    type: "flex",
+    altText: "LINE連携解除の確認",
+    contents: {
+      type: "bubble",
+      size: "mega",
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: [
+          {
+            type: "text",
+            text: "LINE連携解除の確認",
+            weight: "bold",
+            size: "lg",
+            color: "#0F172A",
+            wrap: true,
+          },
+          {
+            type: "text",
+            text: "以下の申込について、LINE通知を停止します。メール通知は引き続き届きます。",
+            size: "sm",
+            color: "#475569",
+            wrap: true,
+          },
+          {
+            type: "separator",
+            margin: "md",
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "sm",
+            contents: [
+              buildFlexInfoRow("対象", `${target.name}さん`),
+              buildFlexInfoRow("日程", target.slotText),
+            ],
+          },
+        ],
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        spacing: "sm",
+        contents: [
+          buildLineFlexButton({
+            label: "解除する",
+            action: "unlink_confirm",
+            requestId,
+            token,
+            style: "primary",
+            displayText: "LINE連携を解除します",
+          }),
+          buildLineFlexButton({
+            label: "やめる",
+            action: "unlink_cancel",
+            requestId,
+            token,
+            style: "secondary",
+            displayText: "LINE連携解除をやめます",
+          }),
+        ],
+      },
+    },
+  };
+}
+
+async function handleLinePrepareUnlinkPostback({ lineUserId, replyToken, requestId, token }) {
+  const valid = await getValidLineLinkedRequest({ requestId, token, lineUserId, requireResponse: false });
+
+  if (!valid.ok) {
+    await replyLineMessage(replyToken, [{ type: "text", text: lineInvalidRequestMessage(valid.reason) }]);
+    return;
+  }
+
+  const target = getLineTargetText(valid);
+
+  await replyLineMessage(replyToken, [
+    {
+      type: "text",
+      text: [
+        "🔕 LINE連携解除の確認です。",
+        "解除すると、この申込に関するLINE通知は届かなくなります。",
+        "",
+        target.text,
+      ].join("\n"),
+    },
+    buildLineUnlinkConfirmMessage({ valid, requestId, token }),
+  ]);
+}
+
+async function handleLineUnlinkCancelPostback({ replyToken }) {
+  await replyLineMessage(replyToken, [
+    {
+      type: "text",
+      text: "LINE連携解除をキャンセルしました。",
+    },
+  ]);
+}
+
 async function handleLineUnlinkConfirmPostback({ lineUserId, replyToken, requestId, token }) {
-  const valid = await getValidLineLinkedRequest({ requestId, token, lineUserId });
+  const valid = await getValidLineLinkedRequest({ requestId, token, lineUserId, requireResponse: false });
 
   if (!valid.ok) {
     await replyLineMessage(replyToken, [{ type: "text", text: lineInvalidRequestMessage(valid.reason) }]);
@@ -1081,10 +1232,17 @@ async function handleLineUnlinkConfirmPostback({ lineUserId, replyToken, request
 
   await db.collection("lineSessions").doc(lineUserId).delete().catch(() => {});
 
+  const target = getLineTargetText(valid);
+
   await replyLineMessage(replyToken, [
     {
       type: "text",
-      text: "この申込のLINE連携を解除しました。今後この申込に関するLINE通知は送信されません。メール通知は引き続き届きます。",
+      text: [
+        "🔕 LINE連携を解除しました。今後この申込に関するLINE通知は送信されません。",
+        "メール通知は引き続き届きます。",
+        "",
+        target.text,
+      ].join("\n"),
     },
   ]);
 }
@@ -1682,7 +1840,16 @@ exports.lineWebhook = onRequest(async (req, res) => {
         }
 
         if (action === "unlink_start") {
-          await handleLineStartUnlink({ lineUserId, replyToken });
+          if (requestId && token) {
+            await handleLinePrepareUnlinkPostback({ lineUserId, replyToken, requestId, token });
+          } else {
+            await handleLineStartUnlink({ lineUserId, replyToken });
+          }
+          continue;
+        }
+
+        if (action === "unlink_cancel") {
+          await handleLineUnlinkCancelPostback({ replyToken });
           continue;
         }
 
