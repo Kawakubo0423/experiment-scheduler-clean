@@ -151,6 +151,28 @@ function getParticipantConfirmationTone(status) {
   return "amber";
 }
 
+function getLineLinkLabel(request = {}) {
+  if (request.lineNotifyEnabled === true && request.lineUserId) return "LINE連携済み";
+  if (request.lineUserId && request.lineNotifyEnabled === false) return "LINE通知OFF";
+  return "LINE未連携";
+}
+
+function getLineLinkTone(request = {}) {
+  if (request.lineNotifyEnabled === true && request.lineUserId) return "emerald";
+  if (request.lineUserId && request.lineNotifyEnabled === false) return "amber";
+  return "slate";
+}
+
+function getLineLinkDetail(request = {}) {
+  if (request.lineNotifyEnabled === true && request.lineUserId) {
+    return request.lineDisplayName ? `連携済み（${request.lineDisplayName}）` : "連携済み";
+  }
+  if (request.lineUserId && request.lineNotifyEnabled === false) {
+    return request.lineDisplayName ? `通知OFF（${request.lineDisplayName}）` : "通知OFF";
+  }
+  return "未連携";
+}
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -2276,6 +2298,7 @@ function AdminPage({
                 {filteredRequests.map((request) => {
                 const preferredSlots = sortedSlots.filter((slot) => (request.preferredSlotIds || []).includes(slot.id));
                 const assignedSlot = sortedSlots.find((slot) => slot.id === request.assignedSlotId);
+                const lineLinkCode = request.lineLinkCode || "未発行";
                 return (
                   <div
                     key={request.id}
@@ -2296,9 +2319,45 @@ function AdminPage({
                           <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
                             {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
                           </StatusBadge>
+                          <StatusBadge tone={getLineLinkTone(request)}>
+                            {getLineLinkLabel(request)}
+                          </StatusBadge>
                         </div>
                         <div className="mt-2 text-sm text-slate-500">{request.email}</div>
                         {request.affiliation ? <div className="mt-1 text-sm text-slate-500">{request.affiliation}</div> : null}
+
+                        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                          <div className={classNames(
+                            "rounded-2xl border px-4 py-3 text-sm",
+                            request.lineNotifyEnabled === true && request.lineUserId
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                              : "border-slate-200 bg-slate-50 text-slate-700"
+                          )}>
+                            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">LINE通知</div>
+                            <div className="mt-1 font-medium">{getLineLinkDetail(request)}</div>
+                            {request.lineUserId ? (
+                              <div className="mt-1 break-all text-xs opacity-70">ID: {request.lineUserId}</div>
+                            ) : (
+                              <div className="mt-1 text-xs opacity-70">参加者が公式LINEに連携コードを送ると連携済みになります。</div>
+                            )}
+                          </div>
+
+                          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">LINE連携コード</div>
+                                <div className="mt-1 font-mono text-lg font-bold tracking-[0.16em] text-slate-900">{lineLinkCode}</div>
+                              </div>
+                              <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+                                参加者送信用
+                              </span>
+                            </div>
+                            <p className="mt-2 text-xs leading-5 text-slate-500">
+                              参加者がLINE連携できない場合は、このコードを公式LINEに送るよう案内してください。
+                            </p>
+                          </div>
+                        </div>
+
                         {request.note ? <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">{request.note}</div> : null}
                         {request.participantResponseNote ? (
                           <div
@@ -2795,6 +2854,9 @@ export default function ExperimentParticipantScheduler() {
           request.affiliation,
           request.note,
           request.participantResponseNote,
+          request.lineLinkCode,
+          request.lineDisplayName,
+          request.lineUserId,
         ].join(" ").toLowerCase();
         return text.includes(keyword);
       })
