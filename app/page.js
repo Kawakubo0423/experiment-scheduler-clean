@@ -1136,9 +1136,9 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
 
             <div className="mt-5 rounded-3xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-5">
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 sm:p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <div className="min-w-0 flex-1 rounded-2xl bg-white/60 px-3 py-4 text-center text-[2rem] font-bold tracking-[0.14em] text-emerald-800 sm:px-4 sm:text-5xl sm:tracking-[0.18em]">
-                    {lineLinkInfo.code}
+                <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                  <div className="min-w-0 flex-1 rounded-2xl bg-white/60 px-3 py-4 text-center text-[2rem] font-bold tracking-[0.14em] text-emerald-800 md:px-4 md:text-[2.35rem] md:tracking-[0.12em] lg:text-[2.55rem] lg:tracking-[0.14em]">
+                    <span className="whitespace-nowrap">{lineLinkInfo.code}</span>
                   </div>
                   <button
                     type="button"
@@ -1146,7 +1146,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
                     title="連携コードをコピー"
                     aria-label="連携コードをコピー"
                     className={classNames(
-                      "inline-flex h-14 w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold text-white shadow-sm transition sm:h-16 sm:w-auto sm:min-w-[120px]",
+                      "inline-flex h-14 w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold text-white shadow-sm transition md:h-16 md:w-auto md:min-w-[128px]",
                       copied ? "bg-emerald-700" : "bg-emerald-600 hover:bg-emerald-500"
                     )}
                   >
@@ -3074,7 +3074,7 @@ export default function ExperimentParticipantScheduler() {
       });
       setLastLineLinkInfo({ code: lineLinkCode });
       setLineGuideOpen(true);
-      setMessage("希望日時を送信しました。日程の確定や変更については、登録したメールアドレス宛に連絡します。通常の受信箱だけでなく迷惑メールにも入る場合があるため、受信箱と迷惑メールの両方を必ず確認してください。LINE通知を希望する場合は、表示された案内に従って公式LINEと連携してください。");
+      //setMessage("日時を送信しました。日程の確定や変更については、登録したメールアドレス宛に連絡します。通常の受信箱だけでなく迷惑メールにも入る場合があるため、受信箱と迷惑メールの両方を必ず確認してください。LINE通知を希望する場合は、表示された案内に従って公式LINEと連携してください。");
       showToast("希望日時を送信しました。", "success");
     } catch (error) {
       console.error(error);
