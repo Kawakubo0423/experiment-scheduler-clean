@@ -151,18 +151,6 @@ function getParticipantConfirmationTone(status) {
   return "amber";
 }
 
-function getLineLinkLabel(request) {
-  if (request?.lineNotifyEnabled && request?.lineUserId) return "LINE連携済み";
-  if (request?.lineUserId) return "LINE通知OFF";
-  return "LINE未連携";
-}
-
-function getLineLinkTone(request) {
-  if (request?.lineNotifyEnabled && request?.lineUserId) return "emerald";
-  if (request?.lineUserId) return "amber";
-  return "slate";
-}
-
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -509,9 +497,10 @@ function PencilIcon() {
 
 function ModalShell({ title, onClose, children }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-6">
       <button className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} aria-label="閉じる" />
-      <div className="relative z-10 max-h-[90vh] w-full max-w-2xl overflow-auto rounded-[32px] border border-white/70 bg-white p-6 shadow-2xl sm:p-8">
+      <div className="relative z-10 w-full max-w-2xl overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-2xl sm:rounded-[32px]">
+        <div className="max-h-[82dvh] overflow-y-auto p-5 sm:max-h-[88vh] sm:p-8">
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">HELP</div>
@@ -520,6 +509,7 @@ function ModalShell({ title, onClose, children }) {
           <IconButton onClick={onClose} aria-label="閉じる">×</IconButton>
         </div>
         {children}
+        </div>
       </div>
     </div>
   );
@@ -755,7 +745,7 @@ function ActionToast({ toast, onClose }) {
   };
 
   return (
-    <div className="fixed bottom-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2">
+    <div className="fixed left-1/2 top-4 z-[60] w-[calc(100%-1.5rem)] max-w-md -translate-x-1/2 sm:top-6">
       <div className={classNames("rounded-2xl border px-4 py-3 text-sm shadow-lg", styles[toast.tone] || styles.info)}>
         <div className="flex items-start justify-between gap-3">
           <div>{toast.message}</div>
@@ -1065,7 +1055,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
                   <img
                     src={LINE_QR_IMAGE_URL}
                     alt="公式LINE友だち追加用QRコード"
-                    className="mx-auto h-44 w-44 rounded-2xl object-contain sm:h-52 sm:w-52"
+                    className="mx-auto h-36 w-36 rounded-2xl object-contain sm:h-52 sm:w-52"
                   />
                   <div className="mt-3 text-sm font-medium text-emerald-800">QRコードで友だち追加</div>
                 </div>
@@ -1077,13 +1067,13 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
                     href={LINE_ADD_FRIEND_URL}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex w-full max-w-sm items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 py-4 shadow-sm transition hover:bg-emerald-50 active:scale-[0.99] sm:w-auto sm:min-w-[260px]"
+                    className="inline-flex w-full items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 py-4 shadow-sm transition hover:bg-emerald-50 active:scale-[0.99] sm:w-auto sm:min-w-[260px]"
                     aria-label="公式LINEを友だち追加する"
                   >
                     <img
                       src="https://scdn.line-apps.com/n/line_add_friends/btn/ja.png"
                       alt="友だち追加"
-                      className="h-10 w-auto"
+                      className="h-11 w-auto sm:h-12"
                     />
                   </a>
                 ) : null}
@@ -1123,22 +1113,25 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
             </div>
 
             <div className="mt-5 rounded-3xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-5">
-              <div className="flex items-stretch gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-2 sm:gap-3 sm:p-3">
-                <div className="min-w-0 flex-1 px-2 py-3 text-center text-3xl font-bold tracking-[0.18em] text-emerald-800 sm:px-4 sm:text-5xl">
-                  {lineLinkInfo.code}
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 sm:p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="min-w-0 flex-1 rounded-2xl bg-white/60 px-3 py-4 text-center text-[2rem] font-bold tracking-[0.14em] text-emerald-800 sm:px-4 sm:text-5xl sm:tracking-[0.18em]">
+                    {lineLinkInfo.code}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyCode}
+                    title="連携コードをコピー"
+                    aria-label="連携コードをコピー"
+                    className={classNames(
+                      "inline-flex h-14 w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold text-white shadow-sm transition sm:h-16 sm:w-auto sm:min-w-[120px]",
+                      copied ? "bg-emerald-700" : "bg-emerald-600 hover:bg-emerald-500"
+                    )}
+                  >
+                    <CopyIcon />
+                    <span>{copied ? "コピー済み" : "コピー"}</span>
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleCopyCode}
-                  title="連携コードをコピー"
-                  aria-label="連携コードをコピー"
-                  className={classNames(
-                    "flex w-14 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm transition sm:w-16",
-                    copied ? "bg-emerald-700" : "bg-emerald-600 hover:bg-emerald-500"
-                  )}
-                >
-                  <CopyIcon />
-                </button>
               </div>
               <p className="mt-3 text-xs leading-6 text-slate-500 sm:text-sm">
                 連携コードをコピーし、公式LINEのトーク画面に貼り付けて送信してください。
@@ -2303,39 +2296,9 @@ function AdminPage({
                           <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
                             {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
                           </StatusBadge>
-                          <StatusBadge tone={getLineLinkTone(request)}>
-                            {getLineLinkLabel(request)}
-                          </StatusBadge>
                         </div>
                         <div className="mt-2 text-sm text-slate-500">{request.email}</div>
                         {request.affiliation ? <div className="mt-1 text-sm text-slate-500">{request.affiliation}</div> : null}
-                        <div className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600 sm:text-sm">
-                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#06C755] text-[9px] font-bold tracking-wide text-white">
-                            LINE
-                          </span>
-                          {request.lineNotifyEnabled && request.lineUserId ? (
-                            <span>
-                              LINE通知：
-                              <span className="font-semibold text-emerald-700">連携済み</span>
-                              {request.lineDisplayName ? (
-                                <span className="ml-1 text-slate-500">（{request.lineDisplayName}）</span>
-                              ) : null}
-                            </span>
-                          ) : request.lineUserId ? (
-                            <span>
-                              LINE通知：
-                              <span className="font-semibold text-amber-700">通知OFF</span>
-                              {request.lineDisplayName ? (
-                                <span className="ml-1 text-slate-500">（{request.lineDisplayName}）</span>
-                              ) : null}
-                            </span>
-                          ) : (
-                            <span>
-                              LINE通知：
-                              <span className="font-semibold text-slate-600">未連携</span>
-                            </span>
-                          )}
-                        </div>
                         {request.note ? <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">{request.note}</div> : null}
                         {request.participantResponseNote ? (
                           <div
