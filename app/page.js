@@ -40,10 +40,12 @@ const PERIODS = [
 const PERIOD_MAP = Object.fromEntries(PERIODS.map((period) => [period.key, period]));
 const WEEK_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 const MAX_PREFERRED_SLOTS = 5;
+const DEFAULT_STUDY_ID = "vr-notification-2026";
 
 const SAMPLE_SLOTS = [
   {
     id: "sample-slot-1",
+    studyId: DEFAULT_STUDY_ID,
     date: "2026-04-21",
     periodKey: "p3",
     capacity: 2,
@@ -54,6 +56,7 @@ const SAMPLE_SLOTS = [
   },
   {
     id: "sample-slot-2",
+    studyId: DEFAULT_STUDY_ID,
     date: "2026-04-21",
     periodKey: "p4",
     capacity: 2,
@@ -64,6 +67,7 @@ const SAMPLE_SLOTS = [
   },
   {
     id: "sample-slot-3",
+    studyId: DEFAULT_STUDY_ID,
     date: "2026-04-24",
     periodKey: "p3",
     capacity: 3,
@@ -77,6 +81,7 @@ const SAMPLE_SLOTS = [
 const SAMPLE_REQUESTS = [
   {
     id: "sample-request-1",
+    studyId: DEFAULT_STUDY_ID,
     name: "山田 太郎",
     email: "taro@example.com",
     affiliation: "情報理工学部 B3",
@@ -87,6 +92,24 @@ const SAMPLE_REQUESTS = [
     participantResponseToken: "sample-response-token-1",
     participantConfirmationStatus: "pending",
     participantResponseNote: "",
+  },
+];
+
+const SAMPLE_STUDIES = [
+  {
+    id: DEFAULT_STUDY_ID,
+    title: "VR通知配置に関する実験",
+    description:
+      "VR空間における通知の表示位置が、気づきやすさや作業への影響に与える効果を調査する実験です。",
+    duration: "約60分",
+    reward: "謝礼あり",
+    organization: "立命館大学",
+    location: "立命館大学 OIC",
+    managerName: "川久保 空真",
+    contactEmail: "is0611xi@ed.ritsumei.ac.jp",
+    notes: "参加条件や注意事項をご確認のうえ、お申し込みください。",
+    isPublished: true,
+    status: "recruiting",
   },
 ];
 
@@ -110,9 +133,175 @@ function normalizeExperimentInfo(raw = {}) {
     duration: raw.duration ?? DEFAULT_EXPERIMENT_INFO.duration,
     reward: raw.reward ?? DEFAULT_EXPERIMENT_INFO.reward,
     organization: raw.organization ?? DEFAULT_EXPERIMENT_INFO.organization,
+    location: raw.location ?? "",
     managerName: raw.managerName ?? DEFAULT_EXPERIMENT_INFO.managerName,
     contactEmail: raw.contactEmail ?? DEFAULT_EXPERIMENT_INFO.contactEmail,
     notes: raw.notes ?? DEFAULT_EXPERIMENT_INFO.notes,
+  };
+}
+
+function normalizeStudyInfo(raw = {}, id = DEFAULT_STUDY_ID) {
+  return {
+    id,
+    title: raw.title ?? DEFAULT_EXPERIMENT_INFO.title,
+    description: raw.description ?? DEFAULT_EXPERIMENT_INFO.description,
+    duration: raw.duration ?? DEFAULT_EXPERIMENT_INFO.duration,
+    reward: raw.reward ?? DEFAULT_EXPERIMENT_INFO.reward,
+    organization: raw.organization ?? DEFAULT_EXPERIMENT_INFO.organization,
+    location: raw.location ?? "",
+    managerName: raw.managerName ?? DEFAULT_EXPERIMENT_INFO.managerName,
+    contactEmail: raw.contactEmail ?? DEFAULT_EXPERIMENT_INFO.contactEmail,
+    notes: raw.notes ?? DEFAULT_EXPERIMENT_INFO.notes,
+    isPublished: raw.isPublished === true,
+    status: raw.status ?? "recruiting",
+    ownerEmail: raw.ownerEmail ?? "",
+    adminEmails: Array.isArray(raw.adminEmails) ? raw.adminEmails : [],
+    createdAt: raw.createdAt ?? null,
+    updatedAt: raw.updatedAt ?? null,
+  };
+}
+
+function studyToExperimentInfo(study, fallback = DEFAULT_EXPERIMENT_INFO) {
+  const safeStudy = study ? normalizeStudyInfo(study, study.id || DEFAULT_STUDY_ID) : null;
+
+  if (!safeStudy) {
+    return normalizeExperimentInfo(fallback);
+  }
+
+  return normalizeExperimentInfo({
+    title: safeStudy.title || fallback.title,
+    description: safeStudy.description || fallback.description,
+    duration: safeStudy.duration || fallback.duration,
+    reward: safeStudy.reward || fallback.reward,
+    organization: safeStudy.organization || fallback.organization,
+    location: safeStudy.location || fallback.location || "",
+    managerName: safeStudy.managerName || fallback.managerName,
+    contactEmail: safeStudy.contactEmail || fallback.contactEmail,
+    notes: safeStudy.notes || fallback.notes,
+  });
+}
+
+function getStudyStatusLabel(status) {
+  if (status === "draft") return "準備中";
+  if (status === "paused") return "一時停止中";
+  if (status === "closed") return "募集終了";
+  return "募集中";
+}
+
+function getStudyStatusTone(status) {
+  if (status === "draft") return "slate";
+  if (status === "paused") return "amber";
+  if (status === "closed") return "slate";
+  return "emerald";
+}
+
+function buildStudyFormFromStudy(study = {}, adminEmail = "") {
+  const safeStudy = normalizeStudyInfo(study, study.id || DEFAULT_STUDY_ID);
+  const adminEmails = safeStudy.adminEmails.length > 0 ? safeStudy.adminEmails : [adminEmail].filter(Boolean);
+
+  return {
+    studyId: safeStudy.id || "",
+    title: safeStudy.title || "",
+    description: safeStudy.description || "",
+    duration: safeStudy.duration || "",
+    reward: safeStudy.reward || "",
+    organization: safeStudy.organization || "",
+    location: safeStudy.location || "",
+    managerName: safeStudy.managerName || "",
+    contactEmail: safeStudy.contactEmail || "",
+    notes: safeStudy.notes || "",
+    ownerEmail: safeStudy.ownerEmail || adminEmail || "",
+    adminEmailsText: adminEmails.join("\n"),
+    isPublished: safeStudy.isPublished === true,
+    status: safeStudy.status || "recruiting",
+  };
+}
+
+function buildStudyFormFromExperimentInfo(experimentInfo = DEFAULT_EXPERIMENT_INFO, adminEmail = "") {
+  return {
+    studyId: DEFAULT_STUDY_ID,
+    title: experimentInfo.title || DEFAULT_EXPERIMENT_INFO.title,
+    description: experimentInfo.description || DEFAULT_EXPERIMENT_INFO.description,
+    duration: experimentInfo.duration || DEFAULT_EXPERIMENT_INFO.duration,
+    reward: experimentInfo.reward || DEFAULT_EXPERIMENT_INFO.reward,
+    organization: experimentInfo.organization || DEFAULT_EXPERIMENT_INFO.organization,
+    location: "立命館大学 OIC",
+    managerName: experimentInfo.managerName || DEFAULT_EXPERIMENT_INFO.managerName,
+    contactEmail: experimentInfo.contactEmail || DEFAULT_EXPERIMENT_INFO.contactEmail,
+    notes: experimentInfo.notes || DEFAULT_EXPERIMENT_INFO.notes,
+    ownerEmail: adminEmail || "",
+    adminEmailsText: adminEmail || "",
+    isPublished: true,
+    status: "recruiting",
+  };
+}
+
+function normalizeStudyId(value = "") {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function createAutoStudyId() {
+  const now = new Date();
+  const timestamp = now
+    .toISOString()
+    .replace(/[-:TZ.]/g, "")
+    .slice(0, 14);
+  const random = Math.random().toString(36).slice(2, 8);
+  return `study-${timestamp}-${random}`;
+}
+
+function getRecordStudyId(item = {}) {
+  return normalizeStudyId(item?.studyId || "") || DEFAULT_STUDY_ID;
+}
+
+function isRecordInStudy(item = {}, studyId = DEFAULT_STUDY_ID) {
+  const targetStudyId = normalizeStudyId(studyId || "") || DEFAULT_STUDY_ID;
+  return getRecordStudyId(item) === targetStudyId;
+}
+
+function withStudyId(item = {}, fallbackStudyId = DEFAULT_STUDY_ID) {
+  return {
+    ...item,
+    studyId: getRecordStudyId({ ...item, studyId: item?.studyId || fallbackStudyId }),
+  };
+}
+
+function parseAdminEmails(text = "", fallbackEmail = "") {
+  const emails = text
+    .split(/[\n,]/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (fallbackEmail && !emails.includes(fallbackEmail.toLowerCase())) {
+    emails.unshift(fallbackEmail.toLowerCase());
+  }
+
+  return Array.from(new Set(emails));
+}
+
+function buildStudyPayloadFromForm(form, adminEmail = "") {
+  const ownerEmail = (form.ownerEmail || adminEmail || "").trim().toLowerCase();
+  const adminEmails = parseAdminEmails(form.adminEmailsText, ownerEmail || adminEmail);
+
+  return {
+    title: form.title.trim(),
+    description: form.description.trim(),
+    duration: form.duration.trim(),
+    reward: form.reward.trim(),
+    organization: form.organization.trim(),
+    location: form.location.trim(),
+    managerName: form.managerName.trim(),
+    contactEmail: form.contactEmail.trim(),
+    notes: form.notes || "",
+    ownerEmail,
+    adminEmails,
+    isPublished: form.isPublished === true,
+    status: form.status || "recruiting",
   };
 }
 
@@ -123,6 +312,7 @@ function buildParticipantResponseUrl(token, action = "confirm") {
   url.searchParams.set("token", token);
   url.searchParams.set("action", action);
   url.searchParams.delete("request");
+  url.searchParams.delete("study");
   return url.toString();
 }
 
@@ -455,6 +645,7 @@ function LabLinkMark({ size = "md", className = "" }) {
     sm: "h-10 w-10 rounded-2xl",
     md: "h-12 w-12 rounded-[20px]",
     lg: "h-16 w-16 rounded-[24px]",
+    xl: "h-32 w-32 rounded-[34px] sm:h-40 sm:w-40 sm:rounded-[42px]",
   }[size] || "h-12 w-12 rounded-[20px]";
 
   return (
@@ -499,11 +690,35 @@ function LabLinkBrand({ subtitle = BRAND_TAGLINE, compact = false, className = "
   );
 }
 
-function PublicSiteHeader({ onOpenHelp, onOpenAdmin }) {
+function PublicSiteHeader({ onOpenHelp, onOpenAdmin, onOpenHome, onOpenReservation, activePage = "reservation" }) {
+  const navItems = [
+    { key: "home", label: "トップ", onClick: onOpenHome },
+    { key: "studies", label: "募集中の実験", onClick: onOpenReservation },
+  ];
+
   return (
-    <div className="sticky top-0 z-30 border-b border-white/70 bg-white/80 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-        <LabLinkBrand compact />
+    <header className="sticky top-0 z-30 border-b border-white/70 bg-white/85 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+        <button type="button" onClick={onOpenHome} className="min-w-0 rounded-2xl text-left transition hover:opacity-85">
+          <LabLinkBrand compact subtitle="大学研究の実験参加予約" />
+        </button>
+
+        <nav className="hidden items-center gap-1 rounded-full border border-slate-200 bg-slate-50/80 p-1 md:flex" aria-label="LabLink navigation">
+          {navItems.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={item.onClick}
+              className={classNames(
+                "rounded-full px-4 py-2 text-sm font-semibold transition",
+                activePage === item.key ? "bg-slate-950 text-white shadow-sm" : "text-slate-600 hover:bg-white"
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
@@ -512,26 +727,35 @@ function PublicSiteHeader({ onOpenHelp, onOpenAdmin }) {
           >
             参加の流れ
           </button>
-          <IconButton aria-label="使い方を開く" onClick={onOpenHelp} title="使い方">
+          <button
+            type="button"
+            onClick={onOpenAdmin}
+            className="hidden rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 sm:inline-flex"
+          >
+            管理者
+          </button>
+          <IconButton aria-label="使い方を開く" onClick={onOpenHelp} title="使い方" className="sm:hidden">
             <HelpIcon />
           </IconButton>
-          <IconButton aria-label="管理者ページへ" onClick={onOpenAdmin} title="管理者ページへ">
+          <IconButton aria-label="管理者ページへ" onClick={onOpenAdmin} title="管理者ページへ" className="sm:hidden">
             <GearIcon />
           </IconButton>
         </div>
       </div>
-    </div>
+    </header>
   );
 }
 
 function AdminSiteHeader({ onBack, onLogout, adminEmail }) {
   return (
-    <div className="sticky top-0 z-30 border-b border-white/70 bg-white/80 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-        <LabLinkBrand compact subtitle="実験者向け管理画面" />
-        <div className="flex flex-wrap items-center gap-2">
+    <header className="sticky top-0 z-30 border-b border-white/70 bg-white/85 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+        <div className="min-w-0">
+          <LabLinkBrand compact subtitle="実験者向け管理画面" />
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
           {adminEmail ? (
-            <span className="hidden max-w-[280px] truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500 md:inline-flex">
+            <span className="hidden max-w-[280px] truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500 lg:inline-flex">
               {adminEmail}
             </span>
           ) : null}
@@ -541,18 +765,19 @@ function AdminSiteHeader({ onBack, onLogout, adminEmail }) {
             className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
           >
             <ArrowLeftIcon />
-            予約ページへ戻る
+            <span className="hidden sm:inline">トップへ戻る</span>
+            <span className="sm:hidden">戻る</span>
           </button>
           <button
             type="button"
             onClick={onLogout}
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+            className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
           >
             ログアウト
           </button>
         </div>
       </div>
-    </div>
+    </header>
   );
 }
 
@@ -669,35 +894,20 @@ function ParticipantFlowCard({ onOpenHelp }) {
   );
 }
 
-function AdminHero({ stats, adminEmail }) {
+function AdminHero({ adminEmail }) {
   return (
-    <header className="mb-6 overflow-hidden rounded-[34px] border border-white/80 bg-white/85 shadow-[0_24px_80px_rgba(15,23,42,0.10)] backdrop-blur">
-      <div className="grid gap-0 lg:grid-cols-[1.1fr,0.9fr]">
-        <div className="p-5 sm:p-7 lg:p-8">
-          <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-slate-700">
-            LABLINK ADMIN
-          </div>
-          <h1 className="mt-5 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-            管理者ページ
-          </h1>
-          <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-            申込一覧の確認、日程枠の追加、確定・変更・解除、LINE連携状態の確認をまとめて行えます。
-          </p>
-          {adminEmail ? <p className="mt-3 text-sm text-slate-500">ログイン中: {adminEmail}</p> : null}
+    <header className="mb-6 overflow-hidden rounded-[34px] border border-white/80 bg-white/85 p-5 shadow-[0_24px_80px_rgba(15,23,42,0.10)] backdrop-blur sm:p-7 lg:p-8">
+      <div className="min-w-0">
+        <div className="inline-flex rounded-full border border-teal-100 bg-teal-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-teal-700">
+          LabLink 管理
         </div>
-        <div className="grid grid-cols-2 gap-3 border-t border-slate-100 bg-gradient-to-br from-slate-50 via-white to-blue-50 p-5 sm:p-7 lg:border-l lg:border-t-0 lg:p-8">
-          {[
-            ["申込件数", stats.requestCount],
-            ["未確定", stats.pending],
-            ["確定済み", stats.confirmed],
-            ["残り席数", stats.openSeats],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-3xl border border-white/80 bg-white/85 p-4">
-              <div className="text-xs font-semibold text-slate-400">{label}</div>
-              <div className="mt-1 text-3xl font-bold text-slate-950">{value}</div>
-            </div>
-          ))}
-        </div>
+        <h1 className="mt-5 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
+          実験募集を作成・編集する
+        </h1>
+        <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-600 sm:text-base">
+          LabLinkのトップページや「募集中の実験」に表示する募集情報を管理します。登録済みの募集カード右上の「日程・申込管理」から、各募集の予約運営ページへ進めます。
+        </p>
+        {adminEmail ? <p className="mt-3 text-sm text-slate-500">ログイン中: {adminEmail}</p> : null}
       </div>
     </header>
   );
@@ -720,6 +930,319 @@ function ResponsePageHeader({ tone = "rose" }) {
   );
 }
 
+
+
+function LandingStat({ label, value, note }) {
+  return (
+    <div className="rounded-[28px] border border-white/80 bg-white/80 p-5 shadow-[0_14px_45px_rgba(15,23,42,0.08)]">
+      <div className="text-xs font-semibold tracking-[0.16em] text-slate-400">{label}</div>
+      <div className="mt-2 text-3xl font-bold tracking-tight text-slate-950">{value}</div>
+      {note ? <div className="mt-1 text-xs leading-5 text-slate-500">{note}</div> : null}
+    </div>
+  );
+}
+
+function LandingFeatureCard({ title, text, icon, tone = "teal" }) {
+  const tones = {
+    teal: "from-teal-50 to-white text-teal-700 border-teal-100",
+    blue: "from-blue-50 to-white text-blue-700 border-blue-100",
+    slate: "from-slate-50 to-white text-slate-700 border-slate-200",
+  };
+
+  return (
+    <div className={classNames("rounded-[30px] border bg-gradient-to-br p-5", tones[tone])}>
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm">
+        {icon}
+      </div>
+      <h3 className="mt-4 text-base font-bold text-slate-950">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{text}</p>
+    </div>
+  );
+}
+
+function LandingIcon({ type = "list" }) {
+  if (type === "link") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M10 13a5 5 0 007.07 0l2.12-2.12a5 5 0 00-7.07-7.07L11 4.93" />
+        <path d="M14 11a5 5 0 00-7.07 0L4.81 13.12a5 5 0 007.07 7.07L13 19.07" />
+      </svg>
+    );
+  }
+  if (type === "bell") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
+        <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+        <path d="M13.73 21a2 2 0 01-3.46 0" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M8 6h13M8 12h13M8 18h13" />
+      <path d="M3.5 6l1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2" />
+    </svg>
+  );
+}
+
+function StudyPreviewCard({ study, openSlotCount, openSeats, onOpenReservation, showLegacyStats = false }) {
+  const safeStudy = study || normalizeStudyInfo({});
+  const statusTone = getStudyStatusTone(safeStudy.status);
+
+  return (
+    <div className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusBadge tone={statusTone}>{getStudyStatusLabel(safeStudy.status)}</StatusBadge>
+        <StatusBadge tone="sky">日程予約受付中</StatusBadge>
+      </div>
+      <h3 className="mt-4 text-xl font-bold tracking-tight text-slate-950">{safeStudy.title || "研究実験 参加者募集"}</h3>
+      <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
+        {safeStudy.description || "公開中の日程から希望日時を選んで申し込めます。"}
+      </p>
+      <div className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+        <div className="rounded-2xl bg-slate-50 px-4 py-3">
+          <span className="font-semibold text-slate-900">所要時間：</span>{safeStudy.duration || "未設定"}
+        </div>
+        <div className="rounded-2xl bg-slate-50 px-4 py-3">
+          <span className="font-semibold text-slate-900">謝礼：</span>{safeStudy.reward || "未設定"}
+        </div>
+        <div className="rounded-2xl bg-slate-50 px-4 py-3">
+          <span className="font-semibold text-slate-900">場所：</span>{safeStudy.location || safeStudy.organization || "未設定"}
+        </div>
+        <div className="rounded-2xl bg-slate-50 px-4 py-3">
+          <span className="font-semibold text-slate-900">実施組織：</span>{safeStudy.organization || "未設定"}
+        </div>
+        {showLegacyStats ? (
+          <>
+            <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-emerald-900">
+              <span className="font-semibold">公開枠：</span>{openSlotCount}枠
+            </div>
+            <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-emerald-900">
+              <span className="font-semibold">残り席数：</span>{openSeats}席
+            </div>
+          </>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        onClick={() => onOpenReservation?.(safeStudy)}
+        disabled={safeStudy.status === "closed" || safeStudy.status === "draft"}
+        className="mt-5 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.20)] transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+      >
+        {safeStudy.status === "closed" ? "募集は終了しました" : "この実験の日程を見る"}
+      </button>
+    </div>
+  );
+}
+
+function StudyListEmptyState({ studiesError }) {
+  return (
+    <div className="rounded-[32px] border border-dashed border-slate-300 bg-slate-50/80 p-6 text-center">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-3xl bg-white text-slate-400 shadow-sm">
+        <LandingIcon type="list" />
+      </div>
+      <h3 className="mt-4 text-base font-bold text-slate-900">現在表示できる実験がありません</h3>
+      <p className="mt-2 text-sm leading-6 text-slate-500">
+        {studiesError || "公開中の実験が登録されると、ここに実験カードが表示されます。"}
+      </p>
+    </div>
+  );
+}
+
+function StudyListSkeleton() {
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {[0, 1].map((item) => (
+        <div key={item} className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-[0_18px_55px_rgba(15,23,42,0.06)]">
+          <div className="h-6 w-32 animate-pulse rounded-full bg-slate-100" />
+          <div className="mt-5 h-7 w-3/4 animate-pulse rounded-full bg-slate-100" />
+          <div className="mt-4 space-y-2">
+            <div className="h-4 animate-pulse rounded-full bg-slate-100" />
+            <div className="h-4 w-5/6 animate-pulse rounded-full bg-slate-100" />
+          </div>
+          <div className="mt-5 grid gap-2 sm:grid-cols-2">
+            <div className="h-12 animate-pulse rounded-2xl bg-slate-100" />
+            <div className="h-12 animate-pulse rounded-2xl bg-slate-100" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+function LabLinkLandingPage({
+  studies,
+  studiesLoading,
+  onOpenStudies,
+  onOpenAdmin,
+  onOpenHelp,
+}) {
+  const publicStudyCount = Array.isArray(studies) ? studies.length : 0;
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#eff6ff_30%,_#f8fafc_60%,_#eef2ff_100%)] text-slate-900">
+      <PublicSiteHeader
+        onOpenHelp={onOpenHelp}
+        onOpenAdmin={onOpenAdmin}
+        onOpenHome={() => {}}
+        onOpenReservation={onOpenStudies}
+        activePage="home"
+      />
+
+      <style jsx global>{`
+        @keyframes lablink-fade-up {
+          from { opacity: 0; transform: translateY(18px) scale(0.96); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes lablink-soft-float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-8px); }
+        }
+      `}</style>
+
+      <main className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
+        <section className="overflow-hidden rounded-[38px] border border-white/80 bg-white/85 shadow-[0_28px_90px_rgba(15,23,42,0.11)] backdrop-blur">
+          <div className="grid gap-0 lg:grid-cols-[1.08fr,0.92fr]">
+            <div className="p-6 sm:p-8 lg:p-10">
+              <div className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-teal-700">
+                LABLINK PLATFORM
+              </div>
+              <h1 className="mt-5 text-[clamp(2.2rem,6.5vw,4.7rem)] font-bold leading-[1.03] tracking-tight text-slate-950">
+                研究実験と参加者を、もっとつなぎやすく。
+              </h1>
+              <p className="mt-5 max-w-2xl text-[15px] leading-8 text-slate-600 sm:text-base">
+                LabLinkは、大学で行われる研究実験の募集と日程調整を支援するサービスです。参加者は募集中の実験を探して申し込み、実験者は募集情報・日程枠・申込状況をまとめて管理できます。
+              </p>
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={onOpenStudies}
+                  className="rounded-2xl bg-slate-950 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.22)] transition hover:bg-slate-800"
+                >
+                  募集中の実験を見る
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenAdmin}
+                  className="rounded-2xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  実験者・管理者はこちら
+                </button>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 bg-gradient-to-br from-teal-50 via-white to-blue-50 p-6 sm:p-8 lg:border-l lg:border-t-0 lg:p-10">
+              <div
+                className="flex flex-col items-center text-center"
+                style={{ animation: "lablink-fade-up 0.85s ease-out both" }}
+              >
+                <div
+                  className="relative rounded-[44px] bg-white/75 p-4 shadow-[0_26px_70px_rgba(15,23,42,0.14)] ring-1 ring-white/90"
+                  style={{ animation: "lablink-soft-float 4.8s ease-in-out 0.9s infinite" }}
+                >
+                  <div className="absolute -right-3 -top-3 h-12 w-12 rounded-full bg-teal-200/55 blur-2xl" />
+                  <div className="absolute -bottom-4 -left-4 h-16 w-16 rounded-full bg-blue-200/60 blur-2xl" />
+                  <LabLinkMark size="xl" className="relative" />
+                </div>
+                <div className="mt-5 text-sm font-semibold tracking-[0.18em] text-slate-400">LABLINK</div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">募集・予約・連絡をひとつに</div>
+                <p className="mt-3 max-w-md text-sm leading-7 text-slate-600">
+                  大学研究の実験募集を、参加者にも実験者にも分かりやすくつなぎます。
+                </p>
+              </div>
+
+              <div className="mt-8 grid gap-4">
+                <LandingFeatureCard
+                  title="参加者は実験を探して予約"
+                  text="募集中の実験一覧から内容を確認し、希望する日程を選んで申し込めます。"
+                  icon={<LandingIcon type="list" />}
+                  tone="teal"
+                />
+                <LandingFeatureCard
+                  title="実験者は募集をまとめて管理"
+                  text="募集情報、日程枠、申込一覧を実験ごとに切り替えて管理できます。"
+                  icon={<LandingIcon type="link" />}
+                  tone="blue"
+                />
+              </div>
+
+              <div className="mt-5 rounded-[28px] border border-white/80 bg-white/85 p-5">
+                <div className="text-xs font-semibold tracking-[0.18em] text-slate-400">CURRENT STATUS</div>
+                <div className="mt-2 text-sm leading-6 text-slate-600">
+                  {studiesLoading ? "公開中の実験を確認しています。" : `現在、${publicStudyCount}件の実験募集を表示できます。`}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function StudyBrowsePage({
+  studies,
+  studiesLoading,
+  studiesError,
+  onOpenReservation,
+  onOpenAdmin,
+  onOpenHelp,
+  onOpenHome,
+}) {
+  const studyList = Array.isArray(studies) ? studies : [];
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#eff6ff_30%,_#f8fafc_60%,_#eef2ff_100%)] text-slate-900">
+      <PublicSiteHeader
+        onOpenHelp={onOpenHelp}
+        onOpenAdmin={onOpenAdmin}
+        onOpenHome={onOpenHome}
+        onOpenReservation={() => {}}
+        activePage="studies"
+      />
+
+      <main className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
+        <section className="mb-8 rounded-[34px] border border-white/80 bg-white/85 p-6 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur sm:p-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-teal-700">
+                STUDIES
+              </div>
+              <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">募集中の実験</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
+                現在公開されている実験募集です。参加したい実験を選ぶと、その実験専用の予約ページに進みます。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenHome}
+              className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              トップへ戻る
+            </button>
+          </div>
+        </section>
+
+        {studiesLoading ? (
+          <StudyListSkeleton />
+        ) : studyList.length > 0 ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {studyList.map((study) => (
+              <StudyPreviewCard
+                key={study.id}
+                study={study}
+                onOpenReservation={onOpenReservation}
+              />
+            ))}
+          </div>
+        ) : (
+          <StudyListEmptyState studiesError={studiesError} />
+        )}
+      </main>
+    </div>
+  );
+}
 
 function GearIcon() {
   return (
@@ -869,21 +1392,22 @@ function PrivacyNote() {
 }
 
 
-function ExperimentInfoCard({ info, compact = false }) {
+function ExperimentInfoCard({ info, compact = false, stats = null, openSlotCount = null, onRetry, setupMode = false }) {
   const detailItems = [
     ["所要時間", info.duration],
-    ["報酬", info.reward],
-    ["所属組織", info.organization],
-    ["実験責任者", info.managerName],
+    ["謝礼", info.reward],
+    ["場所", info.location],
+    ["実施組織", info.organization],
+    ["実験担当者", info.managerName],
     ["連絡先", info.contactEmail],
   ].filter(([, value]) => String(value || "").trim());
 
   return (
     <Card className={compact ? "p-5 shadow-none" : ""}>
       <SectionHeader
-        eyebrow="EXPERIMENT INFO"
+        eyebrow="STUDY INFO"
         title={info.title || DEFAULT_EXPERIMENT_INFO.title}
-        description="実験の概要と参加前に確認してほしい内容です。"
+        description="参加前に確認してほしい実験内容です。日程選択の前にご確認ください。"
       />
 
       <div className="space-y-5">
@@ -907,6 +1431,33 @@ function ExperimentInfoCard({ info, compact = false }) {
             <div className="text-sm font-medium text-slate-700">補足事項</div>
             <div className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-600">
               {info.notes}
+            </div>
+          </div>
+        ) : null}
+
+        {stats ? (
+          <div className="rounded-3xl border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-blue-50 p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="text-xs font-semibold tracking-[0.18em] text-teal-600">RECEPTION STATUS</div>
+                <h3 className="mt-1 text-base font-bold text-slate-950">現在の受付状況</h3>
+                <p className="mt-1 text-sm leading-6 text-slate-500">公開中の日程枠と残り席数を確認できます。</p>
+              </div>
+              {!setupMode && typeof onRetry === "function" ? (
+                <button onClick={onRetry} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  最新状態を再取得
+                </button>
+              ) : null}
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-3xl bg-white/85 p-5">
+                <div className="text-sm text-slate-500">公開中の枠</div>
+                <div className="mt-2 text-3xl font-semibold text-slate-900">{openSlotCount ?? 0}</div>
+              </div>
+              <div className="rounded-3xl bg-white/85 p-5">
+                <div className="text-sm text-slate-500">残り席数</div>
+                <div className="mt-2 text-3xl font-semibold text-slate-900">{stats.openSeats}</div>
+              </div>
             </div>
           </div>
         ) : null}
@@ -1604,6 +2155,58 @@ function ParticipantResponsePage({
   );
 }
 
+function SelectedStudyContextCard({ study, onOpenHelp }) {
+  if (!study) return null;
+
+  const steps = [
+    ["01", "希望枠を選択", "空いている日程から最大5枠まで選びます。"],
+    ["02", "担当者が確定", "申込内容を確認し、参加日時を決定します。"],
+    ["03", "案内を確認", "確定案内をメールで確認し、必要に応じてLINE連携できます。"],
+  ];
+
+  return (
+    <div className="mb-5 rounded-[30px] border border-white/80 bg-white/88 p-5 shadow-[0_16px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold tracking-[0.16em] text-teal-600">RESERVATION PAGE</div>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">実験日程の予約</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            「{study.title}」の内容を確認し、下のカレンダーまたは一覧から希望日時を選択してください。
+          </p>
+        </div>
+        <StatusBadge tone={getStudyStatusTone(study.status)}>{getStudyStatusLabel(study.status)}</StatusBadge>
+      </div>
+
+      <div className="mt-5 rounded-[26px] border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-blue-50 p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-xs font-semibold tracking-[0.16em] text-teal-600">HOW IT WORKS</div>
+            <h2 className="mt-1 text-base font-bold text-slate-950">申込から参加まで</h2>
+          </div>
+          {typeof onOpenHelp === "function" ? (
+            <button
+              type="button"
+              onClick={onOpenHelp}
+              className="rounded-2xl border border-teal-200 bg-white px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50"
+            >
+              詳しく見る
+            </button>
+          ) : null}
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {steps.map(([number, title, text]) => (
+            <div key={number} className="rounded-3xl border border-white/80 bg-white/85 p-4">
+              <div className="text-xs font-bold tracking-[0.18em] text-teal-500">{number}</div>
+              <div className="mt-2 text-sm font-semibold text-slate-900">{title}</div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">{text}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ParticipantPage({
   sortedSlots,
   displayMonth,
@@ -1624,6 +2227,8 @@ function ParticipantPage({
   detailsRef,
   onOpenAdmin,
   onOpenHelp,
+  onOpenHome,
+  onOpenStudies,
   stats,
   isLoading,
   onRetry,
@@ -1631,6 +2236,7 @@ function ParticipantPage({
   calendarView,
   setCalendarView,
   experimentInfo,
+  activeStudy,
 }) {
   const mobileDateItems = days
     .filter((day) => day.getMonth() === displayMonth.getMonth())
@@ -1643,46 +2249,21 @@ function ParticipantPage({
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#eff6ff_30%,_#f8fafc_60%,_#eef2ff_100%)] text-slate-900">
-      <PublicSiteHeader onOpenHelp={onOpenHelp} onOpenAdmin={onOpenAdmin} />
+      <PublicSiteHeader onOpenHelp={onOpenHelp} onOpenAdmin={onOpenAdmin} onOpenHome={onOpenHome} onOpenReservation={onOpenStudies || onOpenHome} activePage="studies" />
       <div className="mx-auto max-w-7xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
-        <ParticipantHero
-          onOpenHelp={onOpenHelp}
-          onScrollToDetails={() => detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-          stats={stats}
-          openSlotCount={sortedSlots.length}
-        />
+        <SelectedStudyContextCard study={activeStudy} onOpenHelp={onOpenHelp} />
 
         {setupMode ? <div className="mb-6"><SetupNotice /></div> : null}
 
+
         <section className="mb-6">
-          <ExperimentInfoCard info={experimentInfo} />
-        </section>
-
-        <section className="mb-6 grid gap-4 lg:grid-cols-[1.1fr,0.9fr]">
-          <Card>
-            <SectionHeader
-              eyebrow="AT A GLANCE"
-              title="今の受付状況"
-              description="日程全体の空き具合をざっくり確認できます。"
-              action={!setupMode ? (
-                <button onClick={onRetry} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                  最新状態を再取得
-                </button>
-              ) : null}
-            />
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
-              <div className="rounded-3xl bg-slate-50 p-5">
-                <div className="text-sm text-slate-500">公開中の枠</div>
-                <div className="mt-2 text-3xl font-semibold text-slate-900">{sortedSlots.length}</div>
-              </div>
-              <div className="rounded-3xl bg-slate-50 p-5">
-                <div className="text-sm text-slate-500">残り席数</div>
-                <div className="mt-2 text-3xl font-semibold text-slate-900">{stats.openSeats}</div>
-              </div>
-            </div>
-          </Card>
-
-          <ParticipantFlowCard onOpenHelp={onOpenHelp} />
+          <ExperimentInfoCard
+            info={experimentInfo}
+            stats={stats}
+            openSlotCount={sortedSlots.length}
+            onRetry={onRetry}
+            setupMode={setupMode}
+          />
         </section>
 
         {isLoading ? (
@@ -1984,6 +2565,7 @@ function ParticipantPage({
                 </div>
               </Card>
 
+              {participantForm.preferredSlotIds.length > 0 ? (
               <Card>
                 <SectionHeader
                   eyebrow="FORM"
@@ -2102,9 +2684,628 @@ function ParticipantPage({
                   </button>
                 </form>
               </Card>
+              ) : (
+                <Card className="border-dashed border-slate-200 bg-white/75">
+                  <SectionHeader
+                    eyebrow="FORM"
+                    title="希望日時を選択すると申込フォームが表示されます"
+                    description="まず左側のカレンダーまたは詳細枠から参加できる日程を選択してください。選択後に氏名やメールアドレスの入力フォームが表示されます。"
+                  />
+                  <div className="rounded-3xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+                    選択中の希望枠はまだありません。参加したい時間帯の「希望に追加」を押してください。
+                  </div>
+                </Card>
+              )}
             </div>
           </section>
         )}
+      </div>
+    </div>
+  );
+}
+
+
+function AdminStudyManager({
+  adminStudies,
+  adminStudiesLoading,
+  studyForm,
+  setStudyForm,
+  editingStudyId,
+  savingStudy,
+  deletingStudyId,
+  onSaveStudy,
+  onEditStudy,
+  onResetStudyForm,
+  onDeleteStudy,
+  onToggleStudyPublished,
+  selectedStudyId,
+  onSelectStudyScope,
+  mode = "list",
+  onOpenReservationPage,
+  onCreateStudy,
+  onManageSlots,
+  onManageRequests,
+  onBackToStudyList,
+}) {
+  const sortedStudies = Array.isArray(adminStudies) ? adminStudies : [];
+
+  const showForm = mode === "form" || mode === "all" || (mode === "list" && Boolean(editingStudyId));
+  const showList = mode === "list" || mode === "all";
+
+  return (
+    <div className="space-y-6">
+      {showForm ? (
+      <Card className="p-5 shadow-none">
+        <SectionHeader
+          eyebrow="STUDY FORM"
+          title={editingStudyId ? "募集情報を編集する" : "新しい募集を作成する"}
+          description={editingStudyId ? "登録済みの募集情報を編集しています。日程や申込は、この募集を選んだ後の募集運営で管理します。" : "LabLinkに掲載する募集ページを作成します。作成後に、募集運営から日程管理・申込管理へ進めます。"}
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              {editingStudyId ? <StatusBadge tone="blue">編集中</StatusBadge> : <StatusBadge tone="emerald">新規作成</StatusBadge>}
+              {onBackToStudyList ? (
+                <button
+                  type="button"
+                  onClick={onBackToStudyList}
+                  className="rounded-2xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  募集一覧へ戻る
+                </button>
+              ) : null}
+            </div>
+          }
+        />
+
+        <form onSubmit={onSaveStudy} className="space-y-5">
+          <label className="block text-sm">
+            <div className="mb-1.5 text-slate-600">実験タイトル <span className="text-rose-500">*</span></div>
+            <input
+              required
+              value={studyForm.title}
+              onChange={(event) => setStudyForm((prev) => ({ ...prev, title: event.target.value }))}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              placeholder="例: VR通知配置に関する実験"
+            />
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              管理用IDは自動で作成されます。管理者がIDを考える必要はありません。
+            </p>
+          </label>
+
+          <label className="block text-sm">
+            <div className="mb-1.5 text-slate-600">実験概要 <span className="text-rose-500">*</span></div>
+            <textarea
+              required
+              value={studyForm.description}
+              onChange={(event) => setStudyForm((prev) => ({ ...prev, description: event.target.value }))}
+              className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              placeholder="参加者が内容を理解できるよう、短く分かりやすく記入してください。"
+            />
+          </label>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="text-sm">
+              <div className="mb-1.5 text-slate-600">所要時間 <span className="text-rose-500">*</span></div>
+              <input
+                required
+                value={studyForm.duration}
+                onChange={(event) => setStudyForm((prev) => ({ ...prev, duration: event.target.value }))}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                placeholder="約60分"
+              />
+            </label>
+            <label className="text-sm">
+              <div className="mb-1.5 text-slate-600">謝礼 <span className="text-rose-500">*</span></div>
+              <input
+                required
+                value={studyForm.reward}
+                onChange={(event) => setStudyForm((prev) => ({ ...prev, reward: event.target.value }))}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                placeholder="謝礼あり"
+              />
+            </label>
+            <label className="text-sm">
+              <div className="mb-1.5 text-slate-600">実施組織 <span className="text-rose-500">*</span></div>
+              <input
+                required
+                value={studyForm.organization}
+                onChange={(event) => setStudyForm((prev) => ({ ...prev, organization: event.target.value }))}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                placeholder="立命館大学"
+              />
+            </label>
+            <label className="text-sm">
+              <div className="mb-1.5 text-slate-600">場所 <span className="text-rose-500">*</span></div>
+              <input
+                required
+                value={studyForm.location}
+                onChange={(event) => setStudyForm((prev) => ({ ...prev, location: event.target.value }))}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                placeholder="立命館大学 OIC"
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="text-sm">
+              <div className="mb-1.5 text-slate-600">実験担当者 <span className="text-rose-500">*</span></div>
+              <input
+                required
+                value={studyForm.managerName}
+                onChange={(event) => setStudyForm((prev) => ({ ...prev, managerName: event.target.value }))}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                placeholder="担当者名"
+              />
+            </label>
+            <label className="text-sm">
+              <div className="mb-1.5 text-slate-600">連絡先メール <span className="text-rose-500">*</span></div>
+              <input
+                required
+                type="email"
+                value={studyForm.contactEmail}
+                onChange={(event) => setStudyForm((prev) => ({ ...prev, contactEmail: event.target.value }))}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                placeholder="example@ed.ritsumei.ac.jp"
+              />
+            </label>
+          </div>
+
+          <label className="block text-sm">
+            <div className="mb-1.5 text-slate-600">補足事項</div>
+            <textarea
+              value={studyForm.notes}
+              onChange={(event) => setStudyForm((prev) => ({ ...prev, notes: event.target.value }))}
+              className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              placeholder="参加条件、注意事項、持ち物など"
+            />
+          </label>
+
+          <div className="grid gap-4 lg:grid-cols-[1fr_1fr_220px]">
+            <label className="text-sm">
+              <div className="mb-1.5 text-slate-600">オーナーメール <span className="text-rose-500">*</span></div>
+              <input
+                required
+                type="email"
+                value={studyForm.ownerEmail}
+                onChange={(event) => setStudyForm((prev) => ({ ...prev, ownerEmail: event.target.value }))}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              />
+            </label>
+            <label className="text-sm">
+              <div className="mb-1.5 text-slate-600">管理者メール</div>
+              <textarea
+                value={studyForm.adminEmailsText}
+                onChange={(event) => setStudyForm((prev) => ({ ...prev, adminEmailsText: event.target.value }))}
+                className="min-h-[52px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                placeholder="1行に1つ、またはカンマ区切り"
+              />
+            </label>
+            <label className="text-sm">
+              <div className="mb-1.5 text-slate-600">募集状態</div>
+              <select
+                value={studyForm.status}
+                onChange={(event) => setStudyForm((prev) => ({ ...prev, status: event.target.value }))}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              >
+                <option value="draft">準備中</option>
+                <option value="recruiting">募集中</option>
+                <option value="paused">一時停止中</option>
+                <option value="closed">募集終了</option>
+              </select>
+            </label>
+          </div>
+
+          <label className="inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={studyForm.isPublished}
+              onChange={(event) => setStudyForm((prev) => ({ ...prev, isPublished: event.target.checked }))}
+              className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-sky-300"
+            />
+            トップページに公開する
+          </label>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="submit"
+              disabled={savingStudy}
+              className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50"
+            >
+              {savingStudy ? "保存中..." : editingStudyId ? "募集情報を更新" : "募集を作成"}
+            </button>
+            <button
+              type="button"
+              onClick={onResetStudyForm}
+              disabled={savingStudy}
+              className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              入力をリセット
+            </button>
+          </div>
+        </form>
+      </Card>
+      ) : null}
+
+      {showList ? (
+      <Card className="p-5 shadow-none">
+        <SectionHeader
+          eyebrow="STUDY LIST"
+          title="登録済みの募集"
+          description="トップページや募集中の実験一覧に表示する募集情報を管理します。各募集カード右上の「日程・申込管理」から、個別の運営ページへ進めます。"
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge tone="sky">{sortedStudies.length}件</StatusBadge>
+              {onCreateStudy ? (
+                <button
+                  type="button"
+                  onClick={onCreateStudy}
+                  className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  新規募集を作成
+                </button>
+              ) : null}
+            </div>
+          }
+        />
+
+        {adminStudiesLoading ? (
+          <StudyListSkeleton />
+        ) : sortedStudies.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+            まだ実験が登録されていません。右上の「新規募集を作成」から、最初の募集ページを作成してください。
+          </div>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {sortedStudies.map((study) => (
+              <div key={study.id} className="relative rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge tone={study.isPublished ? "emerald" : "slate"}>{study.isPublished ? "公開中" : "非公開"}</StatusBadge>
+                      <StatusBadge tone={getStudyStatusTone(study.status)}>{getStudyStatusLabel(study.status)}</StatusBadge>
+                    </div>
+                    <h3 className="mt-4 text-lg font-bold text-slate-950">{study.title}</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onManageSlots?.(study)}
+                    className="shrink-0 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:from-emerald-700 hover:to-teal-700 sm:px-5"
+                  >
+                    日程・申込管理
+                  </button>
+                </div>
+                <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{study.description}</p>
+                <div className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">所要時間：{study.duration || "未設定"}</div>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">謝礼：{study.reward || "未設定"}</div>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">場所：{study.location || "未設定"}</div>
+                  <div className="rounded-2xl bg-slate-50 px-4 py-3">組織：{study.organization || "未設定"}</div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onOpenReservationPage?.(study)}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    予約ページを開く
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onEditStudy(study)}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    <PencilIcon />
+                    編集
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onToggleStudyPublished(study)}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    {study.isPublished ? "非公開にする" : "公開する"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteStudy(study)}
+                    disabled={deletingStudyId === study.id}
+                    className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                  >
+                    {deletingStudyId === study.id ? "削除中..." : "削除"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+      ) : null}
+    </div>
+  );
+}
+
+function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservationPage, onBackToStudyList, stats, confirmedScheduleGroups }) {
+  const studyOptions = Array.isArray(adminStudies) && adminStudies.length > 0
+    ? adminStudies
+    : SAMPLE_STUDIES;
+  const activeStudy = studyOptions.find((study) => study.id === selectedStudyId) || studyOptions[0];
+  const scheduleGroups = Array.isArray(confirmedScheduleGroups) ? confirmedScheduleGroups : [];
+
+  return (
+    <Card className="mb-6 p-5 shadow-none">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-semibold tracking-[0.18em] text-teal-600">SELECTED STUDY</div>
+          <h2 className="mt-1 break-words text-2xl font-bold text-slate-950">
+            {activeStudy?.title || "選択中の募集"}
+          </h2>
+          {activeStudy?.description ? (
+            <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-600">{activeStudy.description}</p>
+          ) : (
+            <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-500">この募集の日程管理と申込管理を行います。</p>
+          )}
+
+          <div className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-2xl bg-slate-50 px-4 py-3">所要時間：{activeStudy?.duration || "未設定"}</div>
+            <div className="rounded-2xl bg-slate-50 px-4 py-3">謝礼：{activeStudy?.reward || "未設定"}</div>
+            <div className="rounded-2xl bg-slate-50 px-4 py-3">場所：{activeStudy?.location || "未設定"}</div>
+            <div className="rounded-2xl bg-slate-50 px-4 py-3">組織：{activeStudy?.organization || "未設定"}</div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <StatusBadge tone={activeStudy?.isPublished ? "emerald" : "slate"}>{activeStudy?.isPublished ? "公開中" : "非公開"}</StatusBadge>
+            <StatusBadge tone={getStudyStatusTone(activeStudy?.status)}>{getStudyStatusLabel(activeStudy?.status)}</StatusBadge>
+          </div>
+        </div>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[220px]">
+          <button
+            type="button"
+            onClick={() => onOpenReservationPage?.(activeStudy)}
+            className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            予約ページを開く
+          </button>
+          <button
+            type="button"
+            onClick={onBackToStudyList}
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            募集ページ管理へ戻る
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
+          <div className="text-xs font-semibold text-slate-500">申込件数</div>
+          <div className="mt-2 text-2xl font-bold text-slate-950">{stats?.requestCount ?? 0}</div>
+        </div>
+        <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
+          <div className="text-xs font-semibold text-slate-500">未確定</div>
+          <div className="mt-2 text-2xl font-bold text-slate-950">{stats?.pending ?? 0}</div>
+        </div>
+        <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
+          <div className="text-xs font-semibold text-slate-500">確定済み</div>
+          <div className="mt-2 text-2xl font-bold text-slate-950">{stats?.confirmed ?? 0}</div>
+        </div>
+        <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
+          <div className="text-xs font-semibold text-slate-500">残り席数</div>
+          <div className="mt-2 text-2xl font-bold text-slate-950">{stats?.openSeats ?? 0}</div>
+        </div>
+      </div>
+
+      <details className="mt-5 rounded-3xl border border-slate-200 bg-white/80 p-4">
+        <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span>確定済みの日程サマリー</span>
+            <StatusBadge tone={scheduleGroups.length > 0 ? "emerald" : "slate"}>{scheduleGroups.length}枠</StatusBadge>
+          </div>
+        </summary>
+        <div className="mt-4">
+          {scheduleGroups.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+              まだ確定済みの申込はありません。
+            </div>
+          ) : (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {scheduleGroups.map((group) => (
+                <div key={group.slot.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-base font-semibold text-slate-900">
+                        {formatJapaneseDate(group.slot.date)} / {PERIOD_MAP[group.slot.periodKey]?.label}
+                      </div>
+                      <div className="mt-1 text-sm text-slate-500">{group.slot.location || "場所未設定"}</div>
+                    </div>
+                    <StatusBadge tone={group.remaining <= 0 ? "rose" : group.remaining <= 1 ? "amber" : "emerald"}>
+                      {group.confirmedCount}/{group.slot.capacity} 名
+                    </StatusBadge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {group.names.map((name) => (
+                      <span key={name} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700">
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </details>
+    </Card>
+  );
+}
+
+function AdminOperationSubNav({ adminTab, setAdminTab, selectedStudyTitle }) {
+  const items = [
+    {
+      key: "slots",
+      label: "日程管理",
+      title: "候補日時を追加・調整する",
+      description: "参加者に表示する日程枠、定員、公開状態、メモを管理します。",
+      tone: "blue",
+    },
+    {
+      key: "requests",
+      label: "申込一覧",
+      title: "申込者を確認・確定する",
+      description: "申込者の確認、日程確定、変更、LINE連携状況を管理します。",
+      tone: "emerald",
+    },
+  ];
+
+  return (
+    <Card className="mb-6 p-4 shadow-none">
+      <div className="mb-3">
+        <div className="text-xs font-semibold tracking-[0.18em] text-blue-600">MANAGE MENU</div>
+        <h2 className="mt-1 text-lg font-bold text-slate-950">{selectedStudyTitle ? `${selectedStudyTitle} の管理メニュー` : "管理メニュー"}</h2>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {items.map((item) => {
+          const active = adminTab === item.key;
+          const activeClass = item.tone === "blue"
+            ? "border-blue-200 bg-blue-50 text-blue-950 ring-2 ring-blue-100"
+            : "border-emerald-200 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-100";
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setAdminTab(item.key)}
+              className={classNames(
+                "rounded-3xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md",
+                active ? activeClass : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
+              )}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-base font-bold">{item.label}</div>
+                {active ? <StatusBadge tone={item.tone}>表示中</StatusBadge> : null}
+              </div>
+              <div className="mt-2 text-sm font-semibold">{item.title}</div>
+              <p className="mt-1 text-xs leading-5 text-slate-500">{item.description}</p>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
+
+
+function AdminOperationLanding({
+  selectedStudy,
+  adminStudies,
+  selectedStudyId,
+  onSelectStudyScope,
+  onOpenReservationPage,
+  onOpenStudyList,
+  onOpenStudyEdit,
+  onOpenSlots,
+  onOpenRequests,
+  stats,
+}) {
+  const studyOptions = Array.isArray(adminStudies) && adminStudies.length > 0 ? adminStudies : SAMPLE_STUDIES;
+  const activeStudy = selectedStudy || studyOptions.find((study) => study.id === selectedStudyId) || studyOptions[0];
+
+  return (
+    <div className="space-y-6">
+      <Card className="p-5 shadow-none">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-blue-600">OPERATION PAGE</div>
+            <h2 className="mt-1 text-2xl font-bold text-slate-950">募集運営ページ</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              ここでは、選択した募集に対する候補日程の追加・調整と、申込者の確認・確定を行います。
+              募集タイトルや概要の編集は「募集ページ管理」に分けています。
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onOpenStudyList}
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              募集ページ管理へ
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenReservationPage?.(activeStudy)}
+              className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              予約ページを開く
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-5 shadow-none">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+          <div>
+            <div className="text-xs font-semibold tracking-[0.18em] text-slate-400">SELECTED STUDY</div>
+            <h3 className="mt-2 text-xl font-bold text-slate-950">{activeStudy?.title || "運営する募集を選択してください"}</h3>
+            {activeStudy?.description ? (
+              <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{activeStudy.description}</p>
+            ) : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <StatusBadge tone={activeStudy?.isPublished ? "emerald" : "slate"}>{activeStudy?.isPublished ? "公開中" : "非公開"}</StatusBadge>
+              <StatusBadge tone={getStudyStatusTone(activeStudy?.status)}>{getStudyStatusLabel(activeStudy?.status)}</StatusBadge>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm">
+              <div className="mb-1.5 text-slate-600">運営する募集</div>
+              <select
+                value={selectedStudyId}
+                onChange={(event) => onSelectStudyScope(event.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 outline-none transition focus:border-slate-400"
+              >
+                {studyOptions.map((study) => (
+                  <option key={study.id} value={study.id}>
+                    {study.title || study.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => onOpenStudyEdit?.(activeStudy)}
+              className="mt-3 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              募集情報を編集する
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <button
+          type="button"
+          onClick={onOpenSlots}
+          className="rounded-[30px] border border-blue-100 bg-blue-50 p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-blue-100 hover:shadow-md"
+        >
+          <div className="text-xs font-semibold tracking-[0.18em] text-blue-600">SCHEDULE</div>
+          <h3 className="mt-2 text-xl font-bold text-blue-950">日程管理</h3>
+          <p className="mt-2 text-sm leading-6 text-blue-900/80">
+            参加者に表示する候補日時を追加・編集し、定員や公開状態を調整します。
+          </p>
+          <div className="mt-4 rounded-2xl bg-white/70 px-4 py-3 text-sm font-semibold text-blue-900">
+            残り席数：{stats.openSeats}
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={onOpenRequests}
+          className="rounded-[30px] border border-emerald-100 bg-emerald-50 p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-100 hover:shadow-md"
+        >
+          <div className="text-xs font-semibold tracking-[0.18em] text-emerald-600">REQUESTS</div>
+          <h3 className="mt-2 text-xl font-bold text-emerald-950">申込一覧</h3>
+          <p className="mt-2 text-sm leading-6 text-emerald-900/80">
+            申込者を確認し、日程の確定・変更・解除やLINE連携状況の確認を行います。
+          </p>
+          <div className="mt-4 rounded-2xl bg-white/70 px-4 py-3 text-sm font-semibold text-emerald-900">
+            申込件数：{stats.requestCount} / 確定済み：{stats.confirmed}
+          </div>
+        </button>
       </div>
     </div>
   );
@@ -2157,33 +3358,46 @@ function AdminPage({
   onBulkPublish,
   onBulkUnpublish,
   onBulkDelete,
+  adminStudies,
+  adminStudiesLoading,
+  studyForm,
+  setStudyForm,
+  editingStudyId,
+  savingStudy,
+  deletingStudyId,
+  onSaveStudy,
+  onEditStudy,
+  onResetStudyForm,
+  onDeleteStudy,
+  onToggleStudyPublished,
+  selectedStudyId,
+  onSelectStudyScope,
+  onOpenReservationPage,
 }) {
+  const operationStudies = Array.isArray(adminStudies) && adminStudies.length > 0 ? adminStudies : SAMPLE_STUDIES;
+  const selectedOperationStudy = operationStudies.find((study) => study.id === selectedStudyId) || operationStudies[0];
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#f8fafc_34%,_#eef2ff_100%)] text-slate-900">
       <AdminSiteHeader onBack={onBack} onLogout={onLogout} adminEmail={adminEmail} />
       <div className="mx-auto max-w-7xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
-        <AdminHero stats={stats} adminEmail={adminEmail} />
+        {adminTab === "studies" || adminTab === "study-new" ? <AdminHero adminEmail={adminEmail} /> : null}
 
         {isLoading ? <LoadingCard title="管理データを読み込んでいます..." /> : null}
 
-        <div className="mb-6 flex flex-wrap gap-2">
-          {[
-            ["dashboard", "概要"],
-            ["slots", "日程管理"],
-            ["requests", "申込一覧"],
-          ].map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setAdminTab(key)}
-              className={classNames(
-                "rounded-2xl px-4 py-2 text-sm font-medium transition",
-                adminTab === key ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {adminTab === "slots" || adminTab === "requests" ? (
+          <>
+            <AdminStudyScopeSelector
+              adminStudies={adminStudies}
+              selectedStudyId={selectedStudyId}
+              onOpenReservationPage={onOpenReservationPage}
+              onBackToStudyList={() => setAdminTab("studies")}
+              stats={stats}
+              confirmedScheduleGroups={confirmedScheduleGroups}
+            />
+            <AdminOperationSubNav adminTab={adminTab} setAdminTab={setAdminTab} selectedStudyTitle={selectedOperationStudy?.title || ""} />
+          </>
+        ) : null}
 
         {adminTab === "dashboard" && (
           <div className="space-y-6">
@@ -2194,14 +3408,31 @@ function AdminPage({
               <div className="rounded-3xl bg-white p-5 shadow-sm"><div className="text-sm text-slate-500">残り席数</div><div className="mt-2 text-3xl font-semibold">{stats.openSeats}</div></div>
             </div>
 
-            <ExperimentInfoEditor
-              experimentInfoForm={experimentInfoForm}
-              setExperimentInfoForm={setExperimentInfoForm}
-              onSaveExperimentInfo={onSaveExperimentInfo}
-              savingExperimentInfo={savingExperimentInfo}
-            />
-
-            <ExperimentInfoCard info={experimentInfo} compact />
+            <Card className="p-5 shadow-none">
+              <SectionHeader
+                eyebrow="GUIDE"
+                title="管理機能を目的ごとに分けています"
+                description="募集ページを作る・直す場所と、作成済み募集の日程や申込を運営する場所を分けています。"
+              />
+              <div className="grid gap-3 md:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setAdminTab("studies")}
+                  className="rounded-3xl border border-teal-100 bg-teal-50 p-4 text-left text-sm leading-6 text-teal-900 transition hover:bg-teal-100"
+                >
+                  <div className="font-semibold">募集ページ管理</div>
+                  <p className="mt-1 text-xs leading-5">トップページに表示する募集を作成・編集し、公開状態を管理します。</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminTab("operation")}
+                  className="rounded-3xl border border-blue-100 bg-blue-50 p-4 text-left text-sm leading-6 text-blue-900 transition hover:bg-blue-100"
+                >
+                  <div className="font-semibold">募集運営</div>
+                  <p className="mt-1 text-xs leading-5">対象の募集を選び、候補日程の追加や申込者の確認・確定を行います。</p>
+                </button>
+              </div>
+            </Card>
 
             <Card className="p-5 shadow-none">
               <SectionHeader
@@ -2226,13 +3457,84 @@ function AdminPage({
           </div>
         )}
 
+        {adminTab === "studies" && (
+          <AdminStudyManager
+            adminStudies={adminStudies}
+            adminStudiesLoading={adminStudiesLoading}
+            studyForm={studyForm}
+            setStudyForm={setStudyForm}
+            editingStudyId={editingStudyId}
+            savingStudy={savingStudy}
+            deletingStudyId={deletingStudyId}
+            onSaveStudy={onSaveStudy}
+            onEditStudy={onEditStudy}
+            onResetStudyForm={onResetStudyForm}
+            onDeleteStudy={onDeleteStudy}
+            onToggleStudyPublished={onToggleStudyPublished}
+            mode="list"
+            onOpenReservationPage={onOpenReservationPage}
+            onCreateStudy={() => {
+              onResetStudyForm();
+              setAdminTab("study-new");
+            }}
+            onManageSlots={(study) => {
+              onSelectStudyScope(study.id);
+              setAdminTab("slots");
+            }}
+            onManageRequests={(study) => {
+              onSelectStudyScope(study.id);
+              setAdminTab("requests");
+            }}
+          />
+        )}
+
+        {adminTab === "study-new" && (
+          <AdminStudyManager
+            adminStudies={adminStudies}
+            adminStudiesLoading={adminStudiesLoading}
+            studyForm={studyForm}
+            setStudyForm={setStudyForm}
+            editingStudyId={editingStudyId}
+            savingStudy={savingStudy}
+            deletingStudyId={deletingStudyId}
+            onSaveStudy={onSaveStudy}
+            onEditStudy={onEditStudy}
+            onResetStudyForm={onResetStudyForm}
+            onDeleteStudy={onDeleteStudy}
+            onToggleStudyPublished={onToggleStudyPublished}
+            mode="form"
+            onOpenReservationPage={onOpenReservationPage}
+            onBackToStudyList={() => setAdminTab("studies")}
+          />
+        )}
+
+        {adminTab === "operation" && (
+          <AdminOperationLanding
+            selectedStudy={selectedOperationStudy}
+            adminStudies={adminStudies}
+            selectedStudyId={selectedStudyId}
+            onSelectStudyScope={onSelectStudyScope}
+            onOpenReservationPage={onOpenReservationPage}
+            onOpenStudyList={() => setAdminTab("studies")}
+            onOpenStudyEdit={(study) => {
+              if (study) {
+                onEditStudy(study);
+              }
+              setAdminTab("studies");
+            }}
+            onOpenSlots={() => setAdminTab("slots")}
+            onOpenRequests={() => setAdminTab("requests")}
+            stats={stats}
+          />
+        )}
+
         {adminTab === "slots" && (
           <div className="space-y-6">
             <Card className="p-5 shadow-none">
               <SectionHeader
                 eyebrow="SLOT FORM"
-                title="実験枠を追加する"
-                description="参加者に見せる候補枠をここで登録できます。"
+                title="日程を追加する"
+                description="選択中の募集に対して、参加者に見せる候補日時を登録します。"
               />
               <form onSubmit={handleAddSlot} className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -2439,43 +3741,6 @@ function AdminPage({
 
         {adminTab === "requests" && (
           <div className="space-y-4">
-            <Card className="p-5 shadow-none">
-              <SectionHeader
-                eyebrow="CONFIRMED OVERVIEW"
-                title="確定済みの日程サマリー"
-                description="どの日時に何人入っているかを先に確認してから、個別の申込を処理できます。"
-              />
-              {confirmedScheduleGroups.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-slate-200 p-5 text-sm text-slate-500">
-                  まだ確定済みの申込はありません。
-                </div>
-              ) : (
-                <div className="grid gap-3 lg:grid-cols-2">
-                  {confirmedScheduleGroups.map((group) => (
-                    <div key={group.slot.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-base font-semibold text-slate-900">
-                            {formatJapaneseDate(group.slot.date)} / {PERIOD_MAP[group.slot.periodKey]?.label}
-                          </div>
-                          <div className="mt-1 text-sm text-slate-500">{group.slot.location || "場所未設定"}</div>
-                        </div>
-                        <StatusBadge tone={group.remaining <= 0 ? "rose" : group.remaining <= 1 ? "amber" : "emerald"}>
-                          {group.confirmedCount}/{group.slot.capacity} 名
-                        </StatusBadge>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {group.names.map((name) => (
-                          <span key={name} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700">
-                            {name}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
             <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_220px_220px]">
                 <input
@@ -2679,7 +3944,7 @@ function AdminLoginPage({
             className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             <ArrowLeftIcon />
-            予約ページへ戻る
+            LabLinkトップへ戻る
           </button>
         </div>
 
@@ -2746,8 +4011,8 @@ export default function ExperimentParticipantScheduler() {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [selectedDate, setSelectedDate] = useState("");
-  const [page, setPage] = useState("participant");
-  const [adminTab, setAdminTab] = useState("dashboard");
+  const [page, setPage] = useState("landing");
+  const [adminTab, setAdminTab] = useState("studies");
   const [authReady, setAuthReady] = useState(!firebaseReady);
   const [calendarView, setCalendarView] = useState("calendar");
   const [authUser, setAuthUser] = useState(null);
@@ -2766,6 +4031,16 @@ export default function ExperimentParticipantScheduler() {
   const [toast, setToast] = useState(null);
   const [experimentInfo, setExperimentInfo] = useState(() => normalizeExperimentInfo(DEFAULT_EXPERIMENT_INFO));
   const [experimentInfoForm, setExperimentInfoForm] = useState(() => normalizeExperimentInfo(DEFAULT_EXPERIMENT_INFO));
+  const [studies, setStudies] = useState([]);
+  const [studiesLoading, setStudiesLoading] = useState(firebaseReady);
+  const [studiesError, setStudiesError] = useState("");
+  const [selectedStudyId, setSelectedStudyId] = useState(DEFAULT_STUDY_ID);
+  const [adminStudies, setAdminStudies] = useState([]);
+  const [adminStudiesLoading, setAdminStudiesLoading] = useState(firebaseReady);
+  const [studyForm, setStudyForm] = useState(() => buildStudyFormFromExperimentInfo(DEFAULT_EXPERIMENT_INFO));
+  const [editingStudyId, setEditingStudyId] = useState("");
+  const [savingStudy, setSavingStudy] = useState(false);
+  const [deletingStudyId, setDeletingStudyId] = useState("");
   const [savingExperimentInfo, setSavingExperimentInfo] = useState(false);
   const [selectedSlotIds, setSelectedSlotIds] = useState([]);
   const [bulkNote, setBulkNote] = useState("");
@@ -2820,13 +4095,24 @@ export default function ExperimentParticipantScheduler() {
     if (token) {
       setPage("participant-response");
       setParticipantResponseContext({ token, action: "change" });
+      return;
+    }
+
+    const studyId = normalizeStudyId(params.get("study") || "");
+    if (studyId) {
+      setSelectedStudyId(studyId);
+      setPage("participant");
     }
   }, []);
 
   useEffect(() => {
     if (!firebaseReady) {
-      setSlots(sortSlots(SAMPLE_SLOTS));
-      setRequests(SAMPLE_REQUESTS);
+      setSlots(sortSlots(SAMPLE_SLOTS.filter((slot) => isRecordInStudy(slot, selectedStudyId))));
+      setRequests(SAMPLE_REQUESTS.filter((request) => isRecordInStudy(request, selectedStudyId)));
+      setStudies(SAMPLE_STUDIES);
+      setAdminStudies(SAMPLE_STUDIES);
+      setStudiesLoading(false);
+      setAdminStudiesLoading(false);
       setSelectedDate("");
       setSlotsLoading(false);
       setRequestsLoading(false);
@@ -2838,7 +4124,9 @@ export default function ExperimentParticipantScheduler() {
       publicSlotsQuery,
       (snapshot) => {
         if (page === "participant" || page === "admin-login") {
-          const nextSlots = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+          const nextSlots = snapshot.docs
+            .map((item) => withStudyId({ id: item.id, ...item.data() }))
+            .filter((slot) => isRecordInStudy(slot, selectedStudyId));
           if (page !== "admin") setSlots(sortSlots(nextSlots));
         }
         setSlotsLoading(false);
@@ -2852,7 +4140,7 @@ export default function ExperimentParticipantScheduler() {
     );
 
     return () => unsubscribePublicSlots();
-  }, [page]);
+  }, [page, selectedStudyId]);
 
   useEffect(() => {
     if (!firebaseReady) return undefined;
@@ -2891,6 +4179,80 @@ export default function ExperimentParticipantScheduler() {
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!firebaseReady) {
+      setStudies(SAMPLE_STUDIES);
+      setStudiesLoading(false);
+      setStudiesError("");
+      return;
+    }
+
+    setStudiesLoading(true);
+    const studiesQuery = query(collection(firestore, "studies"), where("isPublished", "==", true));
+    const unsubscribe = onSnapshot(
+      studiesQuery,
+      (snapshot) => {
+        const nextStudies = snapshot.docs
+          .map((item) => normalizeStudyInfo(item.data(), item.id))
+          .sort((a, b) => {
+            const aTime = a.createdAt?.seconds || 0;
+            const bTime = b.createdAt?.seconds || 0;
+            if (aTime !== bTime) return bTime - aTime;
+            return (a.title || "").localeCompare(b.title || "", "ja");
+          });
+
+        setStudies(nextStudies);
+        setStudiesLoading(false);
+        setStudiesError("");
+      },
+      (error) => {
+        console.error(error);
+        setStudies([]);
+        setStudiesLoading(false);
+        setStudiesError("実験一覧の取得に失敗しました。Firestore Rules と studies コレクションを確認してください。");
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+
+  useEffect(() => {
+    if (!firebaseReady) {
+      setAdminStudies(SAMPLE_STUDIES);
+      setAdminStudiesLoading(false);
+      return undefined;
+    }
+
+    if (page !== "admin" || !authUser) return undefined;
+
+    setAdminStudiesLoading(true);
+    const unsubscribe = onSnapshot(
+      collection(firestore, "studies"),
+      (snapshot) => {
+        const nextStudies = snapshot.docs
+          .map((item) => normalizeStudyInfo(item.data(), item.id))
+          .sort((a, b) => {
+            const aTime = a.createdAt?.seconds || 0;
+            const bTime = b.createdAt?.seconds || 0;
+            if (aTime !== bTime) return bTime - aTime;
+            return (a.title || "").localeCompare(b.title || "", "ja");
+          });
+
+        setAdminStudies(nextStudies);
+        setAdminStudiesLoading(false);
+      },
+      (error) => {
+        console.error(error);
+        setAdminStudies([]);
+        setAdminStudiesLoading(false);
+        showToast("実験一覧の取得に失敗しました。", "error");
+      }
+    );
+
+    return () => unsubscribe();
+  }, [page, authUser, selectedStudyId]);
 
 
   useEffect(() => {
@@ -2954,7 +4316,9 @@ export default function ExperimentParticipantScheduler() {
     const unsubscribeSlots = onSnapshot(
       collection(firestore, "slots"),
       (snapshot) => {
-        const nextSlots = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+        const nextSlots = snapshot.docs
+          .map((item) => withStudyId({ id: item.id, ...item.data() }))
+          .filter((slot) => isRecordInStudy(slot, selectedStudyId));
         setSlots(sortSlots(nextSlots));
         setSlotsLoading(false);
         setDataError("");
@@ -2970,7 +4334,8 @@ export default function ExperimentParticipantScheduler() {
       collection(firestore, "requests"),
       (snapshot) => {
         const nextRequests = snapshot.docs
-          .map((item) => ({ id: item.id, ...item.data() }))
+          .map((item) => withStudyId({ id: item.id, ...item.data() }))
+          .filter((request) => isRecordInStudy(request, selectedStudyId))
           .sort((a, b) => {
             const aTime = a.createdAt?.seconds || 0;
             const bTime = b.createdAt?.seconds || 0;
@@ -2990,7 +4355,7 @@ export default function ExperimentParticipantScheduler() {
       unsubscribeSlots();
       unsubscribeRequests();
     };
-  }, [page, authUser]);
+  }, [page, authUser, selectedStudyId]);
 
   useEffect(() => {
     if (!selectedDate || !detailsRef.current || page !== "participant" || !shouldFocusDetailsRef.current) return;
@@ -3020,7 +4385,25 @@ export default function ExperimentParticipantScheduler() {
     setSelectedSlotIds((prev) => prev.filter((id) => slots.some((slot) => slot.id === id)));
   }, [slots]);
 
+  useEffect(() => {
+    setSelectedDate("");
+    setSelectedSlotIds([]);
+    setParticipantForm((prev) => ({ ...prev, preferredSlotIds: [] }));
+  }, [selectedStudyId]);
+
   const adminAuthorized = !!authUser?.email && ALLOWED_ADMIN_EMAILS.includes(authUser.email.toLowerCase());
+
+  useEffect(() => {
+    if (!authUser?.email || editingStudyId) return;
+    setStudyForm((prev) => {
+      if (prev.ownerEmail && prev.adminEmailsText) return prev;
+      return {
+        ...prev,
+        ownerEmail: prev.ownerEmail || authUser.email.toLowerCase(),
+        adminEmailsText: prev.adminEmailsText || authUser.email.toLowerCase(),
+      };
+    });
+  }, [authUser, editingStudyId]);
 
   const sortedSlots = useMemo(() => sortSlots(slots), [slots]);
   const allSlotsSelected = sortedSlots.length > 0 && selectedSlotIds.length === sortedSlots.length;
@@ -3052,6 +4435,38 @@ export default function ExperimentParticipantScheduler() {
       openSeats,
     };
   }, [requests, sortedSlots, page]);
+
+  const activeStudy = useMemo(() => {
+    const candidateStudies = [...studies, ...adminStudies];
+    const found = candidateStudies.find((study) => study.id === selectedStudyId);
+
+    if (found) return found;
+
+    if (selectedStudyId === DEFAULT_STUDY_ID) {
+      return normalizeStudyInfo({ ...experimentInfo, location: "" }, DEFAULT_STUDY_ID);
+    }
+
+    return normalizeStudyInfo(
+      {
+        title: "選択中の実験",
+        description: "この実験の情報を読み込んでいます。表示が変わらない場合は、トップページから実験を選び直してください。",
+        duration: experimentInfo.duration,
+        reward: experimentInfo.reward,
+        organization: experimentInfo.organization,
+        managerName: experimentInfo.managerName,
+        contactEmail: experimentInfo.contactEmail,
+        notes: experimentInfo.notes,
+        isPublished: true,
+        status: "recruiting",
+      },
+      selectedStudyId
+    );
+  }, [studies, adminStudies, selectedStudyId, experimentInfo]);
+
+  const activeExperimentInfo = useMemo(
+    () => studyToExperimentInfo(activeStudy, experimentInfo),
+    [activeStudy, experimentInfo]
+  );
 
   const filteredRequests = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -3155,9 +4570,10 @@ export default function ExperimentParticipantScheduler() {
       url.searchParams.delete("request");
       url.searchParams.delete("token");
       url.searchParams.delete("action");
+      url.searchParams.delete("study");
       window.history.replaceState({}, "", url.toString());
     }
-    setPage("participant");
+    setPage("landing");
     setParticipantResponseError("");
     setParticipantResponseMessage("");
     setParticipantResponseRequest(null);
@@ -3244,6 +4660,7 @@ export default function ExperimentParticipantScheduler() {
       if (firebaseReady) {
         const responseToken = crypto.randomUUID();
         await addDoc(collection(firestore, "requests"), {
+          studyId: selectedStudyId,
           name: participantForm.name.trim(),
           email: participantForm.email.trim(),
           affiliation: participantForm.affiliation.trim(),
@@ -3267,6 +4684,7 @@ export default function ExperimentParticipantScheduler() {
             const responseToken = crypto.randomUUID();
             return {
               id: crypto.randomUUID(),
+              studyId: selectedStudyId,
               name: participantForm.name.trim(),
               email: participantForm.email.trim(),
               affiliation: participantForm.affiliation.trim(),
@@ -3315,6 +4733,7 @@ export default function ExperimentParticipantScheduler() {
     try {
       if (firebaseReady) {
         await addDoc(collection(firestore, "slots"), {
+          studyId: selectedStudyId,
           date: slotForm.date,
           periodKey: slotForm.periodKey,
           capacity: Number(slotForm.capacity || 1),
@@ -3330,6 +4749,7 @@ export default function ExperimentParticipantScheduler() {
           ...prev,
           {
             id: crypto.randomUUID(),
+            studyId: selectedStudyId,
             date: slotForm.date,
             periodKey: slotForm.periodKey,
             capacity: Number(slotForm.capacity || 1),
@@ -3647,12 +5067,12 @@ export default function ExperimentParticipantScheduler() {
   function exportJson() {
     downloadText(
       `experiment-scheduler-${new Date().toISOString().slice(0, 10)}.json`,
-      JSON.stringify({ slots, requests, experimentInfo }, null, 2)
+      JSON.stringify({ selectedStudyId, activeStudy, slots, requests, experimentInfo }, null, 2)
     );
   }
 
   async function resetAll() {
-    const ok = window.confirm("Firestore 上の申込と日程枠をすべて削除しますか？");
+    const ok = window.confirm("現在選択している実験の申込と日程枠をすべて削除しますか？");
     if (!ok) return;
 
     try {
@@ -3682,6 +5102,7 @@ export default function ExperimentParticipantScheduler() {
       SAMPLE_SLOTS.forEach((slot) => {
         const newRef = doc(collection(firestore, "slots"));
         batch.set(newRef, {
+          studyId: selectedStudyId,
           date: slot.date,
           periodKey: slot.periodKey,
           capacity: slot.capacity,
@@ -3897,6 +5318,198 @@ export default function ExperimentParticipantScheduler() {
     }
   }
 
+  function resetStudyForm() {
+    setEditingStudyId("");
+    setStudyForm(buildStudyFormFromExperimentInfo(experimentInfo, authUser?.email || ""));
+  }
+
+  function editStudy(study) {
+    setEditingStudyId(study.id);
+    setStudyForm(buildStudyFormFromStudy(study, authUser?.email || ""));
+    setAdminTab("studies");
+  }
+
+  async function handleSaveStudy(event) {
+    event.preventDefault();
+
+    const studyId = editingStudyId
+      ? normalizeStudyId(editingStudyId)
+      : createAutoStudyId();
+
+    const payload = buildStudyPayloadFromForm(studyForm, authUser?.email || "");
+    if (!payload.title || !payload.description || !payload.duration || !payload.reward || !payload.organization || !payload.location || !payload.managerName || !payload.contactEmail || !payload.ownerEmail) {
+      showToast("必須項目を入力してください。", "error");
+      return;
+    }
+
+    if (payload.adminEmails.length === 0) {
+      showToast("管理者メールを1件以上入力してください。", "error");
+      return;
+    }
+
+    try {
+      setSavingStudy(true);
+
+      if (firebaseReady) {
+        const studyRef = doc(firestore, "studies", studyId);
+
+        if (editingStudyId) {
+          await updateDoc(studyRef, {
+            ...payload,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          const existing = await getDoc(studyRef);
+          if (existing.exists()) {
+            showToast("同じ募集IDがすでにあります。もう一度作成してください。", "error");
+            return;
+          }
+
+          await setDoc(studyRef, {
+            ...payload,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      } else {
+        const nextStudy = normalizeStudyInfo(payload, studyId);
+        setAdminStudies((prev) => {
+          const rest = prev.filter((item) => item.id !== studyId);
+          return [nextStudy, ...rest];
+        });
+        setStudies((prev) => {
+          const rest = prev.filter((item) => item.id !== studyId);
+          return payload.isPublished ? [nextStudy, ...rest] : rest;
+        });
+      }
+
+      setSelectedStudyId(studyId);
+      showToast(editingStudyId ? "募集情報を更新しました。" : "募集を作成しました。", "success");
+      setEditingStudyId("");
+      setStudyForm(buildStudyFormFromExperimentInfo(experimentInfo, authUser?.email || ""));
+      setAdminTab("studies");
+    } catch (error) {
+      console.error(error);
+      showToast("実験情報の保存に失敗しました。Rulesと入力内容を確認してください。", "error");
+    } finally {
+      setSavingStudy(false);
+    }
+  }
+
+  async function toggleStudyPublished(study) {
+    const nextPublished = !study.isPublished;
+    const nextStatus = nextPublished && study.status === "draft" ? "recruiting" : study.status;
+
+    try {
+      if (firebaseReady) {
+        await updateDoc(doc(firestore, "studies", study.id), {
+          isPublished: nextPublished,
+          status: nextStatus,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        setAdminStudies((prev) => prev.map((item) => item.id === study.id ? { ...item, isPublished: nextPublished, status: nextStatus } : item));
+        setStudies((prev) => {
+          const updated = { ...study, isPublished: nextPublished, status: nextStatus };
+          const rest = prev.filter((item) => item.id !== study.id);
+          return nextPublished ? [updated, ...rest] : rest;
+        });
+      }
+
+      showToast(nextPublished ? "実験を公開しました。" : "実験を非公開にしました。", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("公開状態の更新に失敗しました。", "error");
+    }
+  }
+
+  async function deleteStudy(study) {
+    const ok = window.confirm(`「${study.title}」を削除しますか？\nこのPhaseでは実験一覧のカードのみ削除され、既存の予約枠や申込データは削除されません。`);
+    if (!ok) return;
+
+    try {
+      setDeletingStudyId(study.id);
+
+      if (firebaseReady) {
+        await deleteDoc(doc(firestore, "studies", study.id));
+      } else {
+        setAdminStudies((prev) => prev.filter((item) => item.id !== study.id));
+        setStudies((prev) => prev.filter((item) => item.id !== study.id));
+      }
+
+      if (editingStudyId === study.id) resetStudyForm();
+      showToast("実験を削除しました。", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("実験の削除に失敗しました。", "error");
+    } finally {
+      setDeletingStudyId("");
+    }
+  }
+
+
+  function navigateToLanding() {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("study");
+      url.searchParams.delete("request");
+      url.searchParams.delete("token");
+      url.searchParams.delete("action");
+      window.history.replaceState({}, "", url.toString());
+    }
+    setPage("landing");
+  }
+
+  function navigateToStudies() {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("study");
+      url.searchParams.delete("request");
+      url.searchParams.delete("token");
+      url.searchParams.delete("action");
+      window.history.replaceState({}, "", url.toString());
+      window.setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
+    }
+    setPage("studies");
+  }
+
+  function openStudyReservation(study) {
+    const safeStudy = study ? normalizeStudyInfo(study, study.id || DEFAULT_STUDY_ID) : activeStudy;
+    const studyId = normalizeStudyId(safeStudy?.id || DEFAULT_STUDY_ID) || DEFAULT_STUDY_ID;
+
+    setSelectedStudyId(studyId);
+    setSelectedDate("");
+    setParticipantForm((prev) => ({ ...prev, preferredSlotIds: [] }));
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("study", studyId);
+      url.searchParams.delete("request");
+      url.searchParams.delete("token");
+      url.searchParams.delete("action");
+      window.history.pushState({}, "", url.toString());
+    }
+
+    setPage("participant");
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
+    }
+  }
+
+  function selectStudyScope(studyId) {
+    const nextStudyId = normalizeStudyId(studyId || "") || DEFAULT_STUDY_ID;
+    setSelectedStudyId(nextStudyId);
+    setSelectedDate("");
+    setSelectedSlotIds([]);
+    setParticipantForm((prev) => ({ ...prev, preferredSlotIds: [] }));
+
+    if (typeof window !== "undefined" && page === "participant") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("study", nextStudyId);
+      window.history.replaceState({}, "", url.toString());
+    }
+  }
+
   function openAdminPage() {
     setAuthError("");
     setPage(adminAuthorized ? "admin" : "admin-login");
@@ -3920,7 +5533,7 @@ export default function ExperimentParticipantScheduler() {
     if (firebaseReady && firebaseAuth) {
       await signOut(firebaseAuth);
     }
-    setPage("participant");
+    navigateToLanding();
   }
 
   function retryFetch() {
@@ -3939,13 +5552,31 @@ export default function ExperimentParticipantScheduler() {
 
   return (
     <>
-      {page === "admin-login" ? (
+      {page === "landing" ? (
+        <LabLinkLandingPage
+          studies={studies}
+          studiesLoading={studiesLoading}
+          onOpenStudies={navigateToStudies}
+          onOpenAdmin={openAdminPage}
+          onOpenHelp={() => setShowHelp(true)}
+        />
+      ) : page === "studies" ? (
+        <StudyBrowsePage
+          studies={studies}
+          studiesLoading={studiesLoading}
+          studiesError={studiesError}
+          onOpenReservation={openStudyReservation}
+          onOpenAdmin={openAdminPage}
+          onOpenHelp={() => setShowHelp(true)}
+          onOpenHome={navigateToLanding}
+        />
+      ) : page === "admin-login" ? (
         <AdminLoginPage
           authUser={authUser}
           authReady={authReady}
           authError={authError}
           firebaseEnabled={firebaseReady}
-          onBack={() => setPage("participant")}
+          onBack={navigateToLanding}
           onGoogleLogin={handleGoogleLogin}
         />
       ) : page === "admin" ? (
@@ -3974,10 +5605,10 @@ export default function ExperimentParticipantScheduler() {
             confirmedScheduleGroups={confirmedScheduleGroups}
             handleAssignRequest={handleAssignRequest}
             handleDeleteRequest={handleDeleteRequest}
-            onBack={() => setPage("participant")}
+            onBack={navigateToLanding}
             onLogout={handleAdminLogout}
             adminEmail={authUser?.email || ""}
-            isLoading={slotsLoading || requestsLoading}
+            isLoading={slotsLoading || requestsLoading || adminStudiesLoading}
             onSeedSampleData={seedSampleData}
             onPrepareAssignRequest={prepareAssignRequest}
             experimentInfo={experimentInfo}
@@ -3997,6 +5628,21 @@ export default function ExperimentParticipantScheduler() {
             onBulkPublish={() => handleBulkPublishState(true)}
             onBulkUnpublish={() => handleBulkPublishState(false)}
             onBulkDelete={handleBulkDelete}
+            adminStudies={adminStudies}
+            adminStudiesLoading={adminStudiesLoading}
+            studyForm={studyForm}
+            setStudyForm={setStudyForm}
+            editingStudyId={editingStudyId}
+            savingStudy={savingStudy}
+            deletingStudyId={deletingStudyId}
+            onSaveStudy={handleSaveStudy}
+            onEditStudy={editStudy}
+            onResetStudyForm={resetStudyForm}
+            onDeleteStudy={deleteStudy}
+            onToggleStudyPublished={toggleStudyPublished}
+            selectedStudyId={selectedStudyId}
+            onSelectStudyScope={selectStudyScope}
+            onOpenReservationPage={openStudyReservation}
           />
         ) : (
           <AdminLoginPage
@@ -4004,7 +5650,7 @@ export default function ExperimentParticipantScheduler() {
             authReady={authReady}
             authError={authError || "管理者ログインが必要です。"}
             firebaseEnabled={firebaseReady}
-            onBack={() => setPage("participant")}
+            onBack={navigateToLanding}
             onGoogleLogin={handleGoogleLogin}
           />
         )
@@ -4047,13 +5693,16 @@ export default function ExperimentParticipantScheduler() {
           detailsRef={detailsRef}
           onOpenAdmin={openAdminPage}
           onOpenHelp={() => setShowHelp(true)}
+          onOpenHome={navigateToLanding}
+          onOpenStudies={navigateToStudies}
           stats={stats}
           isLoading={slotsLoading}
           onRetry={retryFetch}
           setupMode={!firebaseReady}
           calendarView={calendarView}
           setCalendarView={setCalendarView}
-          experimentInfo={experimentInfo}
+          experimentInfo={activeExperimentInfo}
+          activeStudy={activeStudy}
         />
       )}
 
