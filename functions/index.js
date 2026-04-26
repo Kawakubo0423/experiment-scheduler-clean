@@ -856,6 +856,115 @@ function buildRequestFlexCarousel(items = [], mode = "status") {
   };
 }
 
+function buildLineNoticeActionButton({ label, action, requestId, token, style = "primary", displayText }) {
+  return {
+    type: "button",
+    style,
+    height: "sm",
+    action: {
+      type: "postback",
+      label,
+      data: buildLinePostbackData({ action, requestId, token }),
+      displayText: displayText || label,
+    },
+  };
+}
+
+function buildLineNoticeFlexMessage({ requestData, requestId, token, noticeType = "assigned", beforeSlot = null, afterSlot = null }) {
+  const afterParts = getLineSlotParts(afterSlot);
+  const beforeParts = beforeSlot ? getLineSlotParts(beforeSlot) : null;
+  const isChanged = noticeType === "changed";
+  const title = isChanged ? "日程が変更されました" : "日程が確定しました";
+  const accentColor = isChanged ? "#2563EB" : "#059669";
+  const accentBg = isChanged ? "#EFF6FF" : "#ECFDF5";
+  const actions = [];
+
+  if (requestId && token) {
+    actions.push(buildLineNoticeActionButton({
+      label: "この日程で確認",
+      action: "confirm",
+      requestId,
+      token,
+      style: "primary",
+      displayText: "この日程で確認します",
+    }));
+    actions.push(buildLineNoticeActionButton({
+      label: "変更を希望する",
+      action: "start_change_request",
+      requestId,
+      token,
+      style: "secondary",
+      displayText: "変更を希望します",
+    }));
+  }
+
+  const infoRows = [
+    buildFlexInfoRow("対象", `${requestData?.name || "参加者"}さん`),
+  ];
+
+  if (isChanged && beforeParts) {
+    infoRows.push(buildFlexInfoRow("変更前", `${beforeParts.date} / ${beforeParts.period}`));
+  }
+
+  infoRows.push(
+    buildFlexInfoRow(isChanged ? "変更後" : "日程", `${afterParts.date} / ${afterParts.period}`),
+    buildFlexInfoRow("場所", afterParts.location)
+  );
+
+  return {
+    type: "flex",
+    altText: title,
+    contents: {
+      type: "bubble",
+      size: "mega",
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: [
+          {
+            type: "box",
+            layout: "vertical",
+            backgroundColor: accentBg,
+            cornerRadius: "lg",
+            paddingAll: "12px",
+            contents: [
+              {
+                type: "text",
+                text: title,
+                weight: "bold",
+                size: "lg",
+                color: accentColor,
+                wrap: true,
+              },
+              {
+                type: "text",
+                text: "内容を確認し、問題なければ下のボタンから確認してください。",
+                size: "xs",
+                color: accentColor,
+                wrap: true,
+                margin: "xs",
+              },
+            ],
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "sm",
+            contents: infoRows,
+          },
+        ],
+      },
+      footer: actions.length ? {
+        type: "box",
+        layout: "vertical",
+        spacing: "sm",
+        contents: actions,
+      } : undefined,
+    },
+  };
+}
+
 async function handleLineReservationStatus({ lineUserId, replyToken }) {
   if (!lineUserId) return;
 
@@ -980,17 +1089,37 @@ async function handleLineUnlinkConfirmPostback({ lineUserId, replyToken, request
   ]);
 }
 
-async function sendLineReservationNotice({ requestData, requestId = "", token = "", title, body, links, includeActions = true }) {
+async function sendLineReservationNotice({
+  requestData,
+  requestId = "",
+  token = "",
+  title,
+  body,
+  links,
+  includeActions = true,
+  noticeType = "assigned",
+  beforeSlot = null,
+  afterSlot = null,
+}) {
   if (!canSendLine(requestData)) return;
 
   const messages = [
     {
       type: "text",
-      text: `${title}\n\n${body}`,
+      text: body || title || "実験日程に関するお知らせです。",
     },
   ];
 
-  if (includeActions) {
+  if (includeActions && afterSlot) {
+    messages.push(buildLineNoticeFlexMessage({
+      requestData,
+      requestId,
+      token: token || requestData.participantResponseToken || "",
+      noticeType,
+      beforeSlot,
+      afterSlot,
+    }));
+  } else if (includeActions) {
     const responseToken = token || requestData.participantResponseToken || "";
     const actions = [];
 
@@ -1248,35 +1377,18 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
 
   try {
     let lineBody = "";
+    let noticeType = "assigned";
 
     if (!beforeAssigned && afterAssigned) {
-      lineBody = [
-        `${recipientName} さん`,
-        "実験日程が確定しました。",
-        "",
-        `【確定日時】${slotToText(afterSlot)}`,
-        "",
-        "ご都合をご確認のうえ、問題なければ確認ボタンを押してください。",
-        "変更を希望する場合も、下のボタンから送信できます。",
-      ].join("\n");
+      noticeType = "assigned";
+      lineBody = `✅ ${recipientName}さんの実験日程が確定しました。詳細は下のカードをご確認ください。`;
     } else if (beforeAssigned && afterAssigned) {
-      lineBody = [
-        `${recipientName} さん`,
-        "実験日程が変更されました。",
-        "",
-        `【変更前】${slotToText(beforeSlot)}`,
-        `【変更後】${slotToText(afterSlot)}`,
-        "",
-        "新しい日程をご確認のうえ、問題なければ確認ボタンを押してください。",
-        "変更を希望する場合も、下のボタンから送信できます。",
-      ].join("\n");
+      noticeType = "changed";
+      lineBody = `🔄 ${recipientName}さんの実験日程が変更されました。詳細は下のカードをご確認ください。`;
     } else if (beforeAssigned && !afterAssigned) {
+      noticeType = "unassigned";
       lineBody = [
-        `${recipientName} さん`,
-        "実験日程の再調整が必要になりました。",
-        "",
-        `【直前の確定日時】${slotToText(beforeSlot)}`,
-        "",
+        `🔄 ${recipientName}さんの実験日程は再調整中です。`,
         "新しい日程が決まり次第、あらためてご連絡します。",
       ].join("\n");
     }
@@ -1289,6 +1401,9 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
       body: lineBody,
       links,
       includeActions: Boolean(afterAssigned),
+      noticeType,
+      beforeSlot,
+      afterSlot,
     });
   } catch (lineError) {
     console.error("LINE notification failed:", lineError);

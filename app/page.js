@@ -400,7 +400,7 @@ function SectionHeader({ eyebrow, title, description, action }) {
     <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
       <div>
         {eyebrow ? <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{eyebrow}</div> : null}
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{title}</h2>
+        <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">{title}</h2>
         {description ? <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p> : null}
       </div>
       {action}
@@ -497,14 +497,14 @@ function PencilIcon() {
 
 function ModalShell({ title, onClose, children }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-5">
       <button className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} aria-label="閉じる" />
-      <div className="relative z-10 w-full max-w-2xl overflow-hidden rounded-[28px] border border-white/70 bg-white shadow-2xl sm:rounded-[32px]">
-        <div className="max-h-[82dvh] overflow-y-auto p-5 sm:max-h-[88vh] sm:p-8">
+      <div className="relative z-10 w-full max-w-xl overflow-hidden rounded-[26px] border border-white/70 bg-white shadow-2xl sm:rounded-[30px]">
+        <div className="max-h-[78dvh] overflow-y-auto p-4 sm:max-h-[84vh] sm:p-6">
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">HELP</div>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">{title}</h2>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">{title}</h2>
           </div>
           <IconButton onClick={onClose} aria-label="閉じる">×</IconButton>
         </div>
