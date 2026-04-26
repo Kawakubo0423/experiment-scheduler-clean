@@ -196,10 +196,9 @@ const LINE_ADD_FRIEND_URL =
     ? `https://line.me/R/ti/p/${encodeURIComponent(LINE_OFFICIAL_ACCOUNT_ID)}`
     : "");
 
-const SITE_NAME = "LabLink";
-const SITE_DESCRIPTION = "大学研究の実験日程予約サイト";
-const SITE_TITLE = `${SITE_NAME} | ${SITE_DESCRIPTION}`;
-const SITE_OGP_IMAGE = "/lablink-ogp.png";
+const LABLINK_ICON_SRC = "/lablink-icon.png";
+
+const BRAND_TAGLINE = "大学研究の実験日程予約サイト";
 
 const firebaseReady = Object.values(firebaseConfig).every(Boolean);
 
@@ -448,6 +447,279 @@ function IconButton({ children, ...props }) {
     </button>
   );
 }
+
+
+function LabLinkMark({ size = "md", className = "" }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const sizeClass = {
+    sm: "h-10 w-10 rounded-2xl",
+    md: "h-12 w-12 rounded-[20px]",
+    lg: "h-16 w-16 rounded-[24px]",
+  }[size] || "h-12 w-12 rounded-[20px]";
+
+  return (
+    <div
+      className={classNames(
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden border border-slate-200/80 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.10)]",
+        sizeClass,
+        className
+      )}
+    >
+      {!imageFailed ? (
+        <img
+          src={LABLINK_ICON_SRC}
+          alt="LabLink"
+          className="h-full w-full object-contain"
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-teal-500 to-blue-600 text-sm font-black tracking-[-0.08em] text-white">
+          LL
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LabLinkBrand({ subtitle = BRAND_TAGLINE, compact = false, className = "" }) {
+  return (
+    <div className={classNames("flex min-w-0 items-center gap-3", className)}>
+      <LabLinkMark size={compact ? "sm" : "md"} />
+      <div className="min-w-0">
+        <div className={classNames("font-bold tracking-tight text-slate-900", compact ? "text-lg" : "text-xl")}>
+          LabLink
+        </div>
+        {subtitle ? (
+          <div className="mt-0.5 truncate text-xs font-medium text-slate-500 sm:text-sm">
+            {subtitle}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function PublicSiteHeader({ onOpenHelp, onOpenAdmin }) {
+  return (
+    <div className="sticky top-0 z-30 border-b border-white/70 bg-white/80 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+        <LabLinkBrand compact />
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenHelp}
+            className="hidden rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 sm:inline-flex"
+          >
+            参加の流れ
+          </button>
+          <IconButton aria-label="使い方を開く" onClick={onOpenHelp} title="使い方">
+            <HelpIcon />
+          </IconButton>
+          <IconButton aria-label="管理者ページへ" onClick={onOpenAdmin} title="管理者ページへ">
+            <GearIcon />
+          </IconButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminSiteHeader({ onBack, onLogout, adminEmail }) {
+  return (
+    <div className="sticky top-0 z-30 border-b border-white/70 bg-white/80 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+        <LabLinkBrand compact subtitle="実験者向け管理画面" />
+        <div className="flex flex-wrap items-center gap-2">
+          {adminEmail ? (
+            <span className="hidden max-w-[280px] truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500 md:inline-flex">
+              {adminEmail}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+          >
+            <ArrowLeftIcon />
+            予約ページへ戻る
+          </button>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+          >
+            ログアウト
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TinyFeature({ title, text, tone = "teal" }) {
+  const tones = {
+    teal: "border-teal-200 bg-teal-50 text-teal-900",
+    blue: "border-blue-200 bg-blue-50 text-blue-900",
+    slate: "border-slate-200 bg-slate-50 text-slate-800",
+  };
+
+  return (
+    <div className={classNames("rounded-3xl border px-4 py-3", tones[tone])}>
+      <div className="text-sm font-semibold">{title}</div>
+      <div className="mt-1 text-xs leading-5 opacity-75">{text}</div>
+    </div>
+  );
+}
+
+function ParticipantHero({ onOpenHelp, onScrollToDetails, stats, openSlotCount }) {
+  return (
+    <section className="mb-6 overflow-hidden rounded-[34px] border border-white/80 bg-white/85 shadow-[0_24px_80px_rgba(15,23,42,0.10)] backdrop-blur">
+      <div className="grid gap-0 lg:grid-cols-[1.14fr,0.86fr]">
+        <div className="p-5 sm:p-7 lg:p-8">
+          <div className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-teal-700">
+            LABLINK RESERVATION
+          </div>
+          <h1 className="mt-5 text-[clamp(2rem,7vw,4rem)] font-bold leading-[1.04] tracking-tight text-slate-950">
+            実験日程の予約
+          </h1>
+          <p className="mt-4 max-w-2xl text-[15px] leading-7 text-slate-600 sm:text-base">
+            LabLinkは、大学研究の実験募集と参加者をつなぐ予約ページです。公開中の日程から希望枠を選び、実験担当者からの確定連絡をお待ちください。
+          </p>
+
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={onScrollToDetails}
+              className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.22)] transition hover:bg-slate-800"
+            >
+              日程を選ぶ
+            </button>
+            <button
+              type="button"
+              onClick={onOpenHelp}
+              className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              参加の流れを見る
+            </button>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 bg-gradient-to-br from-teal-50 via-white to-blue-50 p-5 sm:p-7 lg:border-l lg:border-t-0 lg:p-8">
+          <div className="flex items-center gap-3">
+            <LabLinkMark size="lg" />
+            <div>
+              <div className="text-sm font-semibold tracking-[0.16em] text-slate-400">SERVICE CONCEPT</div>
+              <div className="mt-1 text-xl font-bold text-slate-900">実験者と参加者をつなぐ</div>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-3">
+            <TinyFeature title="公開枠から選択" text="空いている日程をカレンダー・一覧から確認できます。" tone="teal" />
+            <TinyFeature title="最大5枠まで希望提出" text="都合のよい候補を複数送信し、担当者が日程を確定します。" tone="blue" />
+            <TinyFeature title="メール・LINEで連絡" text="確定・変更・確認案内を受け取れます。LINE連携は任意です。" tone="slate" />
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="rounded-3xl border border-white/80 bg-white/80 p-4">
+              <div className="text-xs font-semibold text-slate-400">公開中の枠</div>
+              <div className="mt-1 text-3xl font-bold text-slate-950">{openSlotCount}</div>
+            </div>
+            <div className="rounded-3xl border border-white/80 bg-white/80 p-4">
+              <div className="text-xs font-semibold text-slate-400">残り席数</div>
+              <div className="mt-1 text-3xl font-bold text-slate-950">{stats.openSeats}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ParticipantFlowCard({ onOpenHelp }) {
+  return (
+    <Card className="border-teal-100 bg-gradient-to-br from-white via-white to-teal-50">
+      <SectionHeader
+        eyebrow="HOW IT WORKS"
+        title="申込から参加まで"
+        description="希望枠を送信したあと、実験担当者が確認して日程を確定します。"
+        action={
+          <button
+            type="button"
+            onClick={onOpenHelp}
+            className="rounded-2xl border border-teal-200 bg-white px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50"
+          >
+            詳しく見る
+          </button>
+        }
+      />
+      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+        {[
+          ["01", "希望枠を選択", "空いている日程から最大5枠まで選びます。"],
+          ["02", "担当者が確定", "申込内容を確認し、参加日時を決定します。"],
+          ["03", "メールで確認", "確定案内を確認し、必要に応じてLINE連携できます。"],
+        ].map(([number, title, text]) => (
+          <div key={number} className="rounded-3xl border border-slate-200 bg-white/85 p-4">
+            <div className="text-xs font-bold tracking-[0.18em] text-teal-500">{number}</div>
+            <div className="mt-2 text-sm font-semibold text-slate-900">{title}</div>
+            <div className="mt-1 text-xs leading-5 text-slate-500">{text}</div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function AdminHero({ stats, adminEmail }) {
+  return (
+    <header className="mb-6 overflow-hidden rounded-[34px] border border-white/80 bg-white/85 shadow-[0_24px_80px_rgba(15,23,42,0.10)] backdrop-blur">
+      <div className="grid gap-0 lg:grid-cols-[1.1fr,0.9fr]">
+        <div className="p-5 sm:p-7 lg:p-8">
+          <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-slate-700">
+            LABLINK ADMIN
+          </div>
+          <h1 className="mt-5 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
+            管理者ページ
+          </h1>
+          <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
+            申込一覧の確認、日程枠の追加、確定・変更・解除、LINE連携状態の確認をまとめて行えます。
+          </p>
+          {adminEmail ? <p className="mt-3 text-sm text-slate-500">ログイン中: {adminEmail}</p> : null}
+        </div>
+        <div className="grid grid-cols-2 gap-3 border-t border-slate-100 bg-gradient-to-br from-slate-50 via-white to-blue-50 p-5 sm:p-7 lg:border-l lg:border-t-0 lg:p-8">
+          {[
+            ["申込件数", stats.requestCount],
+            ["未確定", stats.pending],
+            ["確定済み", stats.confirmed],
+            ["残り席数", stats.openSeats],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-3xl border border-white/80 bg-white/85 p-4">
+              <div className="text-xs font-semibold text-slate-400">{label}</div>
+              <div className="mt-1 text-3xl font-bold text-slate-950">{value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function ResponsePageHeader({ tone = "rose" }) {
+  const toneClass = tone === "rose" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-teal-200 bg-teal-50 text-teal-700";
+
+  return (
+    <div className="mb-6 rounded-[32px] border border-white/70 bg-white/80 px-6 py-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+      <LabLinkBrand compact />
+      <div className={classNames("mt-5 inline-flex rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.16em]", toneClass)}>
+        CHANGE REQUEST
+      </div>
+      <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">変更希望ページ</h1>
+      <p className="mt-3 text-sm leading-7 text-slate-600">
+        このページでは、確定済みの日程に対する変更希望を送信できます。
+      </p>
+    </div>
+  );
+}
+
 
 function GearIcon() {
   return (
@@ -992,7 +1264,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
 
   const showCopiedFeedback = () => {
     setCopied(true);
-    onToast?.({ tone: "success", message: "連携コードをコピーしました。LabLink公式LINEのトーク画面に貼り付けて送信してください。" });
+    onToast?.({ tone: "success", message: "連携コードをコピーしました。公式LINEのトーク画面に貼り付けて送信してください。" });
     window.setTimeout(() => setCopied(false), 1800);
   };
 
@@ -1053,7 +1325,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
             <div className="min-w-0 flex-1">
               <div className="text-xl font-bold text-slate-900">申込が完了しました</div>
               <p className="mt-2 text-sm leading-7 text-slate-700">
-                日程の確定・変更・確認の案内をLINEでも受け取りたい方は、以下の手順でLabLink公式LINEと申込情報を連携してください。
+                日程の確定・変更・確認の案内をLINEでも受け取りたい方は、以下の手順で公式LINEと申込情報を連携してください。
               </p>
               <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-6 text-emerald-800 sm:text-sm">
                 LINE連携は任意です。連携しない場合でも、これまで通りメールで日程のご連絡をお送りします。
@@ -1069,9 +1341,9 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
                 1
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-lg font-semibold text-slate-900">LabLink公式LINEを追加</div>
+                <div className="text-lg font-semibold text-slate-900">公式LINEを追加</div>
                 <p className="mt-2 text-sm leading-7 text-slate-600">
-                  QRコードを読み取るか、友だち追加ボタンからLabLink公式LINEを追加してください。
+                  QRコードを読み取るか、友だち追加ボタンから公式LINEを追加してください。
                 </p>
               </div>
             </div>
@@ -1081,7 +1353,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
                 <div className="rounded-3xl border border-emerald-200 bg-white p-4 text-center shadow-sm sm:p-5">
                   <img
                     src={LINE_QR_IMAGE_URL}
-                    alt="LabLink公式LINE友だち追加用QRコード"
+                    alt="公式LINE友だち追加用QRコード"
                     className="mx-auto h-36 w-36 rounded-2xl object-contain sm:h-52 sm:w-52"
                   />
                   <div className="mt-3 text-sm font-medium text-emerald-800">QRコードで友だち追加</div>
@@ -1095,7 +1367,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex w-full items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 py-4 shadow-sm transition hover:bg-emerald-50 active:scale-[0.99] sm:w-auto sm:min-w-[260px]"
-                    aria-label="LabLink公式LINEを友だち追加する"
+                    aria-label="公式LINEを友だち追加する"
                   >
                     <img
                       src="https://scdn.line-apps.com/n/line_add_friends/btn/ja.png"
@@ -1115,7 +1387,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
 
                 {!LINE_QR_IMAGE_URL && !LINE_ADD_FRIEND_URL ? (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-amber-900 sm:text-sm">
-                    LabLink公式LINEのQRコードまたは友だち追加ボタンがまだ設定されていません。管理者側で
+                    公式LINEのQRコードまたは友だち追加ボタンがまだ設定されていません。管理者側で
                     <span className="mx-1 font-semibold">NEXT_PUBLIC_LINE_QR_IMAGE_URL</span>
                     または
                     <span className="mx-1 font-semibold">NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_URL</span>
@@ -1134,7 +1406,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
               <div className="min-w-0 flex-1">
                 <div className="text-lg font-semibold text-slate-900">連携コードを送信</div>
                 <p className="mt-2 text-sm leading-7 text-slate-600">
-                  LabLink公式LINEを追加したあと、以下の8桁の連携コードをそのまま送信してください。
+                  公式LINEを追加したあと、以下の8桁の連携コードをそのまま送信してください。
                 </p>
               </div>
             </div>
@@ -1161,7 +1433,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
                 </div>
               </div>
               <p className="mt-3 text-xs leading-6 text-slate-500 sm:text-sm">
-                連携コードをコピーし、LabLink公式LINEのトーク画面に貼り付けて送信してください。
+                連携コードをコピーし、公式LINEのトーク画面に貼り付けて送信してください。
               </p>
             </div>
           </div>
@@ -1211,17 +1483,9 @@ function ParticipantResponsePage({
   const confirmationStatus = requestItem?.participantConfirmationStatus || "pending";
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe_0%,_#f8fafc_38%,_#eef2ff_100%)] text-slate-900">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#f8fafc_38%,_#eef2ff_100%)] text-slate-900">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-        <header className="mb-6 rounded-[32px] border border-white/70 bg-white/80 px-6 py-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
-          <div className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold tracking-[0.16em] text-rose-700">
-            CHANGE REQUEST
-          </div>
-          <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">変更希望ページ</h1>
-          <p className="mt-3 text-sm leading-7 text-slate-600">
-            このページでは、確定済みの日程に対する変更希望を送信できます。
-          </p>
-        </header>
+        <ResponsePageHeader />
 
         {loading ? <LoadingCard title="確認情報を読み込んでいます..." /> : null}
 
@@ -1378,34 +1642,15 @@ function ParticipantPage({
     .filter(({ summary }) => (summary?.slotCount || 0) > 0);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe_0%,_#eff6ff_24%,_#f8fafc_58%,_#eef2ff_100%)] text-slate-900">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <header className="mb-6 rounded-[32px] border border-white/70 bg-white/70 px-5 py-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur sm:px-7 sm:py-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-sky-700">
-                RESERVATION PAGE
-              </div>
-            </div>
-            <div className="flex shrink-0 items-start gap-3">
-              <IconButton aria-label="使い方を開く" onClick={onOpenHelp} title="使い方">
-                <HelpIcon />
-              </IconButton>
-              <IconButton aria-label="管理者ページへ" onClick={onOpenAdmin} title="管理者ページへ">
-                <GearIcon />
-              </IconButton>
-            </div>
-          </div>
-
-          <div className="mt-5">
-            <h1 className="whitespace-nowrap text-[clamp(2.1rem,8.8vw,3rem)] font-bold tracking-tight leading-[1.05] text-slate-900">
-              実験日程予約ページ
-            </h1>
-            <p className="mt-4 max-w-[18.5rem] text-[15px] leading-7 text-slate-600 sm:max-w-none sm:whitespace-nowrap sm:text-base">
-              カレンダーから空いている日を選び、詳細枠を見ながら希望日時を送信できます。必要な説明は右上のヘルプからいつでも確認できます。
-            </p>
-          </div>
-        </header>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#eff6ff_30%,_#f8fafc_60%,_#eef2ff_100%)] text-slate-900">
+      <PublicSiteHeader onOpenHelp={onOpenHelp} onOpenAdmin={onOpenAdmin} />
+      <div className="mx-auto max-w-7xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
+        <ParticipantHero
+          onOpenHelp={onOpenHelp}
+          onScrollToDetails={() => detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          stats={stats}
+          openSlotCount={sortedSlots.length}
+        />
 
         {setupMode ? <div className="mb-6"><SetupNotice /></div> : null}
 
@@ -1435,10 +1680,9 @@ function ParticipantPage({
                 <div className="mt-2 text-3xl font-semibold text-slate-900">{stats.openSeats}</div>
               </div>
             </div>
-            
           </Card>
 
-          
+          <ParticipantFlowCard onOpenHelp={onOpenHelp} />
         </section>
 
         {isLoading ? (
@@ -1835,7 +2079,7 @@ function ParticipantPage({
                     <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-7 text-emerald-900">
                       <div className="font-semibold text-emerald-950">LINE連携コードを発行しました</div>
                       <p className="mt-1">
-                        LabLink公式LINEで通知を受け取りたい場合は、申込完了後に表示された案内に従って連携してください。
+                        公式LINEで通知を受け取りたい場合は、申込完了後に表示された案内に従って連携してください。
                       </p>
                       <button
                         type="button"
@@ -1845,7 +2089,7 @@ function ParticipantPage({
                         <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-[8px] font-black tracking-tight text-[#06C755]">
                           LINE
                         </span>
-                        LabLink公式LINEの案内をもう一度見る
+                        公式LINEの案内をもう一度見る
                       </button>
                     </div>
                   ) : null}
@@ -1915,37 +2159,10 @@ function AdminPage({
   onBulkDelete,
 }) {
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e2e8f0_0%,_#f8fafc_32%,_#eef2ff_100%)] text-slate-900">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <header className="mb-6 flex flex-col gap-4 rounded-[32px] border border-white/70 bg-white/80 px-5 py-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur sm:px-7 sm:py-6 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-slate-700">
-              ADMIN PAGE
-            </div>
-            <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-              管理者ページ
-            </h1>
-            <p className="mt-3 text-sm leading-7 text-slate-600 sm:text-base">
-              申込一覧の確認、日程枠の追加、確定処理をここでまとめて行えます。
-            </p>
-            {adminEmail ? <p className="mt-2 text-sm text-slate-500">ログイン中: {adminEmail}</p> : null}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={onBack}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              <ArrowLeftIcon />
-              予約ページへ戻る
-            </button>
-            <button
-              onClick={onLogout}
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              ログアウト
-            </button>
-          </div>
-        </header>
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#f8fafc_34%,_#eef2ff_100%)] text-slate-900">
+      <AdminSiteHeader onBack={onBack} onLogout={onLogout} adminEmail={adminEmail} />
+      <div className="mx-auto max-w-7xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
+        <AdminHero stats={stats} adminEmail={adminEmail} />
 
         {isLoading ? <LoadingCard title="管理データを読み込んでいます..." /> : null}
 
@@ -2343,7 +2560,7 @@ function AdminPage({
                             {request.lineUserId ? (
                               <div className="mt-1 break-all text-xs opacity-70">ID: {request.lineUserId}</div>
                             ) : (
-                              <div className="mt-1 text-xs opacity-70">参加者がLabLink公式LINEに連携コードを送ると連携済みになります。</div>
+                              <div className="mt-1 text-xs opacity-70">参加者が公式LINEに連携コードを送ると連携済みになります。</div>
                             )}
                           </div>
 
@@ -2358,7 +2575,7 @@ function AdminPage({
                               </span>
                             </div>
                             <p className="mt-2 text-xs leading-5 text-slate-500">
-                              参加者がLINE連携できない場合は、このコードをLabLink公式LINEに送るよう案内してください。
+                              参加者がLINE連携できない場合は、このコードを公式LINEに送るよう案内してください。
                             </p>
                           </div>
                         </div>
@@ -2453,12 +2670,13 @@ function AdminLoginPage({
   onGoogleLogin,
 }) {
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e2e8f0_0%,_#f8fafc_30%,_#eef2ff_100%)] px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#f8fafc_34%,_#eef2ff_100%)] px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
-        <div className="mb-6 flex justify-between gap-3">
+        <div className="mb-6 flex flex-col gap-3 rounded-[28px] border border-white/70 bg-white/80 px-5 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <LabLinkBrand compact subtitle="実験者向けログイン" />
           <button
             onClick={onBack}
-            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             <ArrowLeftIcon />
             予約ページへ戻る
@@ -2470,7 +2688,7 @@ function AdminLoginPage({
             <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10">
               <LockIcon />
             </div>
-            <h1 className="mt-5 text-3xl font-bold tracking-tight">管理者ページ</h1>
+            <h1 className="mt-5 text-3xl font-bold tracking-tight">LabLink 管理者ページ</h1>
             <p className="mt-4 text-sm leading-7 text-slate-200">
               Googleログインで管理者を認証します。許可されたメールアドレスのみ、申込一覧と日程確定処理へアクセスできます。
             </p>
@@ -2591,51 +2809,7 @@ export default function ExperimentParticipantScheduler() {
   const shouldFocusDetailsRef = useRef(false);
 
   useEffect(() => {
-    document.title = SITE_TITLE;
-
-    const upsertMeta = (attribute, key, content) => {
-      if (!content) return;
-      let element = document.head.querySelector(`meta[${attribute}=\"${key}\"]`);
-      if (!element) {
-        element = document.createElement("meta");
-        element.setAttribute(attribute, key);
-        document.head.appendChild(element);
-      }
-      element.setAttribute("content", content);
-    };
-
-    const upsertLink = (rel, href, attributes = {}) => {
-      if (!href) return;
-      let element = document.head.querySelector(`link[rel=\"${rel}\"][href=\"${href}\"]`);
-      if (!element) {
-        element = document.createElement("link");
-        element.setAttribute("rel", rel);
-        element.setAttribute("href", href);
-        document.head.appendChild(element);
-      }
-      Object.entries(attributes).forEach(([key, value]) => {
-        element.setAttribute(key, value);
-      });
-    };
-
-    upsertMeta("name", "description", `${SITE_NAME}は、大学研究の実験日程を確認・予約するためのWebサイトです。`);
-    upsertMeta("name", "application-name", SITE_NAME);
-    upsertMeta("name", "theme-color", "#10B981");
-    upsertMeta("property", "og:site_name", SITE_NAME);
-    upsertMeta("property", "og:title", SITE_TITLE);
-    upsertMeta("property", "og:description", `${SITE_NAME}は、大学研究の実験日程を確認・予約するためのWebサイトです。`);
-    upsertMeta("property", "og:type", "website");
-    upsertMeta("property", "og:image", SITE_OGP_IMAGE);
-    upsertMeta("name", "twitter:card", "summary_large_image");
-    upsertMeta("name", "twitter:title", SITE_TITLE);
-    upsertMeta("name", "twitter:description", `${SITE_NAME}は、大学研究の実験日程を確認・予約するためのWebサイトです。`);
-    upsertMeta("name", "twitter:image", SITE_OGP_IMAGE);
-
-    upsertLink("icon", "/favicon.ico");
-    upsertLink("icon", "/favicon-32x32.png", { sizes: "32x32", type: "image/png" });
-    upsertLink("icon", "/favicon-16x16.png", { sizes: "16x16", type: "image/png" });
-    upsertLink("apple-touch-icon", "/apple-touch-icon.png", { sizes: "180x180" });
-    upsertLink("manifest", "/site.webmanifest");
+    document.title = "LabLink | 実験日程予約ページ";
   }, []);
 
   useEffect(() => {
