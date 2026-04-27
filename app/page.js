@@ -387,6 +387,7 @@ const LINE_ADD_FRIEND_URL =
     : "");
 
 const LABLINK_ICON_SRC = "/lablink-icon.png";
+const LABLINK_LOGO_SRC = "/lablink-logo.png";
 
 const BRAND_TAGLINE = "大学研究の実験日程予約サイト";
 
@@ -1092,88 +1093,137 @@ function LabLinkLandingPage({
 
       <style jsx global>{`
         @keyframes lablink-fade-up {
-          from { opacity: 0; transform: translateY(18px) scale(0.96); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-        @keyframes lablink-soft-float {
+        @keyframes lablink-logo-float {
           0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-8px); }
+          50% { transform: translateY(-6px); }
+        }
+        @keyframes lablink-soft-glow {
+          0%, 100% { opacity: 0.55; transform: scale(1); }
+          50% { opacity: 0.9; transform: scale(1.06); }
         }
       `}</style>
 
       <main className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-        <section className="overflow-hidden rounded-[38px] border border-white/80 bg-white/85 shadow-[0_28px_90px_rgba(15,23,42,0.11)] backdrop-blur">
-          <div className="grid gap-0 lg:grid-cols-[1.08fr,0.92fr]">
-            <div className="p-6 sm:p-8 lg:p-10">
-              <div className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-teal-700">
-                LABLINK PLATFORM
-              </div>
-              <h1 className="mt-5 text-[clamp(2.2rem,6.5vw,4.7rem)] font-bold leading-[1.03] tracking-tight text-slate-950">
-                研究実験と参加者を、もっとつなぎやすく。
-              </h1>
-              <p className="mt-5 max-w-2xl text-[15px] leading-8 text-slate-600 sm:text-base">
-                LabLinkは、大学で行われる研究実験の募集と日程調整を支援するサービスです。参加者は募集中の実験を探して申し込み、実験者は募集情報・日程枠・申込状況をまとめて管理できます。
-              </p>
-              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={onOpenStudies}
-                  className="rounded-2xl bg-slate-950 px-6 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.22)] transition hover:bg-slate-800"
-                >
-                  募集中の実験を見る
-                </button>
-                <button
-                  type="button"
-                  onClick={onOpenAdmin}
-                  className="rounded-2xl border border-slate-200 bg-white px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  実験者・管理者はこちら
-                </button>
-              </div>
-            </div>
+        <section className="relative overflow-hidden rounded-[42px] border border-white/80 bg-white/88 px-5 py-10 shadow-[0_30px_100px_rgba(15,23,42,0.12)] backdrop-blur sm:px-8 sm:py-12 lg:px-12 lg:py-14">
+          <div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-teal-200/55 blur-3xl" style={{ animation: "lablink-soft-glow 6s ease-in-out infinite" }} />
+          <div className="pointer-events-none absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-blue-200/55 blur-3xl" style={{ animation: "lablink-soft-glow 7s ease-in-out 0.8s infinite" }} />
 
-            <div className="border-t border-slate-100 bg-gradient-to-br from-teal-50 via-white to-blue-50 p-6 sm:p-8 lg:border-l lg:border-t-0 lg:p-10">
+          <div className="relative mx-auto max-w-5xl text-center" style={{ animation: "lablink-fade-up 0.7s ease-out both" }}>
+            <div className="mx-auto flex justify-center">
               <div
-                className="flex flex-col items-center text-center"
-                style={{ animation: "lablink-fade-up 0.85s ease-out both" }}
+                className="rounded-[28px] bg-white/82 px-5 py-4 shadow-[0_22px_70px_rgba(15,23,42,0.12)] ring-1 ring-white/90 sm:px-7 sm:py-5"
+                style={{ animation: "lablink-logo-float 5.2s ease-in-out 0.9s infinite" }}
               >
-                <div
-                  className="relative rounded-[44px] bg-white/75 p-4 shadow-[0_26px_70px_rgba(15,23,42,0.14)] ring-1 ring-white/90"
-                  style={{ animation: "lablink-soft-float 4.8s ease-in-out 0.9s infinite" }}
-                >
-                  <div className="absolute -right-3 -top-3 h-12 w-12 rounded-full bg-teal-200/55 blur-2xl" />
-                  <div className="absolute -bottom-4 -left-4 h-16 w-16 rounded-full bg-blue-200/60 blur-2xl" />
-                  <LabLinkMark size="xl" className="relative" />
-                </div>
-                <div className="mt-5 text-sm font-semibold tracking-[0.18em] text-slate-400">LABLINK</div>
-                <div className="mt-2 text-2xl font-bold text-slate-900">募集・予約・連絡をひとつに</div>
-                <p className="mt-3 max-w-md text-sm leading-7 text-slate-600">
-                  大学研究の実験募集を、参加者にも実験者にも分かりやすくつなぎます。
-                </p>
-              </div>
-
-              <div className="mt-8 grid gap-4">
-                <LandingFeatureCard
-                  title="参加者は実験を探して予約"
-                  text="募集中の実験一覧から内容を確認し、希望する日程を選んで申し込めます。"
-                  icon={<LandingIcon type="list" />}
-                  tone="teal"
+                <img
+                  src={LABLINK_LOGO_SRC}
+                  alt="LabLink"
+                  className="h-auto w-[170px] object-contain sm:w-[225px] lg:w-[270px]"
+                  onError={(event) => {
+                    event.currentTarget.style.display = "none";
+                  }}
                 />
-                <LandingFeatureCard
-                  title="実験者は募集をまとめて管理"
-                  text="募集情報、日程枠、申込一覧を実験ごとに切り替えて管理できます。"
-                  icon={<LandingIcon type="link" />}
-                  tone="blue"
-                />
-              </div>
-
-              <div className="mt-5 rounded-[28px] border border-white/80 bg-white/85 p-5">
-                <div className="text-xs font-semibold tracking-[0.18em] text-slate-400">CURRENT STATUS</div>
-                <div className="mt-2 text-sm leading-6 text-slate-600">
-                  {studiesLoading ? "公開中の実験を確認しています。" : `現在、${publicStudyCount}件の実験募集を表示できます。`}
-                </div>
               </div>
             </div>
+
+            <div className="mt-7 inline-flex rounded-full border border-teal-200 bg-teal-50/90 px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-teal-700">
+              RESEARCH PARTICIPATION PLATFORM
+            </div>
+
+            <h1 className="mx-auto mt-5 max-w-3xl bg-gradient-to-r from-slate-950 via-teal-800 to-blue-800 bg-clip-text text-[clamp(1.45rem,3.1vw,2.55rem)] font-semibold leading-[1.22] tracking-[-0.04em] text-transparent">
+              研究参加を、もっと身近に。
+            </h1>
+
+            <p className="mx-auto mt-5 max-w-3xl text-sm leading-8 text-slate-600 sm:text-base">
+              LabLinkは、大学で行われる研究実験の募集・予約・連絡をつなぐサービスです。参加者は募集中の実験を探して申し込み、実験者は募集情報や申込状況をまとめて管理できます。
+            </p>
+
+            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={onOpenStudies}
+                className="rounded-2xl bg-slate-950 px-7 py-3.5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(15,23,42,0.24)] transition hover:-translate-y-0.5 hover:bg-slate-800"
+              >
+                募集中の実験を見る
+              </button>
+              <button
+                type="button"
+                onClick={onOpenAdmin}
+                className="rounded-2xl border border-slate-200 bg-white/90 px-7 py-3.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-white"
+              >
+                実験者・管理者はこちら
+              </button>
+            </div>
+          </div>
+
+          <div className="relative mt-10 grid gap-4 lg:grid-cols-2" style={{ animation: "lablink-fade-up 0.7s ease-out 0.12s both" }}>
+            <button
+              type="button"
+              onClick={onOpenStudies}
+              className="group rounded-[30px] border border-teal-100 bg-white/86 p-6 text-left shadow-[0_18px_55px_rgba(15,23,42,0.07)] transition hover:-translate-y-1 hover:border-teal-200 hover:bg-white"
+            >
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-teal-50 text-teal-700 ring-1 ring-teal-100">
+                  <LandingIcon type="list" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold tracking-[0.18em] text-teal-700">FOR PARTICIPANTS</div>
+                  <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-950">実験に参加したい方</h2>
+                  <p className="mt-2 text-sm leading-7 text-slate-600">
+                    募集中の実験を一覧で確認し、内容や日程を見て参加申込へ進めます。
+                  </p>
+                  <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-teal-700">
+                    募集中の実験を見る
+                    <span className="transition group-hover:translate-x-1">→</span>
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={onOpenAdmin}
+              className="group rounded-[30px] border border-blue-100 bg-white/86 p-6 text-left shadow-[0_18px_55px_rgba(15,23,42,0.07)] transition hover:-translate-y-1 hover:border-blue-200 hover:bg-white"
+            >
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+                  <LandingIcon type="link" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold tracking-[0.18em] text-blue-700">FOR ORGANIZERS</div>
+                  <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-950">実験を募集・管理する方</h2>
+                  <p className="mt-2 text-sm leading-7 text-slate-600">
+                    募集ページの作成、候補日程の追加、申込者の確認・確定を行えます。
+                  </p>
+                  <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-blue-700">
+                    管理者ページへ
+                    <span className="transition group-hover:translate-x-1">→</span>
+                  </div>
+                </div>
+              </div>
+            </button>
+          </div>
+        </section>
+
+        <section className="mt-5 grid gap-4 sm:grid-cols-3" style={{ animation: "lablink-fade-up 0.7s ease-out 0.2s both" }}>
+          <div className="rounded-[26px] border border-white/80 bg-white/75 p-5 shadow-sm backdrop-blur">
+            <div className="text-xs font-semibold tracking-[0.16em] text-slate-400">CURRENT STUDIES</div>
+            <div className="mt-2 text-2xl font-bold text-slate-950">
+              {studiesLoading ? "確認中" : `${publicStudyCount}件`}
+            </div>
+            <p className="mt-1 text-sm text-slate-500">現在表示できる実験募集</p>
+          </div>
+          <div className="rounded-[26px] border border-white/80 bg-white/75 p-5 shadow-sm backdrop-blur">
+            <div className="text-xs font-semibold tracking-[0.16em] text-slate-400">RESERVATION</div>
+            <div className="mt-2 text-2xl font-bold text-slate-950">日程選択</div>
+            <p className="mt-1 text-sm text-slate-500">希望枠を選んで申込</p>
+          </div>
+          <div className="rounded-[26px] border border-white/80 bg-white/75 p-5 shadow-sm backdrop-blur">
+            <div className="text-xs font-semibold tracking-[0.16em] text-slate-400">CONTACT</div>
+            <div className="mt-2 text-2xl font-bold text-slate-950">メール・LINE</div>
+            <p className="mt-1 text-sm text-slate-500">確定連絡を受け取りやすく</p>
           </div>
         </section>
       </main>
