@@ -17,6 +17,7 @@ import {
   doc,
   getFirestore,
   getDoc,
+  getDocs,
   onSnapshot,
   query,
   runTransaction,
@@ -721,6 +722,16 @@ function PublicSiteHeader({ onOpenHelp, onOpenAdmin, onOpenHome, onOpenReservati
         </nav>
 
         <div className="flex shrink-0 items-center gap-2">
+          {LINE_ADD_FRIEND_URL ? (
+            <a
+              href={LINE_ADD_FRIEND_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="hidden rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-100 sm:inline-flex"
+            >
+              公式LINE追加
+            </a>
+          ) : null}
           <button
             type="button"
             onClick={onOpenHelp}
@@ -735,6 +746,17 @@ function PublicSiteHeader({ onOpenHelp, onOpenAdmin, onOpenHome, onOpenReservati
           >
             管理者
           </button>
+          {LINE_ADD_FRIEND_URL ? (
+            <a
+              href={LINE_ADD_FRIEND_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-10 items-center rounded-2xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 shadow-sm sm:hidden"
+              aria-label="公式LINEを追加する"
+            >
+              LINE
+            </a>
+          ) : null}
           <IconButton aria-label="使い方を開く" onClick={onOpenHelp} title="使い方" className="sm:hidden">
             <HelpIcon />
           </IconButton>
@@ -1079,8 +1101,6 @@ function LabLinkLandingPage({
   onOpenAdmin,
   onOpenHelp,
 }) {
-  const publicStudyCount = Array.isArray(studies) ? studies.length : 0;
-
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#eff6ff_30%,_#f8fafc_60%,_#eef2ff_100%)] text-slate-900">
       <PublicSiteHeader
@@ -1140,22 +1160,6 @@ function LabLinkLandingPage({
               LabLinkは、大学で行われる研究実験の募集・予約・連絡をつなぐサービスです。参加者は募集中の実験を探して申し込み、実験者は募集情報や申込状況をまとめて管理できます。
             </p>
 
-            <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={onOpenStudies}
-                className="rounded-2xl bg-slate-950 px-7 py-3.5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(15,23,42,0.24)] transition hover:-translate-y-0.5 hover:bg-slate-800"
-              >
-                募集中の実験を見る
-              </button>
-              <button
-                type="button"
-                onClick={onOpenAdmin}
-                className="rounded-2xl border border-slate-200 bg-white/90 px-7 py-3.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-white"
-              >
-                実験者・管理者はこちら
-              </button>
-            </div>
           </div>
 
           <div className="relative mt-10 grid gap-4 lg:grid-cols-2" style={{ animation: "lablink-fade-up 0.7s ease-out 0.12s both" }}>
@@ -1207,23 +1211,45 @@ function LabLinkLandingPage({
           </div>
         </section>
 
-        <section className="mt-5 grid gap-4 sm:grid-cols-3" style={{ animation: "lablink-fade-up 0.7s ease-out 0.2s both" }}>
-          <div className="rounded-[26px] border border-white/80 bg-white/75 p-5 shadow-sm backdrop-blur">
-            <div className="text-xs font-semibold tracking-[0.16em] text-slate-400">CURRENT STUDIES</div>
-            <div className="mt-2 text-2xl font-bold text-slate-950">
-              {studiesLoading ? "確認中" : `${publicStudyCount}件`}
+        <section className="mt-5 rounded-[34px] border border-white/80 bg-white/72 p-5 shadow-sm backdrop-blur sm:p-6" style={{ animation: "lablink-fade-up 0.7s ease-out 0.2s both" }}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="text-xs font-semibold tracking-[0.18em] text-slate-400">ABOUT LABLINK</div>
+              <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">LabLinkでできること</h2>
             </div>
-            <p className="mt-1 text-sm text-slate-500">現在表示できる実験募集</p>
+            <p className="max-w-2xl text-sm leading-7 text-slate-500">
+              参加者は実験を探して申し込み、実験者は募集ページ・日程・申込状況をまとめて管理できます。
+            </p>
           </div>
-          <div className="rounded-[26px] border border-white/80 bg-white/75 p-5 shadow-sm backdrop-blur">
-            <div className="text-xs font-semibold tracking-[0.16em] text-slate-400">RESERVATION</div>
-            <div className="mt-2 text-2xl font-bold text-slate-950">日程選択</div>
-            <p className="mt-1 text-sm text-slate-500">希望枠を選んで申込</p>
-          </div>
-          <div className="rounded-[26px] border border-white/80 bg-white/75 p-5 shadow-sm backdrop-blur">
-            <div className="text-xs font-semibold tracking-[0.16em] text-slate-400">CONTACT</div>
-            <div className="mt-2 text-2xl font-bold text-slate-950">メール・LINE</div>
-            <p className="mt-1 text-sm text-slate-500">確定連絡を受け取りやすく</p>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <div className="rounded-[26px] border border-teal-100 bg-teal-50/70 p-5">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-teal-700 shadow-sm">
+                <LandingIcon type="list" />
+              </div>
+              <h3 className="mt-4 font-bold text-slate-950">参加者は実験を探しやすく</h3>
+              <p className="mt-2 text-sm leading-7 text-slate-600">
+                募集中の実験を一覧で確認し、内容に合う実験の予約ページへ進めます。
+              </p>
+            </div>
+            <div className="rounded-[26px] border border-blue-100 bg-blue-50/70 p-5">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-blue-700 shadow-sm">
+                <LandingIcon type="calendar" />
+              </div>
+              <h3 className="mt-4 font-bold text-slate-950">実験者は運営を管理しやすく</h3>
+              <p className="mt-2 text-sm leading-7 text-slate-600">
+                募集情報の作成、候補日程の公開、申込者の確定・変更を管理できます。
+              </p>
+            </div>
+            <div className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-5">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-slate-700 shadow-sm">
+                <LandingIcon type="link" />
+              </div>
+              <h3 className="mt-4 font-bold text-slate-950">連絡はメールとLINEで確認</h3>
+              <p className="mt-2 text-sm leading-7 text-slate-600">
+                確定・変更の案内はメールを基本に、希望者は公式LINEでも受け取れます。
+              </p>
+            </div>
           </div>
         </section>
       </main>
@@ -2768,6 +2794,8 @@ function AdminStudyManager({
   onResetStudyForm,
   onDeleteStudy,
   onToggleStudyPublished,
+  onRepairLegacyData,
+  repairingLegacyData,
   selectedStudyId,
   onSelectStudyScope,
   mode = "list",
@@ -3420,6 +3448,8 @@ function AdminPage({
   onResetStudyForm,
   onDeleteStudy,
   onToggleStudyPublished,
+  onRepairLegacyData,
+  repairingLegacyData,
   selectedStudyId,
   onSelectStudyScope,
   onOpenReservationPage,
@@ -3521,6 +3551,8 @@ function AdminPage({
             onResetStudyForm={onResetStudyForm}
             onDeleteStudy={onDeleteStudy}
             onToggleStudyPublished={onToggleStudyPublished}
+            onRepairLegacyData={onRepairLegacyData}
+            repairingLegacyData={repairingLegacyData}
             mode="list"
             onOpenReservationPage={onOpenReservationPage}
             onCreateStudy={() => {
@@ -4091,6 +4123,7 @@ export default function ExperimentParticipantScheduler() {
   const [editingStudyId, setEditingStudyId] = useState("");
   const [savingStudy, setSavingStudy] = useState(false);
   const [deletingStudyId, setDeletingStudyId] = useState("");
+  const [repairingLegacyData, setRepairingLegacyData] = useState(false);
   const [savingExperimentInfo, setSavingExperimentInfo] = useState(false);
   const [selectedSlotIds, setSelectedSlotIds] = useState([]);
   const [bulkNote, setBulkNote] = useState("");
@@ -5497,6 +5530,109 @@ export default function ExperimentParticipantScheduler() {
     }
   }
 
+  async function repairLegacyData() {
+    if (!firebaseReady) {
+      showToast("Firebase接続時のみ補修できます。", "error");
+      return;
+    }
+
+    const ok = window.confirm(
+      "リニューアル前の古い requests / slots に不足している studyId や確認フロー用フィールドを追加します。\n\n現在の古いデータは vr-notification-2026 の募集として補修します。実行しますか？"
+    );
+    if (!ok) return;
+
+    try {
+      setRepairingLegacyData(true);
+
+      const requestsSnapshot = await getDocs(collection(firestore, "requests"));
+      const slotsSnapshot = await getDocs(collection(firestore, "slots"));
+
+      const batches = [];
+      let batch = writeBatch(firestore);
+      let operationCount = 0;
+      let repairedRequests = 0;
+      let repairedSlots = 0;
+
+      const queueUpdate = (ref, payload) => {
+        batch.update(ref, payload);
+        operationCount += 1;
+        if (operationCount >= 400) {
+          batches.push(batch);
+          batch = writeBatch(firestore);
+          operationCount = 0;
+        }
+      };
+
+      requestsSnapshot.forEach((requestDoc) => {
+        const data = requestDoc.data() || {};
+        const updatePayload = {};
+
+        if (typeof data.studyId !== "string" || !data.studyId.trim()) {
+          updatePayload.studyId = DEFAULT_STUDY_ID;
+        }
+        if (typeof data.participantResponseToken !== "string" || data.participantResponseToken.length <= 10) {
+          const token = typeof crypto !== "undefined" && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `legacy-${requestDoc.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          updatePayload.participantResponseToken = token;
+        }
+        if (!["pending", "confirmed", "change_requested"].includes(data.participantConfirmationStatus)) {
+          updatePayload.participantConfirmationStatus = "pending";
+        }
+        if (typeof data.participantResponseNote !== "string") {
+          updatePayload.participantResponseNote = "";
+        }
+        if (typeof data.lineLinkCode !== "string" || !data.lineLinkCode.trim()) {
+          updatePayload.lineLinkCode = generateLineLinkCode();
+        }
+        if (typeof data.lineUserId !== "string") {
+          updatePayload.lineUserId = "";
+        }
+        if (typeof data.lineDisplayName !== "string") {
+          updatePayload.lineDisplayName = "";
+        }
+        if (typeof data.lineNotifyEnabled !== "boolean") {
+          updatePayload.lineNotifyEnabled = false;
+        }
+
+        if (Object.keys(updatePayload).length > 0) {
+          updatePayload.updatedAt = serverTimestamp();
+          queueUpdate(requestDoc.ref, updatePayload);
+          repairedRequests += 1;
+        }
+      });
+
+      slotsSnapshot.forEach((slotDoc) => {
+        const data = slotDoc.data() || {};
+        if (typeof data.studyId !== "string" || !data.studyId.trim()) {
+          queueUpdate(slotDoc.ref, {
+            studyId: DEFAULT_STUDY_ID,
+            updatedAt: serverTimestamp(),
+          });
+          repairedSlots += 1;
+        }
+      });
+
+      if (operationCount > 0) {
+        batches.push(batch);
+      }
+
+      for (const queuedBatch of batches) {
+        await queuedBatch.commit();
+      }
+
+      showToast(
+        `古いデータを補修しました。requests: ${repairedRequests}件 / slots: ${repairedSlots}件`,
+        "success"
+      );
+    } catch (error) {
+      console.error(error);
+      showToast("古いデータの補修に失敗しました。Rulesとデータ形式を確認してください。", "error");
+    } finally {
+      setRepairingLegacyData(false);
+    }
+  }
+
 
   function navigateToLanding() {
     if (typeof window !== "undefined") {
@@ -5690,6 +5826,8 @@ export default function ExperimentParticipantScheduler() {
             onResetStudyForm={resetStudyForm}
             onDeleteStudy={deleteStudy}
             onToggleStudyPublished={toggleStudyPublished}
+            onRepairLegacyData={repairLegacyData}
+            repairingLegacyData={repairingLegacyData}
             selectedStudyId={selectedStudyId}
             onSelectStudyScope={selectStudyScope}
             onOpenReservationPage={openStudyReservation}

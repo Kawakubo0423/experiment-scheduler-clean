@@ -118,6 +118,62 @@ function buildParticipantResponseLinks(token) {
   };
 }
 
+function buildLineLinkCodeTextBlock(requestData = {}) {
+  const code = String(requestData.lineLinkCode || "").trim();
+  if (!code) return "";
+
+  return [
+    "",
+    "【LINE連携コード】",
+    `連携コード: ${code}`,
+    "公式LINEを友だち追加し、この8桁コードを送信すると、日程案内をLINEでも受け取れます。",
+    "※LINE連携は任意です。連携しない場合でも、メールでご連絡します。",
+    "",
+  ].join("\n");
+}
+
+function buildLineLinkCodeHtmlBlock(requestData = {}) {
+  const code = String(requestData.lineLinkCode || "").trim();
+  if (!code) return "";
+
+  return `
+    <div style="margin-top: 18px; padding: 16px; border: 1px solid #a7f3d0; background: #ecfdf5; border-radius: 16px;">
+      <div style="font-weight: 700; color: #047857; margin-bottom: 8px;">LINEでも通知を受け取る</div>
+      <p style="margin: 0 0 10px; color: #065f46;">公式LINEを友だち追加し、以下の連携コードを送信すると、日程案内をLINEでも受け取れます。</p>
+      <div style="display:inline-block; padding: 10px 14px; border-radius: 12px; background: #ffffff; border: 1px solid #6ee7b7; color: #064e3b; font-size: 20px; font-weight: 800; letter-spacing: 0.18em;">${escapeHtml(code)}</div>
+      <p style="margin: 10px 0 0; font-size: 13px; color: #047857;">LINE連携は任意です。連携しない場合でも、メールでご連絡します。</p>
+    </div>
+  `;
+}
+
+async function getStudyInfo(studyId = "") {
+  if (!studyId) return null;
+  try {
+    const snap = await db.collection("studies").doc(studyId).get();
+    if (!snap.exists) return null;
+    return { id: snap.id, ...snap.data() };
+  } catch (error) {
+    console.error("getStudyInfo failed:", error);
+    return null;
+  }
+}
+
+async function getStudyMap(studyIds = []) {
+  const uniqueIds = [...new Set(studyIds.filter(Boolean))];
+  const docs = await Promise.all(uniqueIds.map((id) => db.collection("studies").doc(id).get()));
+  const map = new Map();
+  docs.forEach((snap) => {
+    if (snap.exists) {
+      map.set(snap.id, { id: snap.id, ...snap.data() });
+    }
+  });
+  return map;
+}
+
+function getStudyTitleFromData(requestData = {}, study = null) {
+  return study?.title || requestData.studyTitle || requestData.studyName || "実験";
+}
+
 function responseLinksTextBlock(links) {
   if (!links.confirmUrl && !links.changeUrl) return "";
 
@@ -640,11 +696,14 @@ async function getLineLinkedRequests(lineUserId) {
 
   const slotIds = activeRequests.map((item) => item.data.assignedSlotId || "").filter(Boolean);
   const slotMap = await getSlotMap(slotIds);
+  const studyIds = activeRequests.map((item) => item.data.studyId || "").filter(Boolean);
+  const studyMap = await getStudyMap(studyIds);
 
   return activeRequests
     .map((item) => ({
       ...item,
       slot: item.data.assignedSlotId ? slotMap.get(item.data.assignedSlotId) : null,
+      study: item.data.studyId ? studyMap.get(item.data.studyId) : null,
     }))
     .sort((a, b) => {
       const aTime = a.data.createdAt?.toMillis?.() || 0;
@@ -828,7 +887,7 @@ function buildRequestFlexBubble(item, mode = "status") {
           contents: [
             {
               type: "text",
-              text: safeLineText(`${slotParts.title} / ${data.name || "参加者"}さん`, 40),
+              text: safeLineText(`${getStudyTitleFromData(data, item.study)} / ${data.name || "参加者"}さん`, 40),
               weight: "bold",
               size: "lg",
               color: "#0F172A",
@@ -870,6 +929,7 @@ function buildRequestFlexBubble(item, mode = "status") {
           layout: "vertical",
           spacing: "sm",
           contents: [
+            buildFlexInfoRow("実験", getStudyTitleFromData(data, item.study)),
             buildFlexInfoRow("日付", slotParts.date),
             buildFlexInfoRow("時限", slotParts.period),
             buildFlexInfoRow("場所", slotParts.location),
@@ -918,7 +978,7 @@ function buildLineNoticeActionButton({ label, action, requestId, token, style = 
   };
 }
 
-function buildLineNoticeFlexMessage({ requestData, requestId, token, noticeType = "assigned", beforeSlot = null, afterSlot = null }) {
+function buildLineNoticeFlexMessage({ requestData, requestId, token, noticeType = "assigned", beforeSlot = null, afterSlot = null, study = null }) {
   const afterParts = getLineSlotParts(afterSlot);
   const beforeParts = beforeSlot ? getLineSlotParts(beforeSlot) : null;
   const isChanged = noticeType === "changed";
@@ -947,6 +1007,7 @@ function buildLineNoticeFlexMessage({ requestData, requestId, token, noticeType 
   }
 
   const infoRows = [
+    buildFlexInfoRow("実験", getStudyTitleFromData(requestData, study)),
     buildFlexInfoRow("対象", `${requestData?.name || "参加者"}さん`),
   ];
 
@@ -1259,6 +1320,7 @@ async function sendLineReservationNotice({
   noticeType = "assigned",
   beforeSlot = null,
   afterSlot = null,
+  study = null,
 }) {
   if (!canSendLine(requestData)) return;
 
@@ -1277,6 +1339,7 @@ async function sendLineReservationNotice({
       noticeType,
       beforeSlot,
       afterSlot,
+      study,
     }));
   } else if (includeActions) {
     const responseToken = token || requestData.participantResponseToken || "";
@@ -1417,6 +1480,8 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
   const slotMap = await getSlotMap([beforeAssigned, afterAssigned]);
   const beforeSlot = slotMap.get(beforeAssigned);
   const afterSlot = slotMap.get(afterAssigned);
+  const study = await getStudyInfo(after.studyId || before.studyId || "");
+  const studyTitle = getStudyTitleFromData(after, study);
   const recipientName = after.name || "参加者様";
   const responseToken = after.participantResponseToken || before.participantResponseToken || "";
   const links = buildParticipantResponseLinks(responseToken);
@@ -1435,11 +1500,13 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
       "このたびは実験へのご協力ありがとうございます。",
       "LabLinkより、参加日程の確定をご連絡します。",
       "",
+      `【実験名】 ${studyTitle}`,
       `【確定日時】 ${slotToText(afterSlot)}`,
       "",
       "ご都合をご確認のうえ、ご参加をお願いいたします。",
       "下記URLから『この日程で確認しました』または『変更を希望する』を選択できます。『この日程で確認しました』は、リンクを押した時点で登録が完了します。",
       responseLinksTextBlock(links),
+      buildLineLinkCodeTextBlock(after),
       "このような連絡メールは迷惑メールに入る場合があります。今後の連絡のため、受信箱だけでなく迷惑メールもご確認ください。",
       "ご不明な点やご都合の変更がありましたら、本メールへの返信にてご連絡ください。",
       "",
@@ -1451,11 +1518,14 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
         <p>${escapeHtml(recipientName)} さん</p>
         <p>このたびは実験へのご協力ありがとうございます。<br/>LabLinkより、参加日程の確定をご連絡します。</p>
         <div style="margin: 16px 0; padding: 14px 16px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
+          <strong>【実験名】</strong><br/>
+          ${escapeHtml(studyTitle)}<br/><br/>
           <strong>【確定日時】</strong><br/>
           ${escapeHtml(slotToText(afterSlot))}
         </div>
         <p>ご都合をご確認のうえ、ご参加をお願いいたします。<br/>下のボタンから、確認したことの登録や変更希望の送信ができます。</p>
         ${responseLinksHtmlBlock(links)}
+        ${buildLineLinkCodeHtmlBlock(after)}
         <p>このような連絡メールは迷惑メールに入る場合があります。今後の連絡のため、受信箱だけでなく迷惑メールもご確認ください。</p>
         <p>ご不明な点やご都合の変更がありましたら、本メールへの返信にてご連絡ください。</p>
         <p>どうぞよろしくお願いいたします。</p>
@@ -1470,12 +1540,14 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
       "LabLinkより、実験日程の変更をご連絡します。",
       "以下の内容をご確認ください。",
       "",
+      `【実験名】 ${studyTitle}`,
       `【変更前】 ${slotToText(beforeSlot)}`,
       `【変更後】 ${slotToText(afterSlot)}`,
       "",
       "お手数をおかけしますが、ご確認をお願いいたします。",
       "下記URLから『この日程で確認しました』または『変更を希望する』を選択できます。『この日程で確認しました』は、リンクを押した時点で登録が完了します。",
       responseLinksTextBlock(links),
+      buildLineLinkCodeTextBlock(after),
       "このような連絡メールは迷惑メールに入る場合があります。今後の連絡のため、受信箱だけでなく迷惑メールもご確認ください。",
       "ご都合が合わない場合やご不明点がある場合は、本メールへの返信にてご連絡ください。",
       "",
@@ -1487,11 +1559,13 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
         <p>${escapeHtml(recipientName)} さん</p>
         <p>LabLinkより、実験日程の変更をご連絡します。<br/>以下の内容をご確認ください。</p>
         <div style="margin: 16px 0; padding: 14px 16px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
-          <div><strong>【変更前】</strong> ${escapeHtml(slotToText(beforeSlot))}</div>
+          <div><strong>【実験名】</strong> ${escapeHtml(studyTitle)}</div>
+          <div style="margin-top: 8px;"><strong>【変更前】</strong> ${escapeHtml(slotToText(beforeSlot))}</div>
           <div style="margin-top: 8px;"><strong>【変更後】</strong> ${escapeHtml(slotToText(afterSlot))}</div>
         </div>
         <p>お手数をおかけしますが、ご確認をお願いいたします。<br/>下のボタンから、確認したことの登録や変更希望の送信ができます。</p>
         ${responseLinksHtmlBlock(links)}
+        ${buildLineLinkCodeHtmlBlock(after)}
         <p>このような連絡メールは迷惑メールに入る場合があります。今後の連絡のため、受信箱だけでなく迷惑メールもご確認ください。</p>
         <p>ご都合が合わない場合やご不明点がある場合は、本メールへの返信にてご連絡ください。</p>
         <p>どうぞよろしくお願いいたします。</p>
@@ -1506,6 +1580,7 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
       "LabLinkより、実験日程の再調整についてご連絡します。",
       "現在、確定済みだった日程をいったん見直しております。",
       "",
+      `【実験名】 ${studyTitle}`,
       `【直前の確定日時】 ${slotToText(beforeSlot)}`,
       "",
       "新しい日程が決まり次第、あらためてご連絡いたします。",
@@ -1517,6 +1592,8 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
         <p>${escapeHtml(recipientName)} さん</p>
         <p>LabLinkより、実験日程の再調整についてご連絡します。<br/>現在、確定済みだった日程をいったん見直しております。</p>
         <div style="margin: 16px 0; padding: 14px 16px; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
+          <strong>【実験名】</strong><br/>
+          ${escapeHtml(studyTitle)}<br/><br/>
           <strong>【直前の確定日時】</strong><br/>
           ${escapeHtml(slotToText(beforeSlot))}
         </div>
@@ -1540,14 +1617,14 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
 
     if (!beforeAssigned && afterAssigned) {
       noticeType = "assigned";
-      lineBody = `【LabLink】\n✅ ${recipientName}さんの実験日程が確定しました。`;
+      lineBody = `【LabLink】\n✅「${studyTitle}」の日程が確定しました。`;
     } else if (beforeAssigned && afterAssigned) {
       noticeType = "changed";
-      lineBody = `【LabLink】\n🔄 ${recipientName}さんの実験日程が変更されました。`;
+      lineBody = `【LabLink】\n🔄「${studyTitle}」の日程が変更されました。`;
     } else if (beforeAssigned && !afterAssigned) {
       noticeType = "unassigned";
       lineBody = [
-        `【LabLink】\n🔄 ${recipientName}さんの実験日程は再調整中です。`,
+        `【LabLink】\n🔄「${studyTitle}」の日程は再調整中です。`,
         "新しい日程が決まり次第、ご連絡します。",
       ].join("\n");
     }
@@ -1563,6 +1640,7 @@ exports.notifyParticipantOnAssignmentChanged = onDocumentUpdated("requests/{requ
       noticeType,
       beforeSlot,
       afterSlot,
+      study,
     });
   } catch (lineError) {
     console.error("LINE notification failed:", lineError);
@@ -1920,7 +1998,7 @@ exports.lineWebhook = onRequest(async (req, res) => {
       const requestSnap = await db
         .collection("requests")
         .where("lineLinkCode", "==", code)
-        .limit(1)
+        .limit(5)
         .get();
 
       if (requestSnap.empty) {
@@ -1935,6 +2013,8 @@ exports.lineWebhook = onRequest(async (req, res) => {
 
       const requestDoc = requestSnap.docs[0];
       const requestData = requestDoc.data() || {};
+      const linkedStudy = await getStudyInfo(requestData.studyId || "");
+      const linkedStudyTitle = getStudyTitleFromData(requestData, linkedStudy);
 
       if (requestData.lineUserId && requestData.lineUserId !== lineUserId) {
         await replyLineMessage(replyToken, [
@@ -1963,6 +2043,11 @@ exports.lineWebhook = onRequest(async (req, res) => {
         lineUserId,
         displayName,
         linkedRequestIds: FieldValue.arrayUnion(requestDoc.id),
+        linkedRequestRefs: FieldValue.arrayUnion({
+          studyId: requestData.studyId || "",
+          requestId: requestDoc.id,
+          studyTitle: linkedStudyTitle,
+        }),
         updatedAt: FieldValue.serverTimestamp(),
       };
       if (!lineUserSnap.exists) {
@@ -1973,7 +2058,7 @@ exports.lineWebhook = onRequest(async (req, res) => {
       await replyLineMessage(replyToken, [
         {
           type: "text",
-          text: `LabLink連携が完了しました。${requestData.name || "参加者"}さんの日程案内をLINEでもお送りします。`,
+          text: `LabLink連携が完了しました。\n対象：${linkedStudyTitle}\n参加者：${requestData.name || "参加者"}さん`,
         },
       ]);
     }
