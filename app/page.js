@@ -93,6 +93,7 @@ const SAMPLE_REQUESTS = [
     participantResponseToken: "sample-response-token-1",
     participantConfirmationStatus: "pending",
     participantResponseNote: "",
+    operationStatus: "active",
   },
 ];
 
@@ -558,6 +559,29 @@ function getSlotMetrics(slot, requests = []) {
     remaining,
     full: remaining <= 0,
   };
+}
+
+function getSlotEndDate(slot) {
+  if (!slot?.date) return null;
+  const period = PERIOD_MAP[slot.periodKey];
+  const endTime = period?.end || "23:59";
+  const date = new Date(`${slot.date}T${endTime}:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function hasSlotEnded(slot) {
+  const endDate = getSlotEndDate(slot);
+  return !!endDate && endDate.getTime() < Date.now();
+}
+
+function isRequestCompleted(request) {
+  return (request?.operationStatus || "active") === "completed";
+}
+
+function isPastScheduledRequest(request, slots = []) {
+  if (!request?.assignedSlotId || isRequestCompleted(request)) return false;
+  const assignedSlot = slots.find((slot) => slot.id === request.assignedSlotId);
+  return hasSlotEnded(assignedSlot);
 }
 
 function getDaySummary(dateKey, slots) {
@@ -3446,6 +3470,7 @@ function AdminPage({
   confirmedScheduleGroups,
   handleAssignRequest,
   handleDeleteRequest,
+  onToggleRequestCompleted,
   onBack,
   onLogout,
   adminEmail,
@@ -3494,6 +3519,7 @@ function AdminPage({
   const [adminSelectedSlotDate, setAdminSelectedSlotDate] = useState("");
   const [showAdminSlotForm, setShowAdminSlotForm] = useState(false);
   const [expandedRequestIds, setExpandedRequestIds] = useState(() => new Set());
+  const [expandedNearbySlotKeys, setExpandedNearbySlotKeys] = useState(() => new Set());
   const [pendingFocusRequestId, setPendingFocusRequestId] = useState("");
   const requestCardRefs = useRef({});
 
@@ -3551,6 +3577,19 @@ function AdminPage({
         next.delete(requestId);
       } else {
         next.add(requestId);
+      }
+      return next;
+    });
+  };
+
+  const toggleNearbySlots = (requestId, slotId) => {
+    const key = `${requestId}:${slotId}`;
+    setExpandedNearbySlotKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
       }
       return next;
     });
@@ -4189,6 +4228,8 @@ function AdminPage({
                 const preferredSlots = sortedSlots.filter((slot) => preferredSlotIdSet.has(slot.id));
                 const otherAssignableSlots = sortedSlots.filter((slot) => !preferredSlotIdSet.has(slot.id));
                 const assignedSlot = sortedSlots.find((slot) => slot.id === request.assignedSlotId);
+                const requestCompleted = isRequestCompleted(request);
+                const requestPastCandidate = isPastScheduledRequest(request, sortedSlots);
                 const lineLinkCode = request.lineLinkCode || "未発行";
                 const isExpanded = expandedRequestIds.has(request.id);
                 return (
@@ -4203,17 +4244,19 @@ function AdminPage({
                       pendingFocusRequestId === request.id ? "ring-4 ring-teal-200" : "",
                       (request.participantConfirmationStatus || "pending") === "change_requested"
                         ? "border-2 border-rose-300 bg-rose-50/70 shadow-[0_16px_40px_rgba(244,63,94,0.12)]"
+                        : requestCompleted
+                        ? "border border-slate-200 bg-slate-50/80"
                         : "border border-slate-200 bg-white"
                     )}
                   >
                     <button
                       type="button"
                       onClick={() => toggleRequestExpanded(request.id)}
-                      className={classNames("w-full items-start justify-between gap-3 text-left md:hidden", isExpanded ? "hidden" : "flex")}
+                      className="flex w-full items-start justify-between gap-3 text-left md:hidden"
                     >
                       <div className="min-w-0">
-                        <div className="text-base font-bold text-slate-900">{request.name}</div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-base font-bold text-slate-900">{request.name}</span>
                           <StatusBadge tone={request.assignedSlotId ? "emerald" : "amber"}>
                             {request.assignedSlotId ? "確定済み" : "未確定"}
                           </StatusBadge>
@@ -4223,8 +4266,13 @@ function AdminPage({
                           <StatusBadge tone={getLineLinkTone(request)}>
                             {getLineLinkLabel(request)}
                           </StatusBadge>
+                          {requestCompleted ? (
+                            <StatusBadge tone="slate">実施済み</StatusBadge>
+                          ) : requestPastCandidate ? (
+                            <StatusBadge tone="amber">予定日超過</StatusBadge>
+                          ) : null}
                         </div>
-                        <div className="mt-2 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                        <div className="mt-2 text-sm text-slate-600">
                           {assignedSlot
                             ? `確定: ${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}`
                             : "確定日程はまだありません"}
@@ -4236,7 +4284,7 @@ function AdminPage({
                     </button>
 
                     <div className={classNames("md:mt-0", isExpanded ? "block" : "hidden md:block")}>
-                    <div className="mb-3 flex justify-end md:hidden">
+                    <div className="hidden">
                       <button
                         type="button"
                         onClick={() => toggleRequestExpanded(request.id)}
@@ -4247,26 +4295,24 @@ function AdminPage({
                     </div>
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+                        <div className="hidden flex-wrap items-center gap-2 md:flex">
                           <div className="text-lg font-semibold text-slate-900">{request.name}</div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <StatusBadge tone={request.assignedSlotId ? "emerald" : "amber"}>
-                              {request.assignedSlotId ? "確定済み" : "未確定"}
-                            </StatusBadge>
-                            <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
-                              {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
-                            </StatusBadge>
-                            <StatusBadge tone={getLineLinkTone(request)}>
-                              {getLineLinkLabel(request)}
-                            </StatusBadge>
-                          </div>
+                          <StatusBadge tone={request.assignedSlotId ? "emerald" : "amber"}>
+                            {request.assignedSlotId ? "確定済み" : "未確定"}
+                          </StatusBadge>
+                          <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
+                            {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
+                          </StatusBadge>
+                          <StatusBadge tone={getLineLinkTone(request)}>
+                            {getLineLinkLabel(request)}
+                          </StatusBadge>
+                          {requestCompleted ? (
+                            <StatusBadge tone="slate">実施済み</StatusBadge>
+                          ) : requestPastCandidate ? (
+                            <StatusBadge tone="amber">予定日超過</StatusBadge>
+                          ) : null}
                         </div>
-                        <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-700 xl:hidden">
-                          {assignedSlot
-                            ? `確定: ${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}`
-                            : "確定日程はまだありません"}
-                        </div>
-                        <div className="mt-3 text-sm text-slate-500">{request.email}</div>
+                        <div className="mt-3 text-sm text-slate-500 md:mt-2">{request.email}</div>
                         {request.affiliation ? <div className="mt-1 text-sm text-slate-500">{request.affiliation}</div> : null}
 
                         <div className="mt-3 grid gap-3">
@@ -4318,31 +4364,108 @@ function AdminPage({
                                 const metrics = getSlotMetrics(slot, requests);
                                 const isAssigned = request.assignedSlotId === slot.id;
                                 const disableConfirm = metrics.full && !isAssigned;
+                                const nearbyKey = `${request.id}:${slot.id}`;
+                                const nearbyExpanded = expandedNearbySlotKeys.has(nearbyKey);
+                                const sameDaySlots = sortSlots(sortedSlots.filter((candidate) => candidate.date === slot.date));
                                 return (
-                                  <div key={slot.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                                    <div className="text-sm text-slate-700">
-                                      {formatJapaneseDate(slot.date)} / {PERIOD_MAP[slot.periodKey]?.label || slot.periodKey}
-                                      <div className="mt-1 text-xs text-slate-500">
-                                        残り {metrics.remaining} 席{slot.isPublished ? "" : " / 非公開"}
+                                  <div key={slot.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                      <div className="min-w-0 text-sm text-slate-700">
+                                        <div className="font-medium text-slate-900">
+                                          {formatJapaneseDate(slot.date)} / {PERIOD_MAP[slot.periodKey]?.label || slot.periodKey}
+                                        </div>
+                                        <div className="mt-1 text-xs text-slate-500">
+                                          残り {metrics.remaining} 席{slot.isPublished ? "" : " / 非公開"}
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleNearbySlots(request.id, slot.id)}
+                                          className={classNames(
+                                            "rounded-2xl border px-3.5 py-2 text-xs font-semibold transition",
+                                            nearbyExpanded
+                                              ? "border-slate-200 bg-slate-50 text-slate-700"
+                                              : "border-slate-200 bg-white/80 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                          )}
+                                        >
+                                          {nearbyExpanded ? "周辺日程を閉じる" : "周辺日程を見る"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          disabled={disableConfirm}
+                                          onClick={() => onPrepareAssignRequest(request, slot.id)}
+                                          className={classNames(
+                                            "rounded-2xl px-4 py-2 text-sm font-medium transition",
+                                            isAssigned
+                                              ? "bg-slate-900 text-white"
+                                              : disableConfirm
+                                              ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                                              : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                                          )}
+                                        >
+                                          {isAssigned ? "確定済み" : request.assignedSlotId ? "この枠へ変更" : "この枠で確定"}
+                                        </button>
                                       </div>
                                     </div>
-                                    <div className="flex flex-wrap gap-2">
-                                      <button
-                                        type="button"
-                                        disabled={disableConfirm}
-                                        onClick={() => onPrepareAssignRequest(request, slot.id)}
-                                        className={classNames(
-                                          "rounded-2xl px-4 py-2 text-sm font-medium transition",
-                                          isAssigned
-                                            ? "bg-slate-900 text-white"
-                                            : disableConfirm
-                                            ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-                                        )}
-                                      >
-                                        {isAssigned ? "確定済み" : request.assignedSlotId ? "この枠へ変更" : "この枠で確定"}
-                                      </button>
-                                    </div>
+
+                                    {nearbyExpanded ? (
+                                      <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                            同じ日の登録済み日程
+                                          </div>
+                                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                                            {sameDaySlots.length} 件
+                                          </span>
+                                        </div>
+                                        <div className="grid gap-2">
+                                          {sameDaySlots.map((daySlot) => {
+                                            const dayMetrics = getSlotMetrics(daySlot, requests);
+                                            const isCurrentPreferredSlot = daySlot.id === slot.id;
+                                            const isCurrentAssignedSlot = request.assignedSlotId === daySlot.id;
+                                            return (
+                                              <div
+                                                key={daySlot.id}
+                                                className={classNames(
+                                                  "flex items-start justify-between gap-3 rounded-2xl px-3 py-2 text-xs",
+                                                  isCurrentPreferredSlot
+                                                    ? "border border-teal-200 bg-teal-50 text-teal-950"
+                                                    : "border border-slate-100 bg-slate-50 text-slate-600"
+                                                )}
+                                              >
+                                                <div>
+                                                  <div className="font-semibold">
+                                                    {PERIOD_MAP[daySlot.periodKey]?.label || daySlot.periodKey}
+                                                  </div>
+                                                  <div className="mt-0.5 text-slate-500">
+                                                    残り {dayMetrics.remaining} 席 / 定員 {daySlot.capacity} / 確定 {daySlot.confirmedCount || 0}
+                                                    {daySlot.isPublished ? "" : " / 非公開"}
+                                                  </div>
+                                                  {daySlot.location ? <div className="mt-0.5 text-slate-500">{daySlot.location}</div> : null}
+                                                </div>
+                                                <div className="flex shrink-0 flex-col items-end gap-1">
+                                                  {isCurrentPreferredSlot ? (
+                                                    <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-teal-700">
+                                                      この希望枠
+                                                    </span>
+                                                  ) : null}
+                                                  {isCurrentAssignedSlot ? (
+                                                    <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-white">
+                                                      確定中
+                                                    </span>
+                                                  ) : dayMetrics.full ? (
+                                                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                                      満席
+                                                    </span>
+                                                  ) : null}
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    ) : null}
                                   </div>
                                 );
                               })
@@ -4406,9 +4529,32 @@ function AdminPage({
                         </div>
                       </div>
                       <div className="w-full xl:w-[300px]">
-                        <div className="hidden rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600 xl:block">
-                          {assignedSlot ? `確定: ${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}` : "まだ日程は確定していません。"}
+                        <div className={classNames(
+                          "rounded-2xl px-4 py-3 text-sm",
+                          requestCompleted
+                            ? "border border-slate-200 bg-white text-slate-600"
+                            : requestPastCandidate
+                            ? "border border-amber-200 bg-amber-50 text-amber-900"
+                            : "bg-slate-50 text-slate-600"
+                        )}>
+                          {assignedSlot ? `確定: ${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey].label}` : "まだ日程は確定していません。"}
+                          {requestCompleted ? <div className="mt-1 text-xs font-semibold text-slate-500">実施済みとして記録されています。</div> : null}
+                          {requestPastCandidate ? <div className="mt-1 text-xs font-semibold text-amber-700">予定日を過ぎています。</div> : null}
                         </div>
+                        {assignedSlot ? (
+                          <button
+                            type="button"
+                            onClick={() => onToggleRequestCompleted(request, !requestCompleted)}
+                            className={classNames(
+                              "mt-3 w-full rounded-2xl px-4 py-3 text-sm font-medium transition",
+                              requestCompleted
+                                ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                : "bg-slate-900 text-white hover:bg-slate-800"
+                            )}
+                          >
+                            {requestCompleted ? "実施済みを解除" : "実施済みにする"}
+                          </button>
+                        ) : null}
                         {assignedSlot ? (
                           <button
                             type="button"
@@ -5010,6 +5156,10 @@ export default function ExperimentParticipantScheduler() {
         return text.includes(keyword);
       })
       .sort((a, b) => {
+        const aCompleted = isRequestCompleted(a) ? 1 : 0;
+        const bCompleted = isRequestCompleted(b) ? 1 : 0;
+        if (aCompleted !== bCompleted) return aCompleted - bCompleted;
+
         const aStatus = a.participantConfirmationStatus || "pending";
         const bStatus = b.participantConfirmationStatus || "pending";
         const aPriority = aStatus === "change_requested" ? 0 : aStatus === "pending" ? 1 : 2;
@@ -5183,6 +5333,7 @@ export default function ExperimentParticipantScheduler() {
           participantResponseToken: responseToken,
           participantConfirmationStatus: "pending",
           participantResponseNote: "",
+          operationStatus: "active",
           lineLinkCode,
           lineUserId: "",
           lineDisplayName: "",
@@ -5207,6 +5358,7 @@ export default function ExperimentParticipantScheduler() {
               participantResponseToken: responseToken,
               participantConfirmationStatus: "pending",
               participantResponseNote: "",
+              operationStatus: "active",
               lineLinkCode,
               lineUserId: "",
               lineDisplayName: "",
@@ -5479,6 +5631,8 @@ export default function ExperimentParticipantScheduler() {
             participantConfirmationStatus: "pending",
             participantResponseNote: "",
             participantRespondedAt: deleteField(),
+            operationStatus: "active",
+            completedAt: deleteField(),
             updatedAt: serverTimestamp(),
           });
         });
@@ -5498,8 +5652,10 @@ export default function ExperimentParticipantScheduler() {
               status: slotId ? "confirmed" : "requested",
               participantConfirmationStatus: "pending",
               participantResponseNote: "",
+              operationStatus: "active",
             };
             delete nextItem.participantRespondedAt;
+            delete nextItem.completedAt;
             return nextItem;
           })
         );
@@ -5518,6 +5674,53 @@ export default function ExperimentParticipantScheduler() {
     "error"
   );
 }
+  }
+
+  async function handleToggleRequestCompleted(requestItem, shouldComplete) {
+    if (!requestItem?.id) return;
+    const message = shouldComplete
+      ? "この申込を実施済みにしますか？"
+      : "この申込の実施済み状態を解除しますか？";
+    const ok = window.confirm(message);
+    if (!ok) return;
+
+    try {
+      if (firebaseReady) {
+        const payload = shouldComplete
+          ? {
+              operationStatus: "completed",
+              completedAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            }
+          : {
+              operationStatus: "active",
+              completedAt: deleteField(),
+              updatedAt: serverTimestamp(),
+            };
+        await updateDoc(doc(firestore, "requests", requestItem.id), payload);
+      } else {
+        setRequests((prev) =>
+          prev.map((item) => {
+            if (item.id !== requestItem.id) return item;
+            const nextItem = {
+              ...item,
+              operationStatus: shouldComplete ? "completed" : "active",
+              updatedAt: { seconds: Math.floor(Date.now() / 1000) },
+            };
+            if (shouldComplete) {
+              nextItem.completedAt = { seconds: Math.floor(Date.now() / 1000) };
+            } else {
+              delete nextItem.completedAt;
+            }
+            return nextItem;
+          })
+        );
+      }
+      showToast(shouldComplete ? "実施済みにしました。" : "実施済みを解除しました。", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("実施済み状態の更新に失敗しました。", "error");
+    }
   }
 
   async function confirmAssignmentDialog() {
@@ -6226,6 +6429,7 @@ export default function ExperimentParticipantScheduler() {
             confirmedScheduleGroups={confirmedScheduleGroups}
             handleAssignRequest={handleAssignRequest}
             handleDeleteRequest={handleDeleteRequest}
+            onToggleRequestCompleted={handleToggleRequestCompleted}
             onBack={navigateToLanding}
             onLogout={handleAdminLogout}
             adminEmail={authUser?.email || ""}
