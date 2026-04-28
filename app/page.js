@@ -4114,7 +4114,9 @@ function AdminPage({
                   </div>
                 ) : null}
                 {filteredRequests.map((request) => {
-                const preferredSlots = sortedSlots.filter((slot) => (request.preferredSlotIds || []).includes(slot.id));
+                const preferredSlotIdSet = new Set(request.preferredSlotIds || []);
+                const preferredSlots = sortedSlots.filter((slot) => preferredSlotIdSet.has(slot.id));
+                const otherAssignableSlots = sortedSlots.filter((slot) => !preferredSlotIdSet.has(slot.id));
                 const assignedSlot = sortedSlots.find((slot) => slot.id === request.assignedSlotId);
                 const lineLinkCode = request.lineLinkCode || "未発行";
                 return (
@@ -4192,39 +4194,107 @@ function AdminPage({
                         ) : null}
 
                         <div className="mt-4">
-                          <div className="mb-2 text-sm font-medium text-slate-700">希望枠</div>
-                          <div className="grid gap-3">
-                            {preferredSlots.map((slot) => {
-                              const metrics = getSlotMetrics(slot, requests);
-                              const isAssigned = request.assignedSlotId === slot.id;
-                              const disableConfirm = metrics.full && !isAssigned;
-                              return (
-                                <div key={slot.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                                  <div className="text-sm text-slate-700">
-                                    {formatJapaneseDate(slot.date)} / {PERIOD_MAP[slot.periodKey].label}
-                                    <div className="mt-1 text-xs text-slate-500">残り {metrics.remaining} 席</div>
-                                  </div>
-                                  <div className="flex flex-wrap gap-2">
-                                    <button
-                                      type="button"
-                                      disabled={disableConfirm}
-                                      onClick={() => onPrepareAssignRequest(request, slot.id)}
-                                      className={classNames(
-                                        "rounded-2xl px-4 py-2 text-sm font-medium transition",
-                                        isAssigned
-                                          ? "bg-slate-900 text-white"
-                                          : disableConfirm
-                                          ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                                          : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-                                      )}
-                                    >
-                                      {isAssigned ? "確定済み" : request.assignedSlotId ? "この枠へ変更" : "この枠で確定"}
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-sm font-medium text-slate-700">希望枠</div>
+                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
+                              {preferredSlots.length} 件
+                            </span>
                           </div>
+                          <div className="grid gap-3">
+                            {preferredSlots.length === 0 ? (
+                              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                                参加者が選択した希望枠はありません。
+                              </div>
+                            ) : (
+                              preferredSlots.map((slot) => {
+                                const metrics = getSlotMetrics(slot, requests);
+                                const isAssigned = request.assignedSlotId === slot.id;
+                                const disableConfirm = metrics.full && !isAssigned;
+                                return (
+                                  <div key={slot.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="text-sm text-slate-700">
+                                      {formatJapaneseDate(slot.date)} / {PERIOD_MAP[slot.periodKey]?.label || slot.periodKey}
+                                      <div className="mt-1 text-xs text-slate-500">
+                                        残り {metrics.remaining} 席{slot.isPublished ? "" : " / 非公開"}
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        disabled={disableConfirm}
+                                        onClick={() => onPrepareAssignRequest(request, slot.id)}
+                                        className={classNames(
+                                          "rounded-2xl px-4 py-2 text-sm font-medium transition",
+                                          isAssigned
+                                            ? "bg-slate-900 text-white"
+                                            : disableConfirm
+                                            ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                                        )}
+                                      >
+                                        {isAssigned ? "確定済み" : request.assignedSlotId ? "この枠へ変更" : "この枠で確定"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+                          </div>
+
+                          <details className="mt-4 rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-slate-700">
+                            <summary className="cursor-pointer select-none font-semibold text-sky-900">
+                              希望枠以外の日程を割り当てる
+                              <span className="ml-2 rounded-full bg-white/80 px-2 py-0.5 text-xs font-medium text-sky-700">
+                                {otherAssignableSlots.length} 件
+                              </span>
+                            </summary>
+                            <p className="mt-2 text-xs leading-5 text-sky-800/80">
+                              参加者から個別の要望があった場合などに、希望枠以外の日程も管理者判断で割り当てられます。
+                            </p>
+
+                            <div className="mt-3 grid max-h-80 gap-2 overflow-y-auto pr-1">
+                              {otherAssignableSlots.length === 0 ? (
+                                <div className="rounded-2xl border border-dashed border-sky-200 bg-white/70 px-4 py-3 text-slate-500">
+                                  割り当て可能な他の日程はありません。
+                                </div>
+                              ) : (
+                                otherAssignableSlots.map((slot) => {
+                                  const metrics = getSlotMetrics(slot, requests);
+                                  const isAssigned = request.assignedSlotId === slot.id;
+                                  const disableConfirm = metrics.full && !isAssigned;
+                                  return (
+                                    <div key={slot.id} className="flex flex-col gap-3 rounded-2xl border border-sky-100 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                      <div className="text-sm text-slate-700">
+                                        <span className="font-medium">
+                                          {formatJapaneseDate(slot.date)} / {PERIOD_MAP[slot.periodKey]?.label || slot.periodKey}
+                                        </span>
+                                        <div className="mt-1 text-xs text-slate-500">
+                                          残り {metrics.remaining} 席 / 定員 {slot.capacity} / 確定 {slot.confirmedCount || 0}
+                                          {slot.location ? ` / ${slot.location}` : ""}
+                                          {slot.isPublished ? "" : " / 非公開"}
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        disabled={disableConfirm}
+                                        onClick={() => onPrepareAssignRequest(request, slot.id)}
+                                        className={classNames(
+                                          "rounded-2xl px-4 py-2 text-sm font-medium transition",
+                                          isAssigned
+                                            ? "bg-slate-900 text-white"
+                                            : disableConfirm
+                                            ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                                            : "border border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100"
+                                        )}
+                                      >
+                                        {isAssigned ? "確定済み" : request.assignedSlotId ? "この枠へ変更" : "この枠で確定"}
+                                      </button>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </details>
                         </div>
                       </div>
                       <div className="w-full xl:w-[300px]">
