@@ -346,13 +346,7 @@ function getParticipantConfirmationTone(status) {
 function getLineLinkLabel(request = {}) {
   if (request.lineNotifyEnabled === true && request.lineUserId) return "LINE連携済み";
   if (request.lineUserId && request.lineNotifyEnabled === false) return "LINE通知OFF";
-  return "LINE未連携";
-}
-
-function getLineLinkShortLabel(request = {}) {
-  if (request.lineNotifyEnabled === true && request.lineUserId) return "LINE済";
-  if (request.lineUserId && request.lineNotifyEnabled === false) return "通知OFF";
-  return "LINE未";
+  return "LINE未連携連携";
 }
 
 function getLineLinkTone(request = {}) {
@@ -4229,7 +4223,10 @@ function AdminPage({
                     変更希望の申込は一覧の上側に表示しています。赤系のカードを優先して確認してください。
                   </div>
                 ) : null}
-                {filteredRequests.map((request) => {
+                {filteredRequests.map((request, requestIndex) => {
+                const isFirstCompletedRequest =
+                  isRequestCompleted(request) &&
+                  !filteredRequests.slice(0, requestIndex).some((item) => isRequestCompleted(item));
                 const preferredSlotIdSet = new Set(request.preferredSlotIds || []);
                 const preferredSlots = sortedSlots.filter((slot) => preferredSlotIdSet.has(slot.id));
                 const otherAssignableSlots = sortedSlots.filter((slot) => !preferredSlotIdSet.has(slot.id));
@@ -4239,8 +4236,17 @@ function AdminPage({
                 const lineLinkCode = request.lineLinkCode || "未発行";
                 const isExpanded = expandedRequestIds.has(request.id);
                 return (
+                  <React.Fragment key={request.id}>
+                    {isFirstCompletedRequest ? (
+                      <div className="my-6 flex items-center gap-3">
+                        <div className="h-px flex-1 bg-slate-200" />
+                        <div className="rounded-full border border-slate-200 bg-slate-50 px-4 py-1.5 text-xs font-bold tracking-[0.12em] text-slate-500">
+                          実施済みの申込
+                        </div>
+                        <div className="h-px flex-1 bg-slate-200" />
+                      </div>
+                    ) : null}
                   <div
-                    key={request.id}
                     ref={(node) => {
                       if (node) requestCardRefs.current[request.id] = node;
                     }}
@@ -4260,17 +4266,17 @@ function AdminPage({
                       onClick={() => toggleRequestExpanded(request.id)}
                       className="flex w-full items-start justify-between gap-3 text-left md:hidden"
                     >
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0">
                         <div className="text-base font-bold text-slate-900">{request.name}</div>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <StatusBadge tone={request.assignedSlotId ? "emerald" : "amber"}>
-                            {request.assignedSlotId ? "確定" : "未確定"}
+                            {request.assignedSlotId ? "確定済み" : "未確定"}
                           </StatusBadge>
                           <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
                             {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
                           </StatusBadge>
                           <StatusBadge tone={getLineLinkTone(request)}>
-                            {getLineLinkShortLabel(request)}
+                            {getLineLinkLabel(request)}
                           </StatusBadge>
                           {requestCompleted ? (
                             <StatusBadge tone="slate">実施済み</StatusBadge>
@@ -4278,16 +4284,15 @@ function AdminPage({
                             <StatusBadge tone="amber">予定日超過</StatusBadge>
                           ) : null}
                         </div>
-                        <div className={classNames(
-                          "mt-2 rounded-2xl border px-3 py-2 text-xs leading-5",
-                          assignedSlot
-                            ? "border-emerald-100 bg-emerald-50 text-emerald-900"
-                            : "border-slate-200 bg-slate-50 text-slate-500"
-                        )}>
-                          <span className="mr-2 font-semibold">確定日程</span>
-                          {assignedSlot
-                            ? `${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}`
-                            : "未確定"}
+                        <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+                          {assignedSlot ? (
+                            <>
+                              <span className="text-xs font-bold text-slate-400">確定日程</span>
+                              <span className="ml-2">{formatJapaneseDate(assignedSlot.date)} / {PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}</span>
+                            </>
+                          ) : (
+                            <span className="text-slate-500">確定日程はまだありません</span>
+                          )}
                         </div>
                       </div>
                       <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
@@ -4541,17 +4546,18 @@ function AdminPage({
                         </div>
                       </div>
                       <div className="w-full xl:w-[300px]">
-                        {requestCompleted || requestPastCandidate ? (
-                          <div className={classNames(
-                            "rounded-2xl px-4 py-3 text-sm",
-                            requestCompleted
-                              ? "border border-slate-200 bg-white text-slate-600"
-                              : "border border-amber-200 bg-amber-50 text-amber-900"
-                          )}>
-                            {requestCompleted ? <div className="text-xs font-semibold text-slate-500">実施済みとして記録されています。</div> : null}
-                            {requestPastCandidate ? <div className="text-xs font-semibold text-amber-700">予定日を過ぎています。</div> : null}
-                          </div>
-                        ) : null}
+                        <div className={classNames(
+                          "rounded-2xl px-4 py-3 text-sm",
+                          requestCompleted
+                            ? "border border-slate-200 bg-white text-slate-600"
+                            : requestPastCandidate
+                            ? "border border-amber-200 bg-amber-50 text-amber-900"
+                            : "bg-slate-50 text-slate-600"
+                        )}>
+                          {assignedSlot ? `確定: ${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey].label}` : "まだ日程は確定していません。"}
+                          {requestCompleted ? <div className="mt-1 text-xs font-semibold text-slate-500">実施済みとして記録されています。</div> : null}
+                          {requestPastCandidate ? <div className="mt-1 text-xs font-semibold text-amber-700">予定日を過ぎています。</div> : null}
+                        </div>
                         {assignedSlot ? (
                           <button
                             type="button"
@@ -4582,6 +4588,7 @@ function AdminPage({
                     </div>
                     </div>
                   </div>
+                  </React.Fragment>
                 );
               })}
               </>
@@ -5171,6 +5178,20 @@ export default function ExperimentParticipantScheduler() {
         const bCompleted = isRequestCompleted(b) ? 1 : 0;
         if (aCompleted !== bCompleted) return aCompleted - bCompleted;
 
+        if (aCompleted && bCompleted) {
+          const getAssignedSlotOrder = (request) => {
+            const slot = sortedSlots.find((item) => item.id === request.assignedSlotId);
+            if (!slot) return Number.MAX_SAFE_INTEGER;
+            const periodIndex = PERIODS.findIndex((period) => period.key === slot.periodKey);
+            const safePeriodIndex = periodIndex >= 0 ? periodIndex : 99;
+            return Number(`${String(slot.date || "9999-12-31").replaceAll("-", "")}${String(safePeriodIndex).padStart(2, "0")}`);
+          };
+
+          const aSlotOrder = getAssignedSlotOrder(a);
+          const bSlotOrder = getAssignedSlotOrder(b);
+          if (aSlotOrder !== bSlotOrder) return aSlotOrder - bSlotOrder;
+        }
+
         const aStatus = a.participantConfirmationStatus || "pending";
         const bStatus = b.participantConfirmationStatus || "pending";
         const aPriority = aStatus === "change_requested" ? 0 : aStatus === "pending" ? 1 : 2;
@@ -5185,7 +5206,7 @@ export default function ExperimentParticipantScheduler() {
         const bTime = b.updatedAt?.seconds ? b.updatedAt.seconds : 0;
         return bTime - aTime;
       });
-  }, [requests, search, requestStatusFilter, participantConfirmationFilter]);
+  }, [requests, search, requestStatusFilter, participantConfirmationFilter, sortedSlots]);
 
   const confirmedScheduleGroups = useMemo(() => {
     return sortSlots(
