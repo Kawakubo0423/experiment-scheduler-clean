@@ -39,6 +39,10 @@ const PERIODS = [
 ];
 
 const PERIOD_MAP = Object.fromEntries(PERIODS.map((period) => [period.key, period]));
+
+function getPeriodLabel(periodKey) {
+  return PERIOD_MAP[periodKey]?.label || periodKey || "";
+}
 const WEEK_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 const MAX_PREFERRED_SLOTS = 5;
 const DEFAULT_STUDY_ID = "vr-notification-2026";
@@ -582,6 +586,28 @@ function isPastScheduledRequest(request, slots = []) {
   if (!request?.assignedSlotId || isRequestCompleted(request)) return false;
   const assignedSlot = slots.find((slot) => slot.id === request.assignedSlotId);
   return hasSlotEnded(assignedSlot);
+}
+
+function getRequestTimestampValue(value) {
+  if (!value) return 0;
+  if (typeof value.seconds === "number") return value.seconds;
+  if (value instanceof Date) return Math.floor(value.getTime() / 1000);
+  return 0;
+}
+
+function getRequestAssignedSlotOrder(request, slots = []) {
+  const slot = slots.find((item) => item.id === request?.assignedSlotId);
+  if (!slot) return Number.MAX_SAFE_INTEGER;
+  const periodIndex = PERIODS.findIndex((period) => period.key === slot.periodKey);
+  const safePeriodIndex = periodIndex >= 0 ? periodIndex : 99;
+  return Number(`${String(slot.date || "9999-12-31").replaceAll("-", "")}${String(safePeriodIndex).padStart(2, "0")}`);
+}
+
+function getRequestDefaultPriority(request) {
+  const status = request?.participantConfirmationStatus || "pending";
+  if (status === "change_requested") return 0;
+  if (status === "pending") return 1;
+  return 2;
 }
 
 function getDaySummary(dateKey, slots) {
@@ -3488,6 +3514,8 @@ function AdminPage({
   setRequestStatusFilter,
   participantConfirmationFilter,
   setParticipantConfirmationFilter,
+  requestSortMode,
+  setRequestSortMode,
   filteredRequests,
   confirmedScheduleGroups,
   handleAssignRequest,
@@ -3541,6 +3569,7 @@ function AdminPage({
   const [adminSlotMonth, setAdminSlotMonth] = useState(new Date());
   const [adminSelectedSlotDate, setAdminSelectedSlotDate] = useState("");
   const [showAdminSlotForm, setShowAdminSlotForm] = useState(false);
+  const [bulkFocusedSlotDate, setBulkFocusedSlotDate] = useState("");
   const [expandedRequestIds, setExpandedRequestIds] = useState(() => new Set());
   const [expandedNearbySlotKeys, setExpandedNearbySlotKeys] = useState(() => new Set());
   const [pendingFocusRequestId, setPendingFocusRequestId] = useState("");
@@ -3566,11 +3595,10 @@ function AdminPage({
     if (sortedSlots.length === 0) return;
 
     const firstDate = sortedSlots[0].date;
-    const selectedDateStillExists = sortedSlots.some((slot) => slot.date === adminSelectedSlotDate);
 
-    if (!adminSelectedSlotDate || !selectedDateStillExists) {
+    if (!adminSelectedSlotDate) {
       setAdminSelectedSlotDate(firstDate);
-      setAdminSlotMonth(new Date(`${firstDate}T00:00:00`));
+      setAdminSlotMonth(new Date(`T00:00:00`));
     }
   }, [adminTab, sortedSlots, adminSelectedSlotDate]);
 
@@ -3626,8 +3654,62 @@ function AdminPage({
   const handleOpenAdminSlotForm = () => {
     const targetDate = adminSelectedSlotDate || formatDateKey(new Date());
     setAdminSelectedSlotDate(targetDate);
-    setSlotForm((prev) => ({ ...prev, date: targetDate }));
+    setBulkFocusedSlotDate(targetDate);
+    setSlotForm((prev) => ({
+      ...prev,
+      date: targetDate,
+      bulkSlotPlan: prev.bulkMode
+        ? {
+            ...(prev.bulkSlotPlan || {}),
+            [targetDate]: prev.bulkSlotPlan?.[targetDate]?.length
+              ? prev.bulkSlotPlan[targetDate]
+              : [],
+          }
+        : prev.bulkSlotPlan || {},
+    }));
     setShowAdminSlotForm(true);
+  };
+
+  const bulkSlotPlan = slotForm.bulkSlotPlan || {};
+  const bulkSelectedDates = Object.keys(bulkSlotPlan)
+    .filter((dateKey) => (bulkSlotPlan[dateKey] || []).length > 0)
+    .sort();
+  const bulkFocusedDate = bulkFocusedSlotDate || Object.keys(bulkSlotPlan).sort()[0] || "";
+  const bulkPlannedCount = bulkSelectedDates.reduce((sum, dateKey) => sum + (bulkSlotPlan[dateKey]?.length || 0), 0);
+
+  const getExistingSlotsForDate = (dateKey) => sortSlots(sortedSlots.filter((slot) => slot.date === dateKey));
+
+  const toggleBulkSlotDate = (dateKey) => {
+    setBulkFocusedSlotDate(dateKey);
+    setSlotForm((prev) => {
+      const currentPlan = { ...(prev.bulkSlotPlan || {}) };
+      if (!currentPlan[dateKey]) {
+        currentPlan[dateKey] = [];
+      }
+      return { ...prev, bulkSlotPlan: currentPlan };
+    });
+  };
+
+  const removeBulkSlotDate = (dateKey) => {
+    setSlotForm((prev) => {
+      const currentPlan = { ...(prev.bulkSlotPlan || {}) };
+      delete currentPlan[dateKey];
+      return { ...prev, bulkSlotPlan: currentPlan };
+    });
+    setBulkFocusedSlotDate((current) => (current === dateKey ? "" : current));
+  };
+
+  const toggleBulkSlotPeriod = (dateKey, periodKey) => {
+    setBulkFocusedSlotDate(dateKey);
+    setSlotForm((prev) => {
+      const currentPlan = { ...(prev.bulkSlotPlan || {}) };
+      const currentPeriods = currentPlan[dateKey] || [];
+      const nextPeriods = currentPeriods.includes(periodKey)
+        ? currentPeriods.filter((key) => key !== periodKey)
+        : [...currentPeriods, periodKey];
+      currentPlan[dateKey] = nextPeriods;
+      return { ...prev, bulkSlotPlan: currentPlan };
+    });
   };
 
   return (
@@ -3952,69 +4034,266 @@ function AdminPage({
               </div>
             </Card>
 
-            <Card className="p-5 shadow-none">
-              <SectionHeader
-                eyebrow="SELECTED DATE"
-                title={adminSelectedSlotDate ? `${formatJapaneseDate(adminSelectedSlotDate)} の日程枠` : "日付を選択してください"}
-                description="この日に登録されている日程枠を確認できます。先頭のボタンから、この日付に新しい枠を追加できます。"
-                action={
-                  <button
-                    type="button"
-                    onClick={handleOpenAdminSlotForm}
-                    className="inline-flex w-full items-center justify-center rounded-3xl bg-slate-950 px-6 py-4 text-base font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-md sm:w-auto sm:min-w-[210px]"
-                  >
-                    <span className="mr-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-lg leading-none">＋</span>
-                    日程を追加する
-                  </button>
-                }
-              />
+            <div className="px-1">
+              <button
+                type="button"
+                onClick={handleOpenAdminSlotForm}
+                disabled={!adminSelectedSlotDate}
+                className={classNames(
+                  "inline-flex w-full items-center justify-center rounded-3xl border px-6 py-4 text-base font-bold shadow-sm transition",
+                  adminSelectedSlotDate
+                    ? "border-sky-200 bg-white text-slate-800 hover:-translate-y-0.5 hover:border-sky-300 hover:bg-sky-50 hover:shadow-md"
+                    : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                )}
+              >
+                <span className="mr-2 flex h-7 w-7 items-center justify-center rounded-full bg-sky-100 text-lg leading-none text-sky-700">＋</span>
+                新しい日程を追加
+              </button>
+            </div>
 
               {showAdminSlotForm ? (
-                <form onSubmit={handleAddSlot} className="mb-5 rounded-3xl border border-sky-100 bg-sky-50/70 p-4">
+                <form onSubmit={handleAddSlot} className="rounded-[2rem] border border-sky-100 bg-sky-50/80 p-5 shadow-sm">
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-slate-900">新しい日程を追加</div>
+                      <div className="text-lg font-bold text-slate-900">新しい日程を追加</div>
                       <div className="mt-1 text-xs text-slate-500">選択中の日付を初期値として入力しています。</div>
                     </div>
                     <button
                       type="button"
                       onClick={() => setShowAdminSlotForm(false)}
-                      className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                     >
                       閉じる
                     </button>
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="text-sm">
-                      <div className="mb-1.5 text-slate-600">日付</div>
-                      <input
-                        type="date"
-                        value={slotForm.date}
-                        onChange={(event) => {
-                          const nextDate = event.target.value;
-                          setSlotForm((prev) => ({ ...prev, date: nextDate }));
-                          if (nextDate) {
-                            setAdminSelectedSlotDate(nextDate);
-                            setAdminSlotMonth(new Date(`${nextDate}T00:00:00`));
-                          }
-                        }}
-                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
-                      />
-                    </label>
-                    <label className="text-sm">
-                      <div className="mb-1.5 text-slate-600">時限</div>
-                      <select
-                        value={slotForm.periodKey}
-                        onChange={(event) => setSlotForm((prev) => ({ ...prev, periodKey: event.target.value }))}
-                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
-                      >
-                        {PERIODS.map((period) => (
-                          <option key={period.key} value={period.key}>{period.label} ({period.start}〜{period.end})</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
+                  <label className="mb-4 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(slotForm.bulkMode)}
+                      onChange={(event) => {
+                        const checked = event.target.checked;
+                        const nextFocusDate = slotForm.date || adminSelectedSlotDate || formatDateKey(new Date());
+                        setBulkFocusedSlotDate(checked ? nextFocusDate : "");
+                        setSlotForm((prev) => ({
+                          ...prev,
+                          bulkMode: checked,
+                          bulkDates: "",
+                          bulkPeriodKeys: prev.bulkPeriodKeys?.length ? prev.bulkPeriodKeys : [prev.periodKey || "p3"],
+                          bulkSlotPlan: checked
+                            ? (Object.keys(prev.bulkSlotPlan || {}).length > 0
+                                ? prev.bulkSlotPlan
+                                : { [nextFocusDate]: [] })
+                            : prev.bulkSlotPlan || {},
+                        }));
+                      }}
+                      className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-sky-300"
+                    />
+                    <span>
+                      <span className="block font-semibold text-slate-900">複数日程をまとめて追加する</span>
+                      <span className="mt-1 block text-xs leading-5 text-slate-500">複数の日付と時限を選ぶと、同じ定員・場所・メモでまとめて日程枠を作成できます。</span>
+                    </span>
+                  </label>
+
+                  {slotForm.bulkMode ? (
+                    <div className="space-y-4">
+                      <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">追加する日付をカレンダーから選択</div>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">日付を選ぶと下にその日のカードだけが表示されます。日付ごとに追加する時限を選択してください。</p>
+                          </div>
+                          <div className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
+                            追加予定 {bulkPlannedCount}件
+                          </div>
+                        </div>
+
+                        <div className="mb-3 flex items-center justify-between">
+                          <IconButton onClick={() => setAdminSlotMonth(new Date(adminSlotMonth.getFullYear(), adminSlotMonth.getMonth() - 1, 1))}>
+                            <ChevronLeft size={16} />
+                          </IconButton>
+                          <div className="text-sm font-bold text-slate-900">{adminSlotMonth.getFullYear()}年 {adminSlotMonth.getMonth() + 1}月</div>
+                          <IconButton onClick={() => setAdminSlotMonth(new Date(adminSlotMonth.getFullYear(), adminSlotMonth.getMonth() + 1, 1))}>
+                            <ChevronRight size={16} />
+                          </IconButton>
+                        </div>
+
+                        <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-slate-400">
+                          {["日", "月", "火", "水", "木", "金", "土"].map((day) => <div key={day}>{day}</div>)}
+                        </div>
+                        <div className="mt-2 grid grid-cols-7 gap-1.5 sm:gap-2">
+                          {adminSlotDays.map((day) => {
+                            const dateKey = formatDateKey(day);
+                            const summary = adminSlotMonthSummary[dateKey];
+                            const inMonth = day.getMonth() === adminSlotMonth.getMonth();
+                            const plannedForBulk = (bulkSlotPlan[dateKey] || []).length > 0;
+                            const focusedForBulk = dateKey === bulkFocusedDate;
+                            const hasSlots = summary?.slotCount > 0;
+                            const onlyHidden = hasSlots && summary.publishedCount === 0;
+                            const holidayName = getJapaneseHolidayName(day);
+                            const isHoliday = Boolean(holidayName);
+                            const isSunday = day.getDay() === 0;
+                            const isSaturday = day.getDay() === 6;
+
+                            return (
+                              <button
+                                type="button"
+                                key={dateKey}
+                                onClick={() => toggleBulkSlotDate(dateKey)}
+                                className={classNames(
+                                  "min-h-[54px] rounded-2xl border p-1.5 text-center transition focus:outline-none focus:ring-2 focus:ring-sky-300 sm:min-h-[74px] sm:p-2",
+                                  plannedForBulk
+                                    ? "border-emerald-400 bg-emerald-50 text-emerald-900 shadow-sm"
+                                    : focusedForBulk
+                                    ? "border-slate-400 bg-white text-slate-900 shadow-sm"
+                                    : !inMonth
+                                    ? "border-slate-100 bg-slate-50 text-slate-300"
+                                    : hasSlots
+                                    ? onlyHidden
+                                      ? "border-slate-200 bg-slate-100 text-slate-600 hover:border-slate-300"
+                                      : "border-sky-200 bg-sky-50 text-sky-700 hover:border-sky-300"
+                                    : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
+                                )}
+                              >
+                                <div
+                                  className={classNames(
+                                    "text-sm font-bold sm:text-base",
+                                    plannedForBulk
+                                      ? "text-emerald-900"
+                                      : isHoliday || isSunday
+                                      ? "text-rose-600"
+                                      : isSaturday
+                                      ? "text-sky-600"
+                                      : inMonth
+                                      ? "text-slate-800"
+                                      : "text-slate-300"
+                                  )}
+                                >
+                                  {day.getDate()}
+                                </div>
+                                <div className="mt-1 flex items-center justify-center gap-1">
+                                  {hasSlots ? <span className="h-1.5 w-1.5 rounded-full bg-sky-400" /> : null}
+                                  {plannedForBulk ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> : null}
+                                </div>
+                                {hasSlots ? <div className="mt-1 hidden text-[10px] text-slate-500 sm:block">{summary.slotCount}枠</div> : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {!bulkFocusedDate ? (
+                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white/70 p-5 text-center text-sm text-slate-500">
+                          カレンダーから確認・追加したい日付を選択してください。
+                        </div>
+                      ) : (() => {
+                        const dateKey = bulkFocusedDate;
+                        const existingSlots = getExistingSlotsForDate(dateKey);
+                        const existingPeriodKeys = new Set(existingSlots.map((slot) => slot.periodKey));
+                        const selectedPeriods = bulkSlotPlan[dateKey] || [];
+                        return (
+                          <div className="rounded-3xl border border-slate-200 bg-white p-4">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <div className="text-sm font-bold text-slate-900">{formatJapaneseDate(dateKey)}</div>
+                                <div className="mt-1 text-xs text-slate-500">
+                                  追加予定：{selectedPeriods.length > 0 ? selectedPeriods.map((key) => getPeriodLabel(key)).join("、") : "未選択"}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeBulkSlotDate(dateKey)}
+                                className="self-start rounded-2xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                              >
+                                日付を外す
+                              </button>
+                            </div>
+
+                            <div className="mt-3 rounded-2xl bg-slate-50 p-3">
+                              <div className="mb-2 text-xs font-semibold text-slate-500">既存の日程</div>
+                              {existingSlots.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                  {existingSlots.map((slot) => {
+                                    const remaining = Math.max(Number(slot.capacity || 0) - Number(slot.confirmedCount || 0), 0);
+                                    return (
+                                      <span key={slot.id} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600">
+                                        {getPeriodLabel(slot.periodKey)} / 残り{remaining} / {slot.isPublished ? "公開" : "非公開"}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="text-xs text-slate-400">この日の登録済み日程はありません。</div>
+                              )}
+                            </div>
+
+                            <div className="mt-3">
+                              <div className="mb-2 text-xs font-semibold text-slate-500">追加する時限</div>
+                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                {PERIODS.map((period) => {
+                                  const alreadyExists = existingPeriodKeys.has(period.key);
+                                  const checked = selectedPeriods.includes(period.key);
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={period.key}
+                                      disabled={alreadyExists}
+                                      onClick={() => toggleBulkSlotPeriod(dateKey, period.key)}
+                                      className={classNames(
+                                        "rounded-2xl border px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                                        alreadyExists
+                                          ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                                          : checked
+                                          ? "border-emerald-300 bg-emerald-50 text-emerald-900 shadow-sm"
+                                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                                      )}
+                                    >
+                                      <span className="flex items-center justify-between gap-2">
+                                        <span className="font-semibold">{period.label}</span>
+                                        {alreadyExists ? <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-500">登録済み</span> : null}
+                                        {!alreadyExists && checked ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">追加</span> : null}
+                                      </span>
+                                      <span className="mt-0.5 block text-xs opacity-70">{period.start}〜{period.end}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}                    </div>
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="text-sm">
+                        <div className="mb-1.5 text-slate-600">日付</div>
+                        <input
+                          type="date"
+                          value={slotForm.date}
+                          onChange={(event) => {
+                            const nextDate = event.target.value;
+                            setSlotForm((prev) => ({ ...prev, date: nextDate }));
+                            if (nextDate) {
+                              setAdminSelectedSlotDate(nextDate);
+                              setAdminSlotMonth(new Date(`${nextDate}T00:00:00`));
+                            }
+                          }}
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
+                        />
+                      </label>
+                      <label className="text-sm">
+                        <div className="mb-1.5 text-slate-600">時限</div>
+                        <select
+                          value={slotForm.periodKey}
+                          onChange={(event) => setSlotForm((prev) => ({ ...prev, periodKey: event.target.value, bulkPeriodKeys: [event.target.value] }))}
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
+                        >
+                          {PERIODS.map((period) => (
+                            <option key={period.key} value={period.key}>{period.label} ({period.start}〜{period.end})</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  )}
 
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
                     <label className="text-sm">
@@ -4056,15 +4335,23 @@ function AdminPage({
                   </label>
 
                   <button className="mt-4 w-full rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800">
-                    日程枠を追加する
+                    {slotForm.bulkMode ? `${bulkPlannedCount}件の日程枠を追加する` : "日程枠を追加する"}
                   </button>
                 </form>
               ) : null}
 
+
+            <Card className="p-5 shadow-none">
+              <SectionHeader
+                eyebrow="SELECTED DATE"
+                title={adminSelectedSlotDate ? `${formatJapaneseDate(adminSelectedSlotDate)} の日程枠` : "日付を選択してください"}
+                description="この日に登録されている日程枠を確認できます。日程が登録されていない日付も選択できます。"
+              />
+
               <div className="space-y-3">
                 {adminSelectedDaySlots.length === 0 ? (
                   <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
-                    この日にはまだ日程枠がありません。新しく追加する場合は、上の「＋ 日程を追加する」ボタンから登録してください。
+                    この日にはまだ日程枠がありません。新しく追加する場合は、上の「＋ 新しい日程を追加」ボタンから登録してください。
                   </div>
                 ) : (
                   adminSelectedDaySlots.map((slot) => {
@@ -4206,7 +4493,7 @@ function AdminPage({
         {adminTab === "requests" && (
           <div className="space-y-4">
             <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_220px_220px]">
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_220px_220px_220px]">
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
@@ -4231,6 +4518,20 @@ function AdminPage({
                   <option value="pending">参加者確認: 未確認のみ</option>
                   <option value="confirmed">参加者確認: 確認済みのみ</option>
                   <option value="change_requested">参加者確認: 変更希望のみ</option>
+                </select>
+                <select
+                  value={requestSortMode}
+                  onChange={(event) => setRequestSortMode(event.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-slate-400"
+                >
+                  <option value="default">並び替え: おすすめ順</option>
+                  <option value="createdDesc">申込日時: 新しい順</option>
+                  <option value="createdAsc">申込日時: 古い順</option>
+                  <option value="assignedAsc">確定日程: 早い順</option>
+                  <option value="assignedDesc">確定日程: 遅い順</option>
+                  <option value="status">対応状況順</option>
+                  <option value="nameAsc">氏名順</option>
+                  <option value="updatedDesc">更新日時: 新しい順</option>
                 </select>
               </div>
             </div>
@@ -4257,7 +4558,7 @@ function AdminPage({
                 const requestCompleted = isRequestCompleted(request);
                 const requestPastCandidate = isPastScheduledRequest(request, sortedSlots);
                 const operationLabel = requestCompleted ? "実施済み" : requestPastCandidate ? "予定日超過" : "未実施";
-                const operationTone = requestCompleted ? "slate" : requestPastCandidate ? "amber" : "sky";
+                const operationTone = requestCompleted ? "emerald" : requestPastCandidate ? "amber" : "sky";
                 const lineLinkCode = request.lineLinkCode || "未発行";
                 const isExpanded = expandedRequestIds.has(request.id);
                 return (
@@ -4784,6 +5085,11 @@ export default function ExperimentParticipantScheduler() {
   });
   const [slotForm, setSlotForm] = useState({
     date: "",
+    extraDates: "",
+    bulkMode: false,
+    bulkDates: "",
+    bulkPeriodKeys: ["p3"],
+    bulkSlotPlan: {},
     periodKey: "p3",
     capacity: 1,
     location: "OIC 実験室A",
@@ -4793,6 +5099,7 @@ export default function ExperimentParticipantScheduler() {
   const [search, setSearch] = useState("");
   const [requestStatusFilter, setRequestStatusFilter] = useState("all");
   const [participantConfirmationFilter, setParticipantConfirmationFilter] = useState("all");
+  const [requestSortMode, setRequestSortMode] = useState("default");
   const [message, setMessage] = useState("");
   const [lastLineLinkInfo, setLastLineLinkInfo] = useState(null);
   const [lineGuideOpen, setLineGuideOpen] = useState(false);
@@ -5111,6 +5418,15 @@ export default function ExperimentParticipantScheduler() {
     return () => clearTimeout(timer);
   }, [toast]);
 
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handle = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(handle);
+  }, [page, adminTab, selectedStudyId]);
+
   useEffect(() => {
     setSelectedSlotIds((prev) => prev.filter((id) => slots.some((slot) => slot.id === id)));
   }, [slots]);
@@ -5233,35 +5549,54 @@ export default function ExperimentParticipantScheduler() {
         const bCompleted = isRequestCompleted(b) ? 1 : 0;
         if (aCompleted !== bCompleted) return aCompleted - bCompleted;
 
-        if (aCompleted && bCompleted) {
-          const getAssignedSlotOrder = (request) => {
-            const slot = sortedSlots.find((item) => item.id === request.assignedSlotId);
-            if (!slot) return Number.MAX_SAFE_INTEGER;
-            const periodIndex = PERIODS.findIndex((period) => period.key === slot.periodKey);
-            const safePeriodIndex = periodIndex >= 0 ? periodIndex : 99;
-            return Number(`${String(slot.date || "9999-12-31").replaceAll("-", "")}${String(safePeriodIndex).padStart(2, "0")}`);
-          };
+        const aAssignedOrder = getRequestAssignedSlotOrder(a, sortedSlots);
+        const bAssignedOrder = getRequestAssignedSlotOrder(b, sortedSlots);
+        const aCreated = getRequestTimestampValue(a.createdAt);
+        const bCreated = getRequestTimestampValue(b.createdAt);
+        const aUpdated = getRequestTimestampValue(a.updatedAt);
+        const bUpdated = getRequestTimestampValue(b.updatedAt);
 
-          const aSlotOrder = getAssignedSlotOrder(a);
-          const bSlotOrder = getAssignedSlotOrder(b);
-          if (aSlotOrder !== bSlotOrder) return aSlotOrder - bSlotOrder;
+        if (requestSortMode === "createdAsc") return aCreated - bCreated;
+        if (requestSortMode === "createdDesc") return bCreated - aCreated;
+        if (requestSortMode === "updatedDesc") return bUpdated - aUpdated;
+        if (requestSortMode === "assignedAsc") {
+          if (aAssignedOrder !== bAssignedOrder) return aAssignedOrder - bAssignedOrder;
+          return aCreated - bCreated;
+        }
+        if (requestSortMode === "assignedDesc") {
+          if (aAssignedOrder !== bAssignedOrder) return bAssignedOrder - aAssignedOrder;
+          return aCreated - bCreated;
+        }
+        if (requestSortMode === "nameAsc") {
+          const nameCompare = String(a.name || "").localeCompare(String(b.name || ""), "ja");
+          if (nameCompare !== 0) return nameCompare;
+          return aCreated - bCreated;
+        }
+        if (requestSortMode === "status") {
+          const aPriority = getRequestDefaultPriority(a);
+          const bPriority = getRequestDefaultPriority(b);
+          if (aPriority !== bPriority) return aPriority - bPriority;
+          const aAssigned = a.assignedSlotId ? 1 : 0;
+          const bAssigned = b.assignedSlotId ? 1 : 0;
+          if (aAssigned !== bAssigned) return aAssigned - bAssigned;
+          return aCreated - bCreated;
         }
 
-        const aStatus = a.participantConfirmationStatus || "pending";
-        const bStatus = b.participantConfirmationStatus || "pending";
-        const aPriority = aStatus === "change_requested" ? 0 : aStatus === "pending" ? 1 : 2;
-        const bPriority = bStatus === "change_requested" ? 0 : bStatus === "pending" ? 1 : 2;
+        if (aCompleted && bCompleted) {
+          if (aAssignedOrder !== bAssignedOrder) return aAssignedOrder - bAssignedOrder;
+        }
+
+        const aPriority = getRequestDefaultPriority(a);
+        const bPriority = getRequestDefaultPriority(b);
         if (aPriority !== bPriority) return aPriority - bPriority;
 
         const aAssigned = a.assignedSlotId ? 1 : 0;
         const bAssigned = b.assignedSlotId ? 1 : 0;
         if (aAssigned !== bAssigned) return aAssigned - bAssigned;
 
-        const aTime = a.updatedAt?.seconds ? a.updatedAt.seconds : 0;
-        const bTime = b.updatedAt?.seconds ? b.updatedAt.seconds : 0;
-        return bTime - aTime;
+        return bUpdated - aUpdated;
       });
-  }, [requests, search, requestStatusFilter, participantConfirmationFilter, sortedSlots]);
+  }, [requests, search, requestStatusFilter, participantConfirmationFilter, requestSortMode, sortedSlots]);
 
   const confirmedScheduleGroups = useMemo(() => {
     return sortSlots(
@@ -5479,11 +5814,24 @@ export default function ExperimentParticipantScheduler() {
 
   async function handleAddSlot(event) {
     event.preventDefault();
-    if (!slotForm.date || !slotForm.periodKey) return;
 
-    try {
-      if (firebaseReady) {
-        await addDoc(collection(firestore, "slots"), {
+    const isBulkMode = Boolean(slotForm.bulkMode);
+    const bulkPlan = slotForm.bulkSlotPlan || {};
+
+    const newSlots = isBulkMode
+      ? Object.entries(bulkPlan).flatMap(([date, periodKeys]) =>
+          (periodKeys || []).map((periodKey) => ({
+            studyId: selectedStudyId,
+            date,
+            periodKey,
+            capacity: Number(slotForm.capacity || 1),
+            confirmedCount: 0,
+            isPublished: Boolean(slotForm.isPublished),
+            location: slotForm.location.trim(),
+            note: slotForm.note.trim(),
+          }))
+        )
+      : [{
           studyId: selectedStudyId,
           date: slotForm.date,
           periodKey: slotForm.periodKey,
@@ -5492,23 +5840,29 @@ export default function ExperimentParticipantScheduler() {
           isPublished: Boolean(slotForm.isPublished),
           location: slotForm.location.trim(),
           note: slotForm.note.trim(),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+        }].filter((slot) => slot.date && slot.periodKey);
+
+    if (newSlots.length === 0) {
+      showToast(isBulkMode ? "追加する日付と時限を選択してください。" : "追加する日付と時限を入力してください。", "error");
+      return;
+    }
+
+    try {
+      if (firebaseReady) {
+        await Promise.all(
+          newSlots.map((slot) => addDoc(collection(firestore, "slots"), {
+            ...slot,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          }))
+        );
       } else {
         setSlots((prev) => sortSlots([
           ...prev,
-          {
+          ...newSlots.map((slot) => ({
             id: crypto.randomUUID(),
-            studyId: selectedStudyId,
-            date: slotForm.date,
-            periodKey: slotForm.periodKey,
-            capacity: Number(slotForm.capacity || 1),
-            confirmedCount: 0,
-            isPublished: Boolean(slotForm.isPublished),
-            location: slotForm.location.trim(),
-            note: slotForm.note.trim(),
-          },
+            ...slot,
+          })),
         ]));
       }
 
@@ -5517,9 +5871,17 @@ export default function ExperimentParticipantScheduler() {
         capacity: prev.capacity || 1,
         location: prev.location,
         note: prev.note,
-        isPublished: true,
+        extraDates: "",
+        bulkDates: "",
+        bulkSlotPlan: {},
+        isPublished: prev.isPublished,
       }));
-      showToast("日程枠を追加しました。次の追加にも直前の定員・場所・メモを引き継ぎます。", "success");
+      showToast(
+        newSlots.length === 1
+          ? "日程枠を追加しました。次の追加にも直前の定員・場所・メモを引き継ぎます。"
+          : `${newSlots.length}件の日程枠を追加しました。次の追加にも直前の定員・場所・メモを引き継ぎます。`,
+        "success"
+      );
     } catch (error) {
       console.error(error);
       showToast("日程枠の追加に失敗しました。", "error");
@@ -6512,6 +6874,8 @@ export default function ExperimentParticipantScheduler() {
             setRequestStatusFilter={setRequestStatusFilter}
             participantConfirmationFilter={participantConfirmationFilter}
             setParticipantConfirmationFilter={setParticipantConfirmationFilter}
+            requestSortMode={requestSortMode}
+            setRequestSortMode={setRequestSortMode}
             filteredRequests={filteredRequests}
             confirmedScheduleGroups={confirmedScheduleGroups}
             handleAssignRequest={handleAssignRequest}
