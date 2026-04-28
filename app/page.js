@@ -3119,6 +3119,7 @@ function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservat
     : SAMPLE_STUDIES;
   const activeStudy = studyOptions.find((study) => study.id === selectedStudyId) || studyOptions[0];
   const scheduleGroups = Array.isArray(confirmedScheduleGroups) ? confirmedScheduleGroups : [];
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   return (
     <Card className="mb-6 p-5 shadow-none">
@@ -3183,7 +3184,7 @@ function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservat
         </div>
       </div>
 
-      <details className="mt-5 rounded-3xl border border-teal-100 bg-white/90 p-3 shadow-sm">
+      <details open={summaryOpen} onToggle={(event) => setSummaryOpen(event.currentTarget.open)} className="mt-5 rounded-3xl border border-teal-100 bg-white/90 p-3 shadow-sm">
         <summary className="cursor-pointer list-none text-base font-bold text-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-teal-100 bg-gradient-to-r from-teal-50 via-white to-sky-50 px-4 py-3 transition hover:border-teal-200 hover:shadow-sm">
             <div>
@@ -3196,7 +3197,7 @@ function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservat
               </p>
             </div>
             <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-teal-700 shadow-sm">
-              開く / 閉じる
+              {summaryOpen ? "閉じる" : "開く"}
             </span>
           </div>
         </summary>
@@ -4208,7 +4209,7 @@ function AdminPage({
                     <button
                       type="button"
                       onClick={() => toggleRequestExpanded(request.id)}
-                      className="flex w-full items-start justify-between gap-3 text-left md:hidden"
+                      className={classNames("w-full items-start justify-between gap-3 text-left md:hidden", isExpanded ? "hidden" : "flex")}
                     >
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -4231,7 +4232,16 @@ function AdminPage({
                       </span>
                     </button>
 
-                    <div className={classNames("mt-4 md:mt-0", isExpanded ? "block" : "hidden md:block")}>
+                    <div className={classNames("md:mt-0", isExpanded ? "block" : "hidden md:block")}>
+                    <div className="mb-3 flex justify-end md:hidden">
+                      <button
+                        type="button"
+                        onClick={() => toggleRequestExpanded(request.id)}
+                        className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500"
+                      >
+                        閉じる
+                      </button>
+                    </div>
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
