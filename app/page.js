@@ -1394,6 +1394,18 @@ function PencilIcon() {
   );
 }
 
+function TrashIcon({ className = "h-4 w-4" }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 7h16" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M6 7l1 14h10l1-14" />
+      <path d="M9 7V4h6v3" />
+    </svg>
+  );
+}
+
 function ModalShell({ title, onClose, children, eyebrow = "LabLink" }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-5">
@@ -3086,9 +3098,9 @@ function AdminStudyManager({
                     type="button"
                     onClick={() => onDeleteStudy(study)}
                     disabled={deletingStudyId === study.id}
-                    className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50"
                   >
-                    {deletingStudyId === study.id ? "削除中..." : "削除"}
+                    {deletingStudyId === study.id ? "削除中..." : <><TrashIcon /> 削除</>}
                   </button>
                 </div>
               </div>
@@ -3101,7 +3113,7 @@ function AdminStudyManager({
   );
 }
 
-function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservationPage, onBackToStudyList, stats, confirmedScheduleGroups }) {
+function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservationPage, onBackToStudyList, stats, confirmedScheduleGroups, onFocusRequest }) {
   const studyOptions = Array.isArray(adminStudies) && adminStudies.length > 0
     ? adminStudies
     : SAMPLE_STUDIES;
@@ -3171,14 +3183,24 @@ function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservat
         </div>
       </div>
 
-      <details className="mt-5 rounded-3xl border border-slate-200 bg-white/80 p-4">
+      <details className="mt-5 rounded-3xl border border-teal-100 bg-white/90 p-3 shadow-sm">
         <summary className="cursor-pointer list-none text-base font-bold text-slate-900">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-base sm:text-lg">確定済みの日程サマリー</span>
-            <StatusBadge tone={scheduleGroups.length > 0 ? "emerald" : "slate"}>{scheduleGroups.length}枠</StatusBadge>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-teal-100 bg-gradient-to-r from-teal-50 via-white to-sky-50 px-4 py-3 transition hover:border-teal-200 hover:shadow-sm">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-lg sm:text-xl">確定済みの日程サマリー</span>
+                <StatusBadge tone={scheduleGroups.length > 0 ? "emerald" : "slate"}>{scheduleGroups.length}枠</StatusBadge>
+              </div>
+              <p className="mt-1 text-xs font-medium text-slate-500">
+                日程ごとの確定状況を開いて確認できます。申込カードを押すと該当申込へ移動します。
+              </p>
+            </div>
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-teal-700 shadow-sm">
+              開く / 閉じる
+            </span>
           </div>
         </summary>
-        <div className="mt-4">
+        <div className="mt-4 px-1 pb-1">
           {scheduleGroups.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
               まだ確定済みの申込はありません。
@@ -3198,11 +3220,20 @@ function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservat
                       {group.confirmedCount}/{group.slot.capacity} 名
                     </StatusBadge>
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {group.names.map((name) => (
-                      <span key={name} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700">
-                        {name}
-                      </span>
+                  <div className="mt-3 grid gap-2">
+                    {(group.requests || []).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => onFocusRequest?.(item.id)}
+                        className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-teal-300 hover:bg-teal-50 hover:shadow-sm"
+                      >
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">{item.name}</div>
+                          <div className="mt-0.5 text-xs text-slate-500">申込カードへ移動</div>
+                        </div>
+                        <span className="text-xs font-semibold text-teal-700">表示する</span>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -3461,6 +3492,9 @@ function AdminPage({
   const [adminSlotMonth, setAdminSlotMonth] = useState(new Date());
   const [adminSelectedSlotDate, setAdminSelectedSlotDate] = useState("");
   const [showAdminSlotForm, setShowAdminSlotForm] = useState(false);
+  const [expandedRequestIds, setExpandedRequestIds] = useState(() => new Set());
+  const [pendingFocusRequestId, setPendingFocusRequestId] = useState("");
+  const requestCardRefs = useRef({});
 
   const adminSlotDays = useMemo(() => getMonthGrid(adminSlotMonth), [adminSlotMonth]);
   const adminSlotMonthSummary = useMemo(() => {
@@ -3489,6 +3523,37 @@ function AdminPage({
       setAdminSlotMonth(new Date(`${firstDate}T00:00:00`));
     }
   }, [adminTab, sortedSlots, adminSelectedSlotDate]);
+
+  useEffect(() => {
+    if (adminTab !== "requests" || !pendingFocusRequestId) return;
+
+    const timer = window.setTimeout(() => {
+      const target = requestCardRefs.current[pendingFocusRequestId];
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        setExpandedRequestIds((prev) => {
+          const next = new Set(prev);
+          next.add(pendingFocusRequestId);
+          return next;
+        });
+      }
+      setPendingFocusRequestId("");
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [adminTab, pendingFocusRequestId]);
+
+  const toggleRequestExpanded = (requestId) => {
+    setExpandedRequestIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(requestId)) {
+        next.delete(requestId);
+      } else {
+        next.add(requestId);
+      }
+      return next;
+    });
+  };
 
   const handleSelectAdminSlotDate = (dateKey) => {
     setAdminSelectedSlotDate(dateKey);
@@ -3525,6 +3590,10 @@ function AdminPage({
               onBackToStudyList={() => setAdminTab("studies")}
               stats={stats}
               confirmedScheduleGroups={confirmedScheduleGroups}
+              onFocusRequest={(requestId) => {
+                setAdminTab("requests");
+                setPendingFocusRequestId(requestId);
+              }}
             />
             <AdminOperationSubNav adminTab={adminTab} setAdminTab={setAdminTab} selectedStudyTitle={selectedOperationStudy?.title || ""} />
           </>
@@ -3580,7 +3649,7 @@ function AdminPage({
                 <button onClick={exportJson} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                   JSONを書き出す
                 </button>
-                <button onClick={resetAll} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">
+                <button onClick={resetAll} className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">
                   データを初期化
                 </button>
               </div>
@@ -3976,7 +4045,8 @@ function AdminPage({
                             <button onClick={() => handleTogglePublished(slot)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                               {slot.isPublished === false ? "公開にする" : "非公開にする"}
                             </button>
-                            <button onClick={() => handleDeleteSlot(slot.id)} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">
+                            <button onClick={() => handleDeleteSlot(slot.id)} className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">
+                              <TrashIcon />
                               削除
                             </button>
                           </div>
@@ -4061,7 +4131,7 @@ function AdminPage({
                       disabled={selectedSlotIds.length === 0 || bulkActionLoading}
                       className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50"
                     >
-                      選択枠を一括削除
+                      <span className="inline-flex items-center justify-center gap-2"><TrashIcon /> 選択枠を一括削除</span>
                     </button>
                   </div>
                 </div>
@@ -4119,16 +4189,49 @@ function AdminPage({
                 const otherAssignableSlots = sortedSlots.filter((slot) => !preferredSlotIdSet.has(slot.id));
                 const assignedSlot = sortedSlots.find((slot) => slot.id === request.assignedSlotId);
                 const lineLinkCode = request.lineLinkCode || "未発行";
+                const isExpanded = expandedRequestIds.has(request.id);
                 return (
                   <div
                     key={request.id}
+                    ref={(node) => {
+                      if (node) requestCardRefs.current[request.id] = node;
+                    }}
+                    id={`request-${request.id}`}
                     className={classNames(
-                      "rounded-3xl p-5 shadow-sm",
+                      "scroll-mt-28 rounded-3xl p-5 shadow-sm transition",
+                      pendingFocusRequestId === request.id ? "ring-4 ring-teal-200" : "",
                       (request.participantConfirmationStatus || "pending") === "change_requested"
                         ? "border-2 border-rose-300 bg-rose-50/70 shadow-[0_16px_40px_rgba(244,63,94,0.12)]"
                         : "border border-slate-200 bg-white"
                     )}
                   >
+                    <button
+                      type="button"
+                      onClick={() => toggleRequestExpanded(request.id)}
+                      className="flex w-full items-start justify-between gap-3 text-left md:hidden"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-base font-bold text-slate-900">{request.name}</span>
+                          <StatusBadge tone={request.assignedSlotId ? "emerald" : "amber"}>
+                            {request.assignedSlotId ? "確定済み" : "未確定"}
+                          </StatusBadge>
+                          <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
+                            {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
+                          </StatusBadge>
+                        </div>
+                        <div className="mt-2 text-sm text-slate-600">
+                          {assignedSlot
+                            ? `確定: ${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}`
+                            : "確定日程はまだありません"}
+                        </div>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
+                        {isExpanded ? "閉じる" : "詳細"}
+                      </span>
+                    </button>
+
+                    <div className={classNames("mt-4 md:mt-0", isExpanded ? "block" : "hidden md:block")}>
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
@@ -4146,22 +4249,7 @@ function AdminPage({
                         <div className="mt-2 text-sm text-slate-500">{request.email}</div>
                         {request.affiliation ? <div className="mt-1 text-sm text-slate-500">{request.affiliation}</div> : null}
 
-                        <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                          <div className={classNames(
-                            "rounded-2xl border px-4 py-3 text-sm",
-                            request.lineNotifyEnabled === true && request.lineUserId
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-                              : "border-slate-200 bg-slate-50 text-slate-700"
-                          )}>
-                            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">LINE通知</div>
-                            <div className="mt-1 font-medium">{getLineLinkDetail(request)}</div>
-                            {request.lineUserId ? (
-                              <div className="mt-1 break-all text-xs opacity-70">ID: {request.lineUserId}</div>
-                            ) : (
-                              <div className="mt-1 text-xs opacity-70">参加者が公式LINEに連携コードを送ると連携済みになります。</div>
-                            )}
-                          </div>
-
+                        <div className="mt-3 grid gap-3">
                           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
                             <div className="flex items-center justify-between gap-3">
                               <div>
@@ -4310,10 +4398,11 @@ function AdminPage({
                             確定を解除
                           </button>
                         ) : null}
-                        <button onClick={() => handleDeleteRequest(request.id)} className="mt-3 w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 hover:bg-rose-100">
-                          申込を削除
+                        <button onClick={() => handleDeleteRequest(request.id)} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 hover:bg-rose-100">
+                          <span className="inline-flex items-center justify-center gap-2"><TrashIcon /> 申込を削除</span>
                         </button>
                       </div>
+                    </div>
                     </div>
                   </div>
                 );
@@ -4927,6 +5016,7 @@ export default function ExperimentParticipantScheduler() {
         confirmedCount: Number(slot.confirmedCount || 0),
         remaining: Math.max(Number(slot.capacity || 1) - Number(slot.confirmedCount || 0), 0),
         names: groupedRequests.map((request) => request.name),
+        requests: groupedRequests.map((request) => ({ id: request.id, name: request.name })),
       };
     });
   }, [sortedSlots, requests]);
