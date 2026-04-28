@@ -349,6 +349,12 @@ function getLineLinkLabel(request = {}) {
   return "LINE未連携";
 }
 
+function getLineLinkShortLabel(request = {}) {
+  if (request.lineNotifyEnabled === true && request.lineUserId) return "LINE済";
+  if (request.lineUserId && request.lineNotifyEnabled === false) return "通知OFF";
+  return "LINE未";
+}
+
 function getLineLinkTone(request = {}) {
   if (request.lineNotifyEnabled === true && request.lineUserId) return "emerald";
   if (request.lineUserId && request.lineNotifyEnabled === false) return "amber";
@@ -4254,17 +4260,17 @@ function AdminPage({
                       onClick={() => toggleRequestExpanded(request.id)}
                       className="flex w-full items-start justify-between gap-3 text-left md:hidden"
                     >
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-base font-bold text-slate-900">{request.name}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-base font-bold text-slate-900">{request.name}</div>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           <StatusBadge tone={request.assignedSlotId ? "emerald" : "amber"}>
-                            {request.assignedSlotId ? "確定済み" : "未確定"}
+                            {request.assignedSlotId ? "確定" : "未確定"}
                           </StatusBadge>
                           <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
                             {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
                           </StatusBadge>
                           <StatusBadge tone={getLineLinkTone(request)}>
-                            {getLineLinkLabel(request)}
+                            {getLineLinkShortLabel(request)}
                           </StatusBadge>
                           {requestCompleted ? (
                             <StatusBadge tone="slate">実施済み</StatusBadge>
@@ -4272,10 +4278,16 @@ function AdminPage({
                             <StatusBadge tone="amber">予定日超過</StatusBadge>
                           ) : null}
                         </div>
-                        <div className="mt-2 text-sm text-slate-600">
+                        <div className={classNames(
+                          "mt-2 rounded-2xl border px-3 py-2 text-xs leading-5",
+                          assignedSlot
+                            ? "border-emerald-100 bg-emerald-50 text-emerald-900"
+                            : "border-slate-200 bg-slate-50 text-slate-500"
+                        )}>
+                          <span className="mr-2 font-semibold">確定日程</span>
                           {assignedSlot
-                            ? `確定: ${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}`
-                            : "確定日程はまだありません"}
+                            ? `${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}`
+                            : "未確定"}
                         </div>
                       </div>
                       <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
@@ -4529,18 +4541,17 @@ function AdminPage({
                         </div>
                       </div>
                       <div className="w-full xl:w-[300px]">
-                        <div className={classNames(
-                          "rounded-2xl px-4 py-3 text-sm",
-                          requestCompleted
-                            ? "border border-slate-200 bg-white text-slate-600"
-                            : requestPastCandidate
-                            ? "border border-amber-200 bg-amber-50 text-amber-900"
-                            : "bg-slate-50 text-slate-600"
-                        )}>
-                          {assignedSlot ? `確定: ${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey].label}` : "まだ日程は確定していません。"}
-                          {requestCompleted ? <div className="mt-1 text-xs font-semibold text-slate-500">実施済みとして記録されています。</div> : null}
-                          {requestPastCandidate ? <div className="mt-1 text-xs font-semibold text-amber-700">予定日を過ぎています。</div> : null}
-                        </div>
+                        {requestCompleted || requestPastCandidate ? (
+                          <div className={classNames(
+                            "rounded-2xl px-4 py-3 text-sm",
+                            requestCompleted
+                              ? "border border-slate-200 bg-white text-slate-600"
+                              : "border border-amber-200 bg-amber-50 text-amber-900"
+                          )}>
+                            {requestCompleted ? <div className="text-xs font-semibold text-slate-500">実施済みとして記録されています。</div> : null}
+                            {requestPastCandidate ? <div className="text-xs font-semibold text-amber-700">予定日を過ぎています。</div> : null}
+                          </div>
+                        ) : null}
                         {assignedSlot ? (
                           <button
                             type="button"
