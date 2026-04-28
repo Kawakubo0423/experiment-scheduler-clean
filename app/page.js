@@ -715,33 +715,12 @@ function LabLinkBrand({ subtitle = BRAND_TAGLINE, compact = false, className = "
 }
 
 function PublicSiteHeader({ onOpenHelp, onOpenAdmin, onOpenHome, onOpenReservation, activePage = "reservation" }) {
-  const navItems = [
-    { key: "home", label: "トップ", onClick: onOpenHome },
-    { key: "studies", label: "募集中の実験", onClick: onOpenReservation },
-  ];
-
   return (
     <header className="sticky top-0 z-30 border-b border-white/70 bg-white/85 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
         <button type="button" onClick={onOpenHome} className="min-w-0 rounded-2xl text-left transition hover:opacity-85">
           <LabLinkBrand compact subtitle="大学研究の実験参加予約" />
         </button>
-
-        <nav className="hidden items-center gap-1 rounded-full border border-slate-200 bg-slate-50/80 p-1 md:flex" aria-label="LabLink navigation">
-          {navItems.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={item.onClick}
-              className={classNames(
-                "rounded-full px-4 py-2 text-sm font-semibold transition",
-                activePage === item.key ? "bg-slate-950 text-white shadow-sm" : "text-slate-600 hover:bg-white"
-              )}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
 
         <div className="flex shrink-0 items-center gap-2">
           {LINE_ADD_FRIEND_URL ? (
@@ -756,10 +735,10 @@ function PublicSiteHeader({ onOpenHelp, onOpenAdmin, onOpenHome, onOpenReservati
           ) : null}
           <button
             type="button"
-            onClick={onOpenHelp}
+            onClick={onOpenReservation}
             className="hidden rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 sm:inline-flex"
           >
-            参加の流れ
+            募集中の実験
           </button>
           <button
             type="button"
@@ -779,8 +758,8 @@ function PublicSiteHeader({ onOpenHelp, onOpenAdmin, onOpenHome, onOpenReservati
               LINE
             </a>
           ) : null}
-          <IconButton aria-label="使い方を開く" onClick={onOpenHelp} title="使い方" className="sm:hidden">
-            <HelpIcon />
+          <IconButton aria-label="募集中の実験を見る" onClick={onOpenReservation} title="募集中の実験" className="sm:hidden">
+            <LandingIcon type="list" />
           </IconButton>
           <IconButton aria-label="管理者ページへ" onClick={onOpenAdmin} title="管理者ページへ" className="sm:hidden">
             <GearIcon />
