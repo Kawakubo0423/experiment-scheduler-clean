@@ -4212,16 +4212,19 @@ function AdminPage({
                       className={classNames("w-full items-start justify-between gap-3 text-left md:hidden", isExpanded ? "hidden" : "flex")}
                     >
                       <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-base font-bold text-slate-900">{request.name}</span>
+                        <div className="text-base font-bold text-slate-900">{request.name}</div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
                           <StatusBadge tone={request.assignedSlotId ? "emerald" : "amber"}>
                             {request.assignedSlotId ? "確定済み" : "未確定"}
                           </StatusBadge>
                           <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
                             {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
                           </StatusBadge>
+                          <StatusBadge tone={getLineLinkTone(request)}>
+                            {getLineLinkLabel(request)}
+                          </StatusBadge>
                         </div>
-                        <div className="mt-2 text-sm text-slate-600">
+                        <div className="mt-2 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
                           {assignedSlot
                             ? `確定: ${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}`
                             : "確定日程はまだありません"}
@@ -4244,19 +4247,26 @@ function AdminPage({
                     </div>
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
                           <div className="text-lg font-semibold text-slate-900">{request.name}</div>
-                          <StatusBadge tone={request.assignedSlotId ? "emerald" : "amber"}>
-                            {request.assignedSlotId ? "確定済み" : "未確定"}
-                          </StatusBadge>
-                          <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
-                            {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
-                          </StatusBadge>
-                          <StatusBadge tone={getLineLinkTone(request)}>
-                            {getLineLinkLabel(request)}
-                          </StatusBadge>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge tone={request.assignedSlotId ? "emerald" : "amber"}>
+                              {request.assignedSlotId ? "確定済み" : "未確定"}
+                            </StatusBadge>
+                            <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
+                              {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
+                            </StatusBadge>
+                            <StatusBadge tone={getLineLinkTone(request)}>
+                              {getLineLinkLabel(request)}
+                            </StatusBadge>
+                          </div>
                         </div>
-                        <div className="mt-2 text-sm text-slate-500">{request.email}</div>
+                        <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-700 xl:hidden">
+                          {assignedSlot
+                            ? `確定: ${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}`
+                            : "確定日程はまだありません"}
+                        </div>
+                        <div className="mt-3 text-sm text-slate-500">{request.email}</div>
                         {request.affiliation ? <div className="mt-1 text-sm text-slate-500">{request.affiliation}</div> : null}
 
                         <div className="mt-3 grid gap-3">
@@ -4396,8 +4406,8 @@ function AdminPage({
                         </div>
                       </div>
                       <div className="w-full xl:w-[300px]">
-                        <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                          {assignedSlot ? `確定: ${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey].label}` : "まだ日程は確定していません。"}
+                        <div className="hidden rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600 xl:block">
+                          {assignedSlot ? `確定: ${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}` : "まだ日程は確定していません。"}
                         </div>
                         {assignedSlot ? (
                           <button
