@@ -573,6 +573,28 @@ function getDaySummary(dateKey, slots) {
   };
 }
 
+
+function getAdminDaySummary(dateKey, slots, requests = []) {
+  const daySlots = slots.filter((slot) => slot.date === dateKey);
+  const slotCount = daySlots.length;
+  const publishedCount = daySlots.filter((slot) => slot.isPublished !== false).length;
+  const hiddenCount = daySlots.filter((slot) => slot.isPublished === false).length;
+  const totalCapacity = daySlots.reduce((sum, slot) => sum + Number(slot.capacity || 0), 0);
+  const totalConfirmed = daySlots.reduce((sum, slot) => sum + getSlotMetrics(slot, requests).confirmed, 0);
+  const totalRemaining = daySlots.reduce((sum, slot) => sum + getSlotMetrics(slot, requests).remaining, 0);
+  const fullCount = daySlots.filter((slot) => getSlotMetrics(slot, requests).full).length;
+
+  return {
+    slotCount,
+    publishedCount,
+    hiddenCount,
+    totalCapacity,
+    totalConfirmed,
+    totalRemaining,
+    fullCount,
+  };
+}
+
 function downloadText(filename, text, mimeType = "application/json") {
   const blob = new Blob([text], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -769,13 +791,13 @@ function PublicSiteHeader({ onOpenHelp, onOpenAdmin, onOpenHome, onOpenReservati
   );
 }
 
-function AdminSiteHeader({ onBack, onLogout, adminEmail }) {
+function AdminSiteHeader({ onBack, onLogoClick, onLogout, adminEmail, backLabel = "トップへ戻る" }) {
   return (
     <header className="sticky top-0 z-30 border-b border-white/70 bg-white/85 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
-        <div className="min-w-0">
+        <button type="button" onClick={onLogoClick || onBack} className="min-w-0 rounded-2xl text-left transition hover:opacity-85">
           <LabLinkBrand compact subtitle="実験者向け管理画面" />
-        </div>
+        </button>
         <div className="flex shrink-0 items-center gap-2">
           {adminEmail ? (
             <span className="hidden max-w-[280px] truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500 lg:inline-flex">
@@ -788,7 +810,7 @@ function AdminSiteHeader({ onBack, onLogout, adminEmail }) {
             className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
           >
             <ArrowLeftIcon />
-            <span className="hidden sm:inline">トップへ戻る</span>
+            <span className="hidden sm:inline">{backLabel}</span>
             <span className="sm:hidden">戻る</span>
           </button>
           <button
@@ -1393,7 +1415,7 @@ function PencilIcon() {
   );
 }
 
-function ModalShell({ title, onClose, children }) {
+function ModalShell({ title, onClose, children, eyebrow = "LabLink" }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-5">
       <button className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} aria-label="閉じる" />
@@ -1401,7 +1423,7 @@ function ModalShell({ title, onClose, children }) {
         <div className="max-h-[78dvh] overflow-y-auto p-4 sm:max-h-[84vh] sm:p-6">
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">HELP</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{eyebrow}</div>
             <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">{title}</h2>
           </div>
           <IconButton onClick={onClose} aria-label="閉じる">×</IconButton>
@@ -1566,7 +1588,7 @@ function ExperimentInfoEditor({
           <input
             value={experimentInfoForm.title}
             onChange={(event) => updateField("title", event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
           />
         </label>
 
@@ -1585,7 +1607,7 @@ function ExperimentInfoEditor({
             <input
               value={experimentInfoForm.duration}
               onChange={(event) => updateField("duration", event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
             />
           </label>
 
@@ -1594,7 +1616,7 @@ function ExperimentInfoEditor({
             <input
               value={experimentInfoForm.reward}
               onChange={(event) => updateField("reward", event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
             />
           </label>
         </div>
@@ -1605,7 +1627,7 @@ function ExperimentInfoEditor({
             <input
               value={experimentInfoForm.organization}
               onChange={(event) => updateField("organization", event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
             />
           </label>
 
@@ -1614,7 +1636,7 @@ function ExperimentInfoEditor({
             <input
               value={experimentInfoForm.managerName}
               onChange={(event) => updateField("managerName", event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
             />
           </label>
         </div>
@@ -1625,7 +1647,7 @@ function ExperimentInfoEditor({
             type="email"
             value={experimentInfoForm.contactEmail}
             onChange={(event) => updateField("contactEmail", event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
           />
         </label>
 
@@ -1684,7 +1706,7 @@ function ActionToast({ toast, onClose }) {
 
 function EditSlotModal({ form, setForm, onSave, onClose, saving }) {
   return (
-    <ModalShell title="日程枠を編集" onClose={onClose}>
+    <ModalShell title="日程枠を編集" onClose={onClose} eyebrow="SLOT EDIT">
       <form onSubmit={onSave} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="text-sm">
@@ -1693,7 +1715,7 @@ function EditSlotModal({ form, setForm, onSave, onClose, saving }) {
               type="date"
               value={form.date}
               onChange={(event) => setForm((prev) => ({ ...prev, date: event.target.value }))}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
             />
           </label>
           <label className="text-sm">
@@ -1701,7 +1723,7 @@ function EditSlotModal({ form, setForm, onSave, onClose, saving }) {
             <select
               value={form.periodKey}
               onChange={(event) => setForm((prev) => ({ ...prev, periodKey: event.target.value }))}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
             >
               {PERIODS.map((period) => (
                 <option key={period.key} value={period.key}>
@@ -1719,7 +1741,7 @@ function EditSlotModal({ form, setForm, onSave, onClose, saving }) {
               min="1"
               value={form.capacity}
               onChange={(event) => setForm((prev) => ({ ...prev, capacity: event.target.value }))}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
             />
           </label>
           <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
@@ -1736,7 +1758,7 @@ function EditSlotModal({ form, setForm, onSave, onClose, saving }) {
           <input
             value={form.location}
             onChange={(event) => setForm((prev) => ({ ...prev, location: event.target.value }))}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
           />
         </label>
         <label className="block text-sm">
@@ -1744,7 +1766,7 @@ function EditSlotModal({ form, setForm, onSave, onClose, saving }) {
           <textarea
             value={form.note}
             onChange={(event) => setForm((prev) => ({ ...prev, note: event.target.value }))}
-            className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+            className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
           />
         </label>
         <div className="flex flex-wrap gap-3 pt-2">
@@ -2040,9 +2062,9 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
 
             <div className="mt-5 rounded-3xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-5">
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 sm:p-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                  <div className="min-w-0 flex-1 rounded-2xl bg-white/60 px-3 py-4 text-center text-[2rem] font-bold tracking-[0.14em] text-emerald-800 md:px-4 md:text-[2.35rem] md:tracking-[0.12em] lg:text-[2.55rem] lg:tracking-[0.14em]">
-                    <span className="whitespace-nowrap">{lineLinkInfo.code}</span>
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_132px] md:items-stretch">
+                  <div className="min-w-0 overflow-hidden rounded-2xl bg-white/60 px-3 py-4 text-center text-[2rem] font-bold tracking-[0.14em] text-emerald-800 md:flex md:items-center md:justify-center md:px-3 md:text-[2.05rem] md:tracking-[0.08em] lg:text-[2.25rem]">
+                    <span className="block max-w-full whitespace-nowrap leading-none">{lineLinkInfo.code}</span>
                   </div>
                   <button
                     type="button"
@@ -2050,7 +2072,7 @@ function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
                     title="連携コードをコピー"
                     aria-label="連携コードをコピー"
                     className={classNames(
-                      "inline-flex h-14 w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold text-white shadow-sm transition md:h-16 md:w-auto md:min-w-[128px]",
+                      "inline-flex h-14 w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold text-white shadow-sm transition md:h-full md:min-h-16 md:w-[132px] md:px-3",
                       copied ? "bg-emerald-700" : "bg-emerald-600 hover:bg-emerald-500"
                     )}
                   >
@@ -2841,7 +2863,7 @@ function AdminStudyManager({
               required
               value={studyForm.title}
               onChange={(event) => setStudyForm((prev) => ({ ...prev, title: event.target.value }))}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
               placeholder="例: VR通知配置に関する実験"
             />
             <p className="mt-2 text-xs leading-5 text-slate-500">
@@ -2867,7 +2889,7 @@ function AdminStudyManager({
                 required
                 value={studyForm.duration}
                 onChange={(event) => setStudyForm((prev) => ({ ...prev, duration: event.target.value }))}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
                 placeholder="約60分"
               />
             </label>
@@ -2877,7 +2899,7 @@ function AdminStudyManager({
                 required
                 value={studyForm.reward}
                 onChange={(event) => setStudyForm((prev) => ({ ...prev, reward: event.target.value }))}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
                 placeholder="謝礼あり"
               />
             </label>
@@ -2887,7 +2909,7 @@ function AdminStudyManager({
                 required
                 value={studyForm.organization}
                 onChange={(event) => setStudyForm((prev) => ({ ...prev, organization: event.target.value }))}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
                 placeholder="立命館大学"
               />
             </label>
@@ -2897,7 +2919,7 @@ function AdminStudyManager({
                 required
                 value={studyForm.location}
                 onChange={(event) => setStudyForm((prev) => ({ ...prev, location: event.target.value }))}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
                 placeholder="立命館大学 OIC"
               />
             </label>
@@ -2910,7 +2932,7 @@ function AdminStudyManager({
                 required
                 value={studyForm.managerName}
                 onChange={(event) => setStudyForm((prev) => ({ ...prev, managerName: event.target.value }))}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
                 placeholder="担当者名"
               />
             </label>
@@ -2921,7 +2943,7 @@ function AdminStudyManager({
                 type="email"
                 value={studyForm.contactEmail}
                 onChange={(event) => setStudyForm((prev) => ({ ...prev, contactEmail: event.target.value }))}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
                 placeholder="example@ed.ritsumei.ac.jp"
               />
             </label>
@@ -2932,7 +2954,7 @@ function AdminStudyManager({
             <textarea
               value={studyForm.notes}
               onChange={(event) => setStudyForm((prev) => ({ ...prev, notes: event.target.value }))}
-              className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+              className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
               placeholder="参加条件、注意事項、持ち物など"
             />
           </label>
@@ -2945,7 +2967,7 @@ function AdminStudyManager({
                 type="email"
                 value={studyForm.ownerEmail}
                 onChange={(event) => setStudyForm((prev) => ({ ...prev, ownerEmail: event.target.value }))}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
               />
             </label>
             <label className="text-sm">
@@ -2962,7 +2984,7 @@ function AdminStudyManager({
               <select
                 value={studyForm.status}
                 onChange={(event) => setStudyForm((prev) => ({ ...prev, status: event.target.value }))}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
               >
                 <option value="draft">準備中</option>
                 <option value="recruiting">募集中</option>
@@ -3146,7 +3168,7 @@ function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservat
             onClick={onBackToStudyList}
             className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
           >
-            募集ページ管理へ戻る
+            募集管理へ戻る
           </button>
         </div>
       </div>
@@ -3171,9 +3193,9 @@ function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservat
       </div>
 
       <details className="mt-5 rounded-3xl border border-slate-200 bg-white/80 p-4">
-        <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
+        <summary className="cursor-pointer list-none text-base font-bold text-slate-900">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span>確定済みの日程サマリー</span>
+            <span className="text-base sm:text-lg">確定済みの日程サマリー</span>
             <StatusBadge tone={scheduleGroups.length > 0 ? "emerald" : "slate"}>{scheduleGroups.length}枠</StatusBadge>
           </div>
         </summary>
@@ -3457,9 +3479,59 @@ function AdminPage({
   const operationStudies = Array.isArray(adminStudies) && adminStudies.length > 0 ? adminStudies : SAMPLE_STUDIES;
   const selectedOperationStudy = operationStudies.find((study) => study.id === selectedStudyId) || operationStudies[0];
 
+  const [adminSlotMonth, setAdminSlotMonth] = useState(new Date());
+  const [adminSelectedSlotDate, setAdminSelectedSlotDate] = useState("");
+  const [showAdminSlotForm, setShowAdminSlotForm] = useState(false);
+
+  const adminSlotDays = useMemo(() => getMonthGrid(adminSlotMonth), [adminSlotMonth]);
+  const adminSlotMonthSummary = useMemo(() => {
+    return Object.fromEntries(
+      adminSlotDays.map((day) => {
+        const dateKey = formatDateKey(day);
+        return [dateKey, getAdminDaySummary(dateKey, sortedSlots, requests)];
+      })
+    );
+  }, [adminSlotDays, sortedSlots, requests]);
+
+  const adminSelectedDaySlots = useMemo(
+    () => sortSlots(sortedSlots.filter((slot) => slot.date === adminSelectedSlotDate)),
+    [sortedSlots, adminSelectedSlotDate]
+  );
+
+  useEffect(() => {
+    if (adminTab !== "slots") return;
+    if (sortedSlots.length === 0) return;
+
+    const firstDate = sortedSlots[0].date;
+    const selectedDateStillExists = sortedSlots.some((slot) => slot.date === adminSelectedSlotDate);
+
+    if (!adminSelectedSlotDate || !selectedDateStillExists) {
+      setAdminSelectedSlotDate(firstDate);
+      setAdminSlotMonth(new Date(`${firstDate}T00:00:00`));
+    }
+  }, [adminTab, sortedSlots, adminSelectedSlotDate]);
+
+  const handleSelectAdminSlotDate = (dateKey) => {
+    setAdminSelectedSlotDate(dateKey);
+    setShowAdminSlotForm(false);
+  };
+
+  const handleOpenAdminSlotForm = () => {
+    const targetDate = adminSelectedSlotDate || formatDateKey(new Date());
+    setAdminSelectedSlotDate(targetDate);
+    setSlotForm((prev) => ({ ...prev, date: targetDate }));
+    setShowAdminSlotForm(true);
+  };
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#f8fafc_34%,_#eef2ff_100%)] text-slate-900">
-      <AdminSiteHeader onBack={onBack} onLogout={onLogout} adminEmail={adminEmail} />
+      <AdminSiteHeader
+        onBack={adminTab === "slots" || adminTab === "requests" ? () => setAdminTab("studies") : onBack}
+        onLogoClick={onBack}
+        onLogout={onLogout}
+        adminEmail={adminEmail}
+        backLabel={adminTab === "slots" || adminTab === "requests" ? "募集管理へ戻る" : "トップへ戻る"}
+      />
       <div className="mx-auto max-w-7xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
         {adminTab === "studies" || adminTab === "study-new" ? <AdminHero adminEmail={adminEmail} /> : null}
 
@@ -3614,81 +3686,334 @@ function AdminPage({
           <div className="space-y-6">
             <Card className="p-5 shadow-none">
               <SectionHeader
-                eyebrow="SLOT FORM"
-                title="日程を追加する"
-                description="選択中の募集に対して、参加者に見せる候補日時を登録します。"
+                eyebrow="SCHEDULE CALENDAR"
+                title="登録済み日程をカレンダーで確認"
+                description="日付を選択すると、その日の登録済み日程枠だけを下に表示します。新しい日程は、選択した日の詳細から追加できます。"
+                action={
+                  <div className="grid w-full grid-cols-[56px_1fr_56px] items-center gap-2 sm:w-auto sm:min-w-[260px]">
+                    <IconButton onClick={() => setAdminSlotMonth(new Date(adminSlotMonth.getFullYear(), adminSlotMonth.getMonth() - 1, 1))}>
+                      <ChevronLeft />
+                    </IconButton>
+                    <div className="text-center text-sm font-semibold text-slate-700">{formatMonthTitle(adminSlotMonth)}</div>
+                    <IconButton onClick={() => setAdminSlotMonth(new Date(adminSlotMonth.getFullYear(), adminSlotMonth.getMonth() + 1, 1))}>
+                      <ChevronRight />
+                    </IconButton>
+                  </div>
+                }
               />
-              <form onSubmit={handleAddSlot} className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="text-sm">
-                    <div className="mb-1.5 text-slate-600">日付</div>
-                    <input
-                      type="date"
-                      value={slotForm.date}
-                      onChange={(event) => setSlotForm((prev) => ({ ...prev, date: event.target.value }))}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
-                    />
-                  </label>
-                  <label className="text-sm">
-                    <div className="mb-1.5 text-slate-600">時限</div>
-                    <select
-                      value={slotForm.periodKey}
-                      onChange={(event) => setSlotForm((prev) => ({ ...prev, periodKey: event.target.value }))}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+
+              <div className="mb-4 flex flex-wrap gap-2 text-xs text-slate-500">
+                <StatusBadge tone="sky">登録あり</StatusBadge>
+                <StatusBadge tone="emerald">公開中あり</StatusBadge>
+                <StatusBadge tone="slate">非公開のみ</StatusBadge>
+                <StatusBadge tone="rose">満席あり</StatusBadge>
+              </div>
+
+              <div className="mb-2 hidden grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-400 md:grid">
+                {WEEK_LABELS.map((label) => (
+                  <div key={label}>{label}</div>
+                ))}
+              </div>
+
+              <div className="hidden grid-cols-7 gap-2 md:grid">
+                {adminSlotDays.map((day) => {
+                  const dateKey = formatDateKey(day);
+                  const summary = adminSlotMonthSummary[dateKey];
+                  const inMonth = day.getMonth() === adminSlotMonth.getMonth();
+                  const selected = dateKey === adminSelectedSlotDate;
+                  const hasSlots = summary?.slotCount > 0;
+                  const onlyHidden = hasSlots && summary.publishedCount === 0;
+                  const hasFullSlot = hasSlots && summary.fullCount > 0;
+                  const holidayName = getJapaneseHolidayName(day);
+                  const isHoliday = Boolean(holidayName);
+                  const isSunday = day.getDay() === 0;
+                  const isSaturday = day.getDay() === 6;
+
+                  return (
+                    <button
+                      type="button"
+                      key={dateKey}
+                      onClick={() => handleSelectAdminSlotDate(dateKey)}
+                      className={classNames(
+                        "min-h-[118px] rounded-3xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                        selected
+                          ? "border-slate-900 bg-slate-900 text-white shadow-md"
+                          : !inMonth
+                          ? "border-slate-100 bg-slate-50 text-slate-300"
+                          : hasSlots
+                          ? onlyHidden
+                            ? "border-slate-200 bg-slate-100 hover:border-slate-300"
+                            : "border-sky-200 bg-sky-50 hover:border-sky-300"
+                          : "border-slate-200 bg-white hover:border-slate-300"
+                      )}
                     >
-                      {PERIODS.map((period) => (
-                        <option key={period.key} value={period.key}>{period.label} ({period.start}〜{period.end})</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="text-sm">
-                    <div className="mb-1.5 text-slate-600">定員</div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div
+                          className={classNames(
+                            "text-lg font-semibold",
+                            selected
+                              ? "text-white"
+                              : isHoliday || isSunday
+                              ? "text-rose-600"
+                              : isSaturday
+                              ? "text-sky-600"
+                              : inMonth
+                              ? "text-slate-900"
+                              : "text-slate-300"
+                          )}
+                        >
+                          {day.getDate()}
+                        </div>
+                        {hasSlots ? (
+                          <StatusBadge tone={onlyHidden ? "slate" : hasFullSlot ? "rose" : "sky"}>
+                            {summary.slotCount}枠
+                          </StatusBadge>
+                        ) : null}
+                      </div>
+                      <div className={classNames("mt-4 space-y-1 text-xs leading-5", selected ? "text-slate-200" : "text-slate-500")}>
+                        {hasSlots ? (
+                          <>
+                            <div>公開 {summary.publishedCount} / 非公開 {summary.hiddenCount}</div>
+                            <div>確定 {summary.totalConfirmed} / 残り {summary.totalRemaining}</div>
+                          </>
+                        ) : (
+                          <div>登録なし</div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="grid grid-cols-7 gap-2 md:hidden">
+                {adminSlotDays.map((day) => {
+                  const dateKey = formatDateKey(day);
+                  const summary = adminSlotMonthSummary[dateKey];
+                  const inMonth = day.getMonth() === adminSlotMonth.getMonth();
+                  const selected = dateKey === adminSelectedSlotDate;
+                  const hasSlots = summary?.slotCount > 0;
+                  const onlyHidden = hasSlots && summary.publishedCount === 0;
+                  const hasFullSlot = hasSlots && summary.fullCount > 0;
+                  const holidayName = getJapaneseHolidayName(day);
+                  const isHoliday = Boolean(holidayName);
+                  const isSunday = day.getDay() === 0;
+                  const isSaturday = day.getDay() === 6;
+
+                  return (
+                    <button
+                      type="button"
+                      key={dateKey}
+                      onClick={() => handleSelectAdminSlotDate(dateKey)}
+                      className={classNames(
+                        "aspect-square rounded-2xl border text-center transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                        selected
+                          ? "border-slate-900 bg-slate-900 text-white shadow-md"
+                          : !inMonth
+                          ? "border-slate-200 bg-slate-50 text-slate-300"
+                          : hasSlots
+                          ? onlyHidden
+                            ? "border-slate-200 bg-slate-100 text-slate-700"
+                            : hasFullSlot
+                            ? "border-rose-200 bg-rose-100 text-rose-700"
+                            : "border-sky-200 bg-sky-100 text-sky-700"
+                          : "border-slate-200 bg-white text-slate-800"
+                      )}
+                    >
+                      <div
+                        className={classNames(
+                          "flex h-full items-center justify-center text-base font-semibold",
+                          selected
+                            ? "text-white"
+                            : isHoliday || isSunday
+                            ? "text-rose-600"
+                            : isSaturday
+                            ? "text-sky-600"
+                            : inMonth
+                            ? "text-slate-800"
+                            : "text-slate-300"
+                        )}
+                      >
+                        {day.getDate()}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+
+            <Card className="p-5 shadow-none">
+              <SectionHeader
+                eyebrow="SELECTED DATE"
+                title={adminSelectedSlotDate ? `${formatJapaneseDate(adminSelectedSlotDate)} の日程枠` : "日付を選択してください"}
+                description="この日に登録されている日程枠を確認できます。先頭のボタンから、この日付に新しい枠を追加できます。"
+                action={
+                  <button
+                    type="button"
+                    onClick={handleOpenAdminSlotForm}
+                    className="inline-flex w-full items-center justify-center rounded-3xl bg-slate-950 px-6 py-4 text-base font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-md sm:w-auto sm:min-w-[210px]"
+                  >
+                    <span className="mr-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-lg leading-none">＋</span>
+                    日程を追加する
+                  </button>
+                }
+              />
+
+              {showAdminSlotForm ? (
+                <form onSubmit={handleAddSlot} className="mb-5 rounded-3xl border border-sky-100 bg-sky-50/70 p-4">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">新しい日程を追加</div>
+                      <div className="mt-1 text-xs text-slate-500">選択中の日付を初期値として入力しています。</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAdminSlotForm(false)}
+                      className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                    >
+                      閉じる
+                    </button>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm">
+                      <div className="mb-1.5 text-slate-600">日付</div>
+                      <input
+                        type="date"
+                        value={slotForm.date}
+                        onChange={(event) => {
+                          const nextDate = event.target.value;
+                          setSlotForm((prev) => ({ ...prev, date: nextDate }));
+                          if (nextDate) {
+                            setAdminSelectedSlotDate(nextDate);
+                            setAdminSlotMonth(new Date(`${nextDate}T00:00:00`));
+                          }
+                        }}
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
+                      />
+                    </label>
+                    <label className="text-sm">
+                      <div className="mb-1.5 text-slate-600">時限</div>
+                      <select
+                        value={slotForm.periodKey}
+                        onChange={(event) => setSlotForm((prev) => ({ ...prev, periodKey: event.target.value }))}
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
+                      >
+                        {PERIODS.map((period) => (
+                          <option key={period.key} value={period.key}>{period.label} ({period.start}〜{period.end})</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <label className="text-sm">
+                      <div className="mb-1.5 text-slate-600">定員</div>
+                      <input
+                        type="number"
+                        min="1"
+                        value={slotForm.capacity}
+                        onChange={(event) => setSlotForm((prev) => ({ ...prev, capacity: event.target.value }))}
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
+                      />
+                    </label>
+                    <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={slotForm.isPublished}
+                        onChange={(event) => setSlotForm((prev) => ({ ...prev, isPublished: event.target.checked }))}
+                      />
+                      参加者に公開する
+                    </label>
+                  </div>
+
+                  <label className="mt-4 block text-sm">
+                    <div className="mb-1.5 text-slate-600">場所</div>
                     <input
-                      type="number"
-                      min="1"
-                      value={slotForm.capacity}
-                      onChange={(event) => setSlotForm((prev) => ({ ...prev, capacity: event.target.value }))}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
+                      value={slotForm.location}
+                      onChange={(event) => setSlotForm((prev) => ({ ...prev, location: event.target.value }))}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
                     />
                   </label>
-                  <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={slotForm.isPublished}
-                      onChange={(event) => setSlotForm((prev) => ({ ...prev, isPublished: event.target.checked }))}
+
+                  <label className="mt-4 block text-sm">
+                    <div className="mb-1.5 text-slate-600">メモ</div>
+                    <textarea
+                      value={slotForm.note}
+                      onChange={(event) => setSlotForm((prev) => ({ ...prev, note: event.target.value }))}
+                      className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-400"
                     />
-                    参加者に公開する
                   </label>
-                </div>
-                <label className="block text-sm">
-                  <div className="mb-1.5 text-slate-600">場所</div>
-                  <input
-                    value={slotForm.location}
-                    onChange={(event) => setSlotForm((prev) => ({ ...prev, location: event.target.value }))}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
-                  />
-                </label>
-                <label className="block text-sm">
-                  <div className="mb-1.5 text-slate-600">メモ</div>
-                  <textarea
-                    value={slotForm.note}
-                    onChange={(event) => setSlotForm((prev) => ({ ...prev, note: event.target.value }))}
-                    className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400"
-                  />
-                </label>
-                <button className="w-full rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800">
-                  日程枠を追加する
-                </button>
-              </form>
+
+                  <button className="mt-4 w-full rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800">
+                    日程枠を追加する
+                  </button>
+                </form>
+              ) : null}
+
+              <div className="space-y-3">
+                {adminSelectedDaySlots.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                    この日にはまだ日程枠がありません。新しく追加する場合は、上の「＋ 日程を追加する」ボタンから登録してください。
+                  </div>
+                ) : (
+                  adminSelectedDaySlots.map((slot) => {
+                    const metrics = getSlotMetrics(slot, requests);
+                    const selected = selectedSlotIds.includes(slot.id);
+                    return (
+                      <div
+                        key={slot.id}
+                        className={classNames(
+                          "rounded-3xl border bg-white p-4 shadow-sm transition",
+                          selected ? "border-sky-300 ring-2 ring-sky-100" : "border-slate-200"
+                        )}
+                      >
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="flex gap-3">
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => onToggleSlotSelection(slot.id)}
+                              className="mt-1 h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-sky-300"
+                              aria-label={`${formatJapaneseDate(slot.date)} ${getSlotLabel(slot)} を選択`}
+                            />
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="text-base font-semibold text-slate-900">{getSlotLabel(slot)}</div>
+                                <StatusBadge tone={slot.isPublished === false ? "slate" : "sky"}>{slot.isPublished === false ? "非公開" : "公開中"}</StatusBadge>
+                                <StatusBadge tone={metrics.full ? "rose" : metrics.remaining <= 1 ? "amber" : "emerald"}>
+                                  {metrics.full ? "満席" : `残り ${metrics.remaining}`}
+                                </StatusBadge>
+                                {selected ? <StatusBadge tone="emerald">選択中</StatusBadge> : null}
+                              </div>
+                              <div className="mt-2 text-sm text-slate-500">{slot.location || "場所未設定"} / 定員 {slot.capacity} / 確定 {metrics.confirmed}</div>
+                              {slot.note ? <div className="mt-1 whitespace-pre-line text-sm text-slate-500">{slot.note}</div> : null}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button onClick={() => onEditSlot(slot)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                              <PencilIcon />
+                              編集
+                            </button>
+                            <button onClick={() => handleTogglePublished(slot)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                              {slot.isPublished === false ? "公開にする" : "非公開にする"}
+                            </button>
+                            <button onClick={() => handleDeleteSlot(slot.id)} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">
+                              削除
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </Card>
 
             <Card className="p-5 shadow-none">
               <SectionHeader
                 eyebrow="BULK ACTIONS"
                 title="選択した日程枠を一括操作"
-                description="複数の枠をまとめて公開・非公開・削除したり、メモを同じ内容にそろえられます。"
+                description="チェックした枠をまとめて公開・非公開・削除したり、メモを同じ内容にそろえられます。"
               />
 
               <div className="space-y-4">
@@ -3763,61 +4088,6 @@ function AdminPage({
                 </div>
               </div>
             </Card>
-
-            <div className="space-y-3">
-              {sortedSlots.length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
-                  まだ日程枠はありません。
-                </div>
-              ) : (
-                sortedSlots.map((slot) => {
-                  const metrics = getSlotMetrics(slot, requests);
-                  const selected = selectedSlotIds.includes(slot.id);
-                  return (
-                    <div
-                      key={slot.id}
-                      className={classNames(
-                        "rounded-3xl border bg-white p-4 shadow-sm transition",
-                        selected ? "border-sky-300 ring-2 ring-sky-100" : "border-slate-200"
-                      )}
-                    >
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="flex gap-3">
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() => onToggleSlotSelection(slot.id)}
-                            className="mt-1 h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-sky-300"
-                            aria-label={`${formatJapaneseDate(slot.date)} ${getSlotLabel(slot)} を選択`}
-                          />
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-base font-semibold text-slate-900">{formatJapaneseDate(slot.date)} / {getSlotLabel(slot)}</div>
-                              <StatusBadge tone={slot.isPublished === false ? "slate" : "sky"}>{slot.isPublished === false ? "非公開" : "公開中"}</StatusBadge>
-                              {selected ? <StatusBadge tone="emerald">選択中</StatusBadge> : null}
-                            </div>
-                            <div className="mt-2 text-sm text-slate-500">{slot.location} / 定員 {slot.capacity} / 残り {metrics.remaining}</div>
-                            {slot.note ? <div className="mt-1 whitespace-pre-line text-sm text-slate-500">{slot.note}</div> : null}
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button onClick={() => onEditSlot(slot)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                            <PencilIcon />
-                            編集
-                          </button>
-                          <button onClick={() => handleTogglePublished(slot)} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                            {slot.isPublished === false ? "公開にする" : "非公開にする"}
-                          </button>
-                          <button onClick={() => handleDeleteSlot(slot.id)} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">
-                            削除
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
           </div>
         )}
 
@@ -4844,8 +5114,14 @@ export default function ExperimentParticipantScheduler() {
         ]));
       }
 
-      setSlotForm((prev) => ({ ...prev, note: "", isPublished: true }));
-      showToast("日程枠を追加しました。", "success");
+      setSlotForm((prev) => ({
+        ...prev,
+        capacity: prev.capacity || 1,
+        location: prev.location,
+        note: prev.note,
+        isPublished: true,
+      }));
+      showToast("日程枠を追加しました。次の追加にも直前の定員・場所・メモを引き継ぎます。", "success");
     } catch (error) {
       console.error(error);
       showToast("日程枠の追加に失敗しました。", "error");
