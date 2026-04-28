@@ -346,13 +346,13 @@ function getParticipantConfirmationTone(status) {
 function getLineLinkLabel(request = {}) {
   if (request.lineNotifyEnabled === true && request.lineUserId) return "LINE連携済み";
   if (request.lineUserId && request.lineNotifyEnabled === false) return "LINE通知OFF";
-  return "LINE未連携連携";
+  return "LINE未連携";
 }
 
 function getLineLinkTone(request = {}) {
   if (request.lineNotifyEnabled === true && request.lineUserId) return "emerald";
   if (request.lineUserId && request.lineNotifyEnabled === false) return "amber";
-  return "slate";
+  return "amber";
 }
 
 function getLineLinkDetail(request = {}) {
@@ -1716,6 +1716,28 @@ function ActionToast({ toast, onClose }) {
         </div>
       </div>
     </div>
+  );
+}
+
+
+function LineLinkCodeHelpModal({ onClose }) {
+  return (
+    <ModalShell title="LINE連携コードの使い方" onClose={onClose} eyebrow="LINE LINK">
+      <div className="space-y-4 text-sm leading-7 text-slate-600">
+        <p>
+          参加者がLINE連携を希望する場合は、公式LINEを友だち追加したあと、この連携コードをLINEのトーク画面に送信してもらってください。
+        </p>
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-emerald-950">
+          <div className="font-semibold">参加者へ送る案内文の例</div>
+          <p className="mt-1">
+            LabLinkの公式LINEを友だち追加し、連携コードを送信してください。日程の確定・変更案内をLINEでも受け取れます。
+          </p>
+        </div>
+        <p className="text-xs leading-6 text-slate-500">
+          メール連絡はこれまで通り行われます。LINE連携は参加者が希望する場合のみ利用します。
+        </p>
+      </div>
+    </ModalShell>
   );
 }
 
@@ -3511,6 +3533,7 @@ function AdminPage({
   selectedStudyId,
   onSelectStudyScope,
   onOpenReservationPage,
+  onOpenLineCodeHelp,
 }) {
   const operationStudies = Array.isArray(adminStudies) && adminStudies.length > 0 ? adminStudies : SAMPLE_STUDIES;
   const selectedOperationStudy = operationStudies.find((study) => study.id === selectedStudyId) || operationStudies[0];
@@ -4233,6 +4256,8 @@ function AdminPage({
                 const assignedSlot = sortedSlots.find((slot) => slot.id === request.assignedSlotId);
                 const requestCompleted = isRequestCompleted(request);
                 const requestPastCandidate = isPastScheduledRequest(request, sortedSlots);
+                const operationLabel = requestCompleted ? "実施済み" : requestPastCandidate ? "予定日超過" : "未実施";
+                const operationTone = requestCompleted ? "slate" : requestPastCandidate ? "amber" : "sky";
                 const lineLinkCode = request.lineLinkCode || "未発行";
                 const isExpanded = expandedRequestIds.has(request.id);
                 return (
@@ -4268,31 +4293,45 @@ function AdminPage({
                     >
                       <div className="min-w-0">
                         <div className="text-base font-bold text-slate-900">{request.name}</div>
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                          <StatusBadge tone={request.assignedSlotId ? "emerald" : "amber"}>
-                            {request.assignedSlotId ? "確定済み" : "未確定"}
-                          </StatusBadge>
-                          <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
-                            {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
-                          </StatusBadge>
-                          <StatusBadge tone={getLineLinkTone(request)}>
-                            {getLineLinkLabel(request)}
-                          </StatusBadge>
-                          {requestCompleted ? (
-                            <StatusBadge tone="slate">実施済み</StatusBadge>
-                          ) : requestPastCandidate ? (
-                            <StatusBadge tone="amber">予定日超過</StatusBadge>
-                          ) : null}
+                        <div className="mt-2 space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <StatusBadge tone={request.assignedSlotId ? "emerald" : "amber"}>
+                              {request.assignedSlotId ? "確定済み" : "未確定"}
+                            </StatusBadge>
+                            <StatusBadge tone={getParticipantConfirmationTone(request.participantConfirmationStatus || "pending")}>
+                              {getParticipantConfirmationLabel(request.participantConfirmationStatus || "pending")}
+                            </StatusBadge>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <StatusBadge tone={getLineLinkTone(request)}>
+                              {getLineLinkLabel(request)}
+                            </StatusBadge>
+                            <StatusBadge tone={operationTone}>{operationLabel}</StatusBadge>
+                          </div>
                         </div>
-                        <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
-                          {assignedSlot ? (
-                            <>
-                              <span className="text-xs font-bold text-slate-400">確定日程</span>
-                              <span className="ml-2">{formatJapaneseDate(assignedSlot.date)} / {PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}</span>
-                            </>
-                          ) : (
-                            <span className="text-slate-500">確定日程はまだありません</span>
+                        <div
+                          className={classNames(
+                            "mt-3 rounded-2xl border px-3 py-2 text-sm font-medium",
+                            requestCompleted
+                              ? "border-slate-200 bg-slate-50 text-slate-700"
+                              : requestPastCandidate
+                              ? "border-amber-200 bg-amber-50 text-amber-900"
+                              : "border-teal-100 bg-teal-50/60 text-slate-700"
                           )}
+                        >
+                          <div className="text-xs font-bold text-slate-400">確定日程</div>
+                          {assignedSlot ? (
+                            <div className="mt-1 text-sm font-bold text-slate-900">
+                              {formatJapaneseDate(assignedSlot.date)} / {PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-sm text-slate-500">まだ日程は確定していません</div>
+                          )}
+                          {requestCompleted ? (
+                            <div className="mt-1 text-xs font-semibold text-slate-600">実施済みとして記録されています。</div>
+                          ) : requestPastCandidate ? (
+                            <div className="mt-1 text-xs font-semibold text-amber-700">予定日を過ぎています。</div>
+                          ) : null}
                         </div>
                       </div>
                       <span className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
@@ -4313,7 +4352,7 @@ function AdminPage({
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="hidden flex-wrap items-center gap-2 md:flex">
-                          <div className="text-lg font-semibold text-slate-900">{request.name}</div>
+                          <div className="text-xl font-semibold text-slate-900">{request.name}</div>
                           <StatusBadge tone={request.assignedSlotId ? "emerald" : "amber"}>
                             {request.assignedSlotId ? "確定済み" : "未確定"}
                           </StatusBadge>
@@ -4323,10 +4362,30 @@ function AdminPage({
                           <StatusBadge tone={getLineLinkTone(request)}>
                             {getLineLinkLabel(request)}
                           </StatusBadge>
+                          <StatusBadge tone={operationTone}>{operationLabel}</StatusBadge>
+                        </div>
+                        <div
+                          className={classNames(
+                            "mt-3 hidden rounded-2xl border px-4 py-3 text-sm md:block",
+                            requestCompleted
+                              ? "border-slate-200 bg-slate-50 text-slate-700"
+                              : requestPastCandidate
+                              ? "border-amber-200 bg-amber-50 text-amber-900"
+                              : "border-teal-100 bg-teal-50/60 text-slate-700"
+                          )}
+                        >
+                          <div className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">確定日程</div>
+                          {assignedSlot ? (
+                            <div className="mt-1 font-semibold text-slate-900">
+                              {formatJapaneseDate(assignedSlot.date)} / {PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-slate-500">まだ日程は確定していません。</div>
+                          )}
                           {requestCompleted ? (
-                            <StatusBadge tone="slate">実施済み</StatusBadge>
+                            <div className="mt-1 text-xs font-semibold text-slate-600">実施済みとして記録されています。</div>
                           ) : requestPastCandidate ? (
-                            <StatusBadge tone="amber">予定日超過</StatusBadge>
+                            <div className="mt-1 text-xs font-semibold text-amber-700">予定日を過ぎています。</div>
                           ) : null}
                         </div>
                         <div className="mt-3 text-sm text-slate-500 md:mt-2">{request.email}</div>
@@ -4339,13 +4398,20 @@ function AdminPage({
                                 <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">LINE連携コード</div>
                                 <div className="mt-1 font-mono text-lg font-bold tracking-[0.16em] text-slate-900">{lineLinkCode}</div>
                               </div>
-                              <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
-                                参加者送信用
-                              </span>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+                                  参加者送信用
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={onOpenLineCodeHelp}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-800"
+                                  aria-label="LINE連携コードの使い方"
+                                >
+                                  <HelpIcon />
+                                </button>
+                              </div>
                             </div>
-                            <p className="mt-2 text-xs leading-5 text-slate-500">
-                              参加者がLINE連携できない場合は、このコードを公式LINEに送るよう案内してください。
-                            </p>
                           </div>
                         </div>
 
@@ -4546,18 +4612,6 @@ function AdminPage({
                         </div>
                       </div>
                       <div className="w-full xl:w-[300px]">
-                        <div className={classNames(
-                          "rounded-2xl px-4 py-3 text-sm",
-                          requestCompleted
-                            ? "border border-slate-200 bg-white text-slate-600"
-                            : requestPastCandidate
-                            ? "border border-amber-200 bg-amber-50 text-amber-900"
-                            : "bg-slate-50 text-slate-600"
-                        )}>
-                          {assignedSlot ? `確定: ${formatJapaneseDate(assignedSlot.date)} / ${PERIOD_MAP[assignedSlot.periodKey].label}` : "まだ日程は確定していません。"}
-                          {requestCompleted ? <div className="mt-1 text-xs font-semibold text-slate-500">実施済みとして記録されています。</div> : null}
-                          {requestPastCandidate ? <div className="mt-1 text-xs font-semibold text-amber-700">予定日を過ぎています。</div> : null}
-                        </div>
                         {assignedSlot ? (
                           <button
                             type="button"
@@ -4692,6 +4746,7 @@ export default function ExperimentParticipantScheduler() {
   const [authUser, setAuthUser] = useState(null);
   const [authError, setAuthError] = useState("");
   const [showHelp, setShowHelp] = useState(false);
+  const [showLineCodeHelp, setShowLineCodeHelp] = useState(false);
   const [editingSlot, setEditingSlot] = useState(null);
   const [editSlotForm, setEditSlotForm] = useState({
     date: "",
@@ -5044,11 +5099,11 @@ export default function ExperimentParticipantScheduler() {
   }, [selectedDate, page]);
 
   useEffect(() => {
-    document.body.style.overflow = showHelp || !!editingSlot || !!assignmentDialog || participantConfirmOpen ? "hidden" : "";
+    document.body.style.overflow = showHelp || showLineCodeHelp || !!editingSlot || !!assignmentDialog || participantConfirmOpen ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
     };
-  }, [showHelp, editingSlot, assignmentDialog, participantConfirmOpen]);
+  }, [showHelp, showLineCodeHelp, editingSlot, assignmentDialog, participantConfirmOpen]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -6502,6 +6557,7 @@ export default function ExperimentParticipantScheduler() {
             selectedStudyId={selectedStudyId}
             onSelectStudyScope={selectStudyScope}
             onOpenReservationPage={openStudyReservation}
+            onOpenLineCodeHelp={() => setShowLineCodeHelp(true)}
           />
         ) : (
           <AdminLoginPage
@@ -6566,6 +6622,7 @@ export default function ExperimentParticipantScheduler() {
       )}
 
       {showHelp ? <HelpModal onClose={() => setShowHelp(false)} /> : null}
+      {showLineCodeHelp ? <LineLinkCodeHelpModal onClose={() => setShowLineCodeHelp(false)} /> : null}
       {participantConfirmOpen ? (
         <ParticipantRequestConfirmModal
           open={participantConfirmOpen}
