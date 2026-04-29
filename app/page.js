@@ -3,6 +3,64 @@
 import React, { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import {
+  PERIODS,
+  PERIOD_MAP,
+  WEEK_LABELS,
+  MAX_PREFERRED_SLOTS,
+  DEFAULT_STUDY_ID,
+  DEFAULT_EXPERIMENT_INFO,
+  SAMPLE_SLOTS,
+  SAMPLE_REQUESTS,
+  SAMPLE_STUDIES,
+} from "./lib/constants";
+import {
+  formatDateKey,
+  formatJapaneseDate,
+  formatMonthTitle,
+  getJapaneseHolidayName,
+  getMonthGrid,
+} from "./lib/date-utils";
+import {
+  normalizeExperimentInfo,
+  normalizeStudyInfo,
+  studyToExperimentInfo,
+  getStudyStatusLabel,
+  getStudyStatusTone,
+  buildStudyFormFromStudy,
+  buildStudyFormFromExperimentInfo,
+  normalizeStudyId,
+  createAutoStudyId,
+  getRecordStudyId,
+  isRecordInStudy,
+  withStudyId,
+  parseAdminEmails,
+  buildStudyPayloadFromForm,
+} from "./lib/study-utils";
+import {
+  getPeriodLabel,
+  sortSlots,
+  getSlotLabel,
+  getSlotMetrics,
+  getSlotEndDate,
+  hasSlotEnded,
+  getDaySummary,
+  getAdminDaySummary,
+} from "./lib/slot-utils";
+import {
+  generateLineLinkCode,
+  getParticipantConfirmationLabel,
+  getParticipantConfirmationTone,
+  getLineLinkLabel,
+  getLineLinkTone,
+  getLineLinkDetail,
+  isRequestCompleted,
+  isPastScheduledRequest,
+  getRequestTimestampValue,
+  getRequestAssignedSlotOrder,
+  getRequestDefaultPriority,
+} from "./lib/request-utils";
+import { downloadIcsFile } from "./lib/ics-utils";
+import {
   getAuth,
   GoogleAuthProvider,
   onAuthStateChanged,
@@ -28,290 +86,6 @@ import {
   writeBatch,
 } from "firebase/firestore";
 
-const PERIODS = [
-  { key: "p1", label: "1時限", start: "09:00", end: "10:35" },
-  { key: "p2", label: "2時限", start: "10:45", end: "12:20" },
-  { key: "p3", label: "3時限", start: "13:10", end: "14:45" },
-  { key: "p4", label: "4時限", start: "14:55", end: "16:30" },
-  { key: "p5", label: "5時限", start: "16:40", end: "18:15" },
-  { key: "p6", label: "6時限", start: "18:25", end: "20:00" },
-  { key: "p7", label: "7時限", start: "20:10", end: "21:45" },
-];
-
-const PERIOD_MAP = Object.fromEntries(PERIODS.map((period) => [period.key, period]));
-
-function getPeriodLabel(periodKey) {
-  return PERIOD_MAP[periodKey]?.label || periodKey || "";
-}
-const WEEK_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
-const MAX_PREFERRED_SLOTS = 5;
-const DEFAULT_STUDY_ID = "vr-notification-2026";
-
-const SAMPLE_SLOTS = [
-  {
-    id: "sample-slot-1",
-    studyId: DEFAULT_STUDY_ID,
-    date: "2026-04-21",
-    periodKey: "p3",
-    capacity: 2,
-    confirmedCount: 1,
-    isPublished: true,
-    location: "OIC 実験室A",
-    note: "VR体験あり / 約30分",
-  },
-  {
-    id: "sample-slot-2",
-    studyId: DEFAULT_STUDY_ID,
-    date: "2026-04-21",
-    periodKey: "p4",
-    capacity: 2,
-    confirmedCount: 0,
-    isPublished: true,
-    location: "OIC 実験室A",
-    note: "VR体験あり / 約30分",
-  },
-  {
-    id: "sample-slot-3",
-    studyId: DEFAULT_STUDY_ID,
-    date: "2026-04-24",
-    periodKey: "p3",
-    capacity: 3,
-    confirmedCount: 1,
-    isPublished: true,
-    location: "OIC 実験室B",
-    note: "放課後参加しやすい枠",
-  },
-];
-
-const SAMPLE_REQUESTS = [
-  {
-    id: "sample-request-1",
-    studyId: DEFAULT_STUDY_ID,
-    name: "山田 太郎",
-    email: "taro@example.com",
-    affiliation: "情報理工学部 B3",
-    note: "できれば午後希望",
-    preferredSlotIds: ["sample-slot-1", "sample-slot-3"],
-    assignedSlotId: "sample-slot-1",
-    status: "confirmed",
-    participantResponseToken: "sample-response-token-1",
-    participantConfirmationStatus: "pending",
-    participantResponseNote: "",
-    operationStatus: "active",
-  },
-];
-
-const SAMPLE_STUDIES = [
-  {
-    id: DEFAULT_STUDY_ID,
-    title: "VR通知配置に関する実験",
-    description:
-      "VR空間における通知の表示位置が、気づきやすさや作業への影響に与える効果を調査する実験です。",
-    duration: "約60分",
-    reward: "謝礼あり",
-    organization: "立命館大学",
-    location: "立命館大学 OIC",
-    managerName: "川久保 空真",
-    contactEmail: "is0611xi@ed.ritsumei.ac.jp",
-    notes: "参加条件や注意事項をご確認のうえ、お申し込みください。",
-    isPublished: true,
-    status: "recruiting",
-  },
-];
-
-const DEFAULT_EXPERIMENT_INFO = {
-  title: "VR実験 参加者募集",
-  description:
-    "VR環境での体験や操作に関する研究実験です。公開中の日程から希望日時を選んでお申し込みください。",
-  duration: "約30〜45分",
-  reward: "謝礼あり（詳細は当日案内）",
-  organization: "立命館大学 プレイフルインタラクション研究室",
-  managerName: "川久保 空真",
-  contactEmail: "is0611xi@ed.ritsumei.ac.jp",
-  notes:
-    "・応募後、管理者が内容を確認して日程を確定します。\n・体調不良時は無理せずご連絡ください。\n・詳細は確定後のメールでご案内します。",
-};
-
-function normalizeExperimentInfo(raw = {}) {
-  return {
-    title: raw.title ?? DEFAULT_EXPERIMENT_INFO.title,
-    description: raw.description ?? DEFAULT_EXPERIMENT_INFO.description,
-    duration: raw.duration ?? DEFAULT_EXPERIMENT_INFO.duration,
-    reward: raw.reward ?? DEFAULT_EXPERIMENT_INFO.reward,
-    organization: raw.organization ?? DEFAULT_EXPERIMENT_INFO.organization,
-    location: raw.location ?? "",
-    managerName: raw.managerName ?? DEFAULT_EXPERIMENT_INFO.managerName,
-    contactEmail: raw.contactEmail ?? DEFAULT_EXPERIMENT_INFO.contactEmail,
-    notes: raw.notes ?? DEFAULT_EXPERIMENT_INFO.notes,
-  };
-}
-
-function normalizeStudyInfo(raw = {}, id = DEFAULT_STUDY_ID) {
-  return {
-    id,
-    title: raw.title ?? DEFAULT_EXPERIMENT_INFO.title,
-    description: raw.description ?? DEFAULT_EXPERIMENT_INFO.description,
-    duration: raw.duration ?? DEFAULT_EXPERIMENT_INFO.duration,
-    reward: raw.reward ?? DEFAULT_EXPERIMENT_INFO.reward,
-    organization: raw.organization ?? DEFAULT_EXPERIMENT_INFO.organization,
-    location: raw.location ?? "",
-    managerName: raw.managerName ?? DEFAULT_EXPERIMENT_INFO.managerName,
-    contactEmail: raw.contactEmail ?? DEFAULT_EXPERIMENT_INFO.contactEmail,
-    notes: raw.notes ?? DEFAULT_EXPERIMENT_INFO.notes,
-    isPublished: raw.isPublished === true,
-    status: raw.status ?? "recruiting",
-    ownerEmail: raw.ownerEmail ?? "",
-    adminEmails: Array.isArray(raw.adminEmails) ? raw.adminEmails : [],
-    createdAt: raw.createdAt ?? null,
-    updatedAt: raw.updatedAt ?? null,
-  };
-}
-
-function studyToExperimentInfo(study, fallback = DEFAULT_EXPERIMENT_INFO) {
-  const safeStudy = study ? normalizeStudyInfo(study, study.id || DEFAULT_STUDY_ID) : null;
-
-  if (!safeStudy) {
-    return normalizeExperimentInfo(fallback);
-  }
-
-  return normalizeExperimentInfo({
-    title: safeStudy.title || fallback.title,
-    description: safeStudy.description || fallback.description,
-    duration: safeStudy.duration || fallback.duration,
-    reward: safeStudy.reward || fallback.reward,
-    organization: safeStudy.organization || fallback.organization,
-    location: safeStudy.location || fallback.location || "",
-    managerName: safeStudy.managerName || fallback.managerName,
-    contactEmail: safeStudy.contactEmail || fallback.contactEmail,
-    notes: safeStudy.notes || fallback.notes,
-  });
-}
-
-function getStudyStatusLabel(status) {
-  if (status === "draft") return "準備中";
-  if (status === "paused") return "一時停止中";
-  if (status === "closed") return "募集終了";
-  return "募集中";
-}
-
-function getStudyStatusTone(status) {
-  if (status === "draft") return "slate";
-  if (status === "paused") return "amber";
-  if (status === "closed") return "slate";
-  return "emerald";
-}
-
-function buildStudyFormFromStudy(study = {}, adminEmail = "") {
-  const safeStudy = normalizeStudyInfo(study, study.id || DEFAULT_STUDY_ID);
-  const adminEmails = safeStudy.adminEmails.length > 0 ? safeStudy.adminEmails : [adminEmail].filter(Boolean);
-
-  return {
-    studyId: safeStudy.id || "",
-    title: safeStudy.title || "",
-    description: safeStudy.description || "",
-    duration: safeStudy.duration || "",
-    reward: safeStudy.reward || "",
-    organization: safeStudy.organization || "",
-    location: safeStudy.location || "",
-    managerName: safeStudy.managerName || "",
-    contactEmail: safeStudy.contactEmail || "",
-    notes: safeStudy.notes || "",
-    ownerEmail: safeStudy.ownerEmail || adminEmail || "",
-    adminEmailsText: adminEmails.join("\n"),
-    isPublished: safeStudy.isPublished === true,
-    status: safeStudy.status || "recruiting",
-  };
-}
-
-function buildStudyFormFromExperimentInfo(experimentInfo = DEFAULT_EXPERIMENT_INFO, adminEmail = "") {
-  return {
-    studyId: DEFAULT_STUDY_ID,
-    title: experimentInfo.title || DEFAULT_EXPERIMENT_INFO.title,
-    description: experimentInfo.description || DEFAULT_EXPERIMENT_INFO.description,
-    duration: experimentInfo.duration || DEFAULT_EXPERIMENT_INFO.duration,
-    reward: experimentInfo.reward || DEFAULT_EXPERIMENT_INFO.reward,
-    organization: experimentInfo.organization || DEFAULT_EXPERIMENT_INFO.organization,
-    location: "立命館大学 OIC",
-    managerName: experimentInfo.managerName || DEFAULT_EXPERIMENT_INFO.managerName,
-    contactEmail: experimentInfo.contactEmail || DEFAULT_EXPERIMENT_INFO.contactEmail,
-    notes: experimentInfo.notes || DEFAULT_EXPERIMENT_INFO.notes,
-    ownerEmail: adminEmail || "",
-    adminEmailsText: adminEmail || "",
-    isPublished: true,
-    status: "recruiting",
-  };
-}
-
-function normalizeStudyId(value = "") {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-}
-
-function createAutoStudyId() {
-  const now = new Date();
-  const timestamp = now
-    .toISOString()
-    .replace(/[-:TZ.]/g, "")
-    .slice(0, 14);
-  const random = Math.random().toString(36).slice(2, 8);
-  return `study-${timestamp}-${random}`;
-}
-
-function getRecordStudyId(item = {}) {
-  return normalizeStudyId(item?.studyId || "") || DEFAULT_STUDY_ID;
-}
-
-function isRecordInStudy(item = {}, studyId = DEFAULT_STUDY_ID) {
-  const targetStudyId = normalizeStudyId(studyId || "") || DEFAULT_STUDY_ID;
-  return getRecordStudyId(item) === targetStudyId;
-}
-
-function withStudyId(item = {}, fallbackStudyId = DEFAULT_STUDY_ID) {
-  return {
-    ...item,
-    studyId: getRecordStudyId({ ...item, studyId: item?.studyId || fallbackStudyId }),
-  };
-}
-
-function parseAdminEmails(text = "", fallbackEmail = "") {
-  const emails = text
-    .split(/[\n,]/)
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-
-  if (fallbackEmail && !emails.includes(fallbackEmail.toLowerCase())) {
-    emails.unshift(fallbackEmail.toLowerCase());
-  }
-
-  return Array.from(new Set(emails));
-}
-
-function buildStudyPayloadFromForm(form, adminEmail = "") {
-  const ownerEmail = (form.ownerEmail || adminEmail || "").trim().toLowerCase();
-  const adminEmails = parseAdminEmails(form.adminEmailsText, ownerEmail || adminEmail);
-
-  return {
-    title: form.title.trim(),
-    description: form.description.trim(),
-    duration: form.duration.trim(),
-    reward: form.reward.trim(),
-    organization: form.organization.trim(),
-    location: form.location.trim(),
-    managerName: form.managerName.trim(),
-    contactEmail: form.contactEmail.trim(),
-    notes: form.notes || "",
-    ownerEmail,
-    adminEmails,
-    isPublished: form.isPublished === true,
-    status: form.status || "recruiting",
-  };
-}
-
-
 function buildParticipantResponseUrl(token, action = "confirm") {
   if (typeof window === "undefined") return "";
   const url = new URL(window.location.href);
@@ -320,53 +94,6 @@ function buildParticipantResponseUrl(token, action = "confirm") {
   url.searchParams.delete("request");
   url.searchParams.delete("study");
   return url.toString();
-}
-
-function generateLineLinkCode() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-
-  for (let i = 0; i < 8; i += 1) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-
-  return code;
-}
-
-function getParticipantConfirmationLabel(status) {
-  if (status === "confirmed") return "確認済み";
-  if (status === "change_requested") return "変更希望";
-  if (status === "invalid") return "無効";
-  return "未確認";
-}
-
-function getParticipantConfirmationTone(status) {
-  if (status === "confirmed") return "emerald";
-  if (status === "change_requested") return "rose";
-  if (status === "invalid") return "slate";
-  return "amber";
-}
-
-function getLineLinkLabel(request = {}) {
-  if (request.lineNotifyEnabled === true && request.lineUserId) return "LINE連携済み";
-  if (request.lineUserId && request.lineNotifyEnabled === false) return "LINE通知OFF";
-  return "LINE未連携";
-}
-
-function getLineLinkTone(request = {}) {
-  if (request.lineNotifyEnabled === true && request.lineUserId) return "emerald";
-  if (request.lineUserId && request.lineNotifyEnabled === false) return "amber";
-  return "amber";
-}
-
-function getLineLinkDetail(request = {}) {
-  if (request.lineNotifyEnabled === true && request.lineUserId) {
-    return request.lineDisplayName ? `連携済み（${request.lineDisplayName}）` : "連携済み";
-  }
-  if (request.lineUserId && request.lineNotifyEnabled === false) {
-    return request.lineDisplayName ? `通知OFF（${request.lineDisplayName}）` : "通知OFF";
-  }
-  return "未連携";
 }
 
 const firebaseConfig = {
@@ -411,240 +138,6 @@ if (firebaseReady) {
 
 function classNames(...values) {
   return values.filter(Boolean).join(" ");
-}
-
-function formatDateKey(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function formatJapaneseDate(dateString) {
-  const date = new Date(`${dateString}T00:00:00`);
-  return date.toLocaleDateString("ja-JP", {
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-  });
-}
-
-function formatMonthTitle(date) {
-  const safeDate = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
-  return safeDate.toLocaleDateString("ja-JP", {
-    year: "numeric",
-    month: "long",
-  });
-}
-
-function nthWeekdayOfMonth(year, monthIndex, weekday, nth) {
-  const first = new Date(year, monthIndex, 1);
-  const offset = (7 + weekday - first.getDay()) % 7;
-  return new Date(year, monthIndex, 1 + offset + (nth - 1) * 7);
-}
-
-function calcVernalEquinoxDay(year) {
-  return Math.floor(20.8431 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
-}
-
-function calcAutumnalEquinoxDay(year) {
-  return Math.floor(23.2488 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
-}
-
-function getJapaneseHolidayMap(year) {
-  const holidays = new Map();
-  const addHoliday = (monthIndex, day, name) => {
-    const key = formatDateKey(new Date(year, monthIndex, day));
-    holidays.set(key, name);
-  };
-
-  addHoliday(0, 1, "元日");
-  addHoliday(1, 11, "建国記念の日");
-  addHoliday(1, 23, "天皇誕生日");
-  addHoliday(3, 29, "昭和の日");
-  addHoliday(4, 3, "憲法記念日");
-  addHoliday(4, 4, "みどりの日");
-  addHoliday(4, 5, "こどもの日");
-  addHoliday(7, 11, "山の日");
-  addHoliday(10, 3, "文化の日");
-  addHoliday(10, 23, "勤労感謝の日");
-
-  const comingOfAgeDay = nthWeekdayOfMonth(year, 0, 1, 2);
-  holidays.set(formatDateKey(comingOfAgeDay), "成人の日");
-
-  const marineDay = nthWeekdayOfMonth(year, 6, 1, 3);
-  holidays.set(formatDateKey(marineDay), "海の日");
-
-  const respectForAgedDay = nthWeekdayOfMonth(year, 8, 1, 3);
-  holidays.set(formatDateKey(respectForAgedDay), "敬老の日");
-
-  const sportsDay = nthWeekdayOfMonth(year, 9, 1, 2);
-  holidays.set(formatDateKey(sportsDay), "スポーツの日");
-
-  addHoliday(2, calcVernalEquinoxDay(year), "春分の日");
-  addHoliday(8, calcAutumnalEquinoxDay(year), "秋分の日");
-
-  const substituteTargets = Array.from(holidays.keys()).sort();
-  substituteTargets.forEach((key) => {
-    const holidayDate = new Date(`${key}T00:00:00`);
-    if (holidayDate.getDay() !== 0) return;
-    const substitute = new Date(holidayDate);
-    substitute.setDate(substitute.getDate() + 1);
-    while (holidays.has(formatDateKey(substitute))) {
-      substitute.setDate(substitute.getDate() + 1);
-    }
-    holidays.set(formatDateKey(substitute), "振替休日");
-  });
-
-  const firstDay = new Date(year, 0, 1);
-  const lastDay = new Date(year, 11, 31);
-  for (let current = new Date(firstDay); current <= lastDay; current.setDate(current.getDate() + 1)) {
-    const key = formatDateKey(current);
-    if (holidays.has(key)) continue;
-    const prev = new Date(current);
-    prev.setDate(prev.getDate() - 1);
-    const next = new Date(current);
-    next.setDate(next.getDate() + 1);
-    if (holidays.has(formatDateKey(prev)) && holidays.has(formatDateKey(next)) && current.getDay() !== 0) {
-      holidays.set(key, "国民の休日");
-    }
-  }
-
-  return holidays;
-}
-
-function getJapaneseHolidayName(date) {
-  return getJapaneseHolidayMap(date.getFullYear()).get(formatDateKey(date)) || "";
-}
-
-function sortSlots(slots) {
-  return [...slots].sort((a, b) => {
-    if (a.date !== b.date) return a.date.localeCompare(b.date);
-    return PERIODS.findIndex((item) => item.key === a.periodKey) - PERIODS.findIndex((item) => item.key === b.periodKey);
-  });
-}
-
-function getMonthGrid(baseMonth) {
-  const safeBaseMonth = baseMonth instanceof Date && !Number.isNaN(baseMonth.getTime()) ? baseMonth : new Date();
-  const firstDay = new Date(safeBaseMonth.getFullYear(), safeBaseMonth.getMonth(), 1);
-  const lastDay = new Date(safeBaseMonth.getFullYear(), safeBaseMonth.getMonth() + 1, 0);
-
-  const start = new Date(firstDay);
-  start.setDate(firstDay.getDate() - firstDay.getDay());
-
-  const end = new Date(lastDay);
-  end.setDate(lastDay.getDate() + (6 - lastDay.getDay()));
-
-  const days = [];
-  const current = new Date(start);
-  while (current <= end) {
-    days.push(new Date(current));
-    current.setDate(current.getDate() + 1);
-  }
-
-  return days;
-}
-
-function getSlotLabel(slot) {
-  const period = PERIOD_MAP[slot.periodKey];
-  return `${period.label} (${period.start}〜${period.end})`;
-}
-
-function getSlotMetrics(slot, requests = []) {
-  const confirmed = typeof slot.confirmedCount === "number"
-    ? slot.confirmedCount
-    : requests.filter((request) => request.assignedSlotId === slot.id).length;
-  const interested = requests.length
-    ? requests.filter((request) => (request.preferredSlotIds || []).includes(slot.id)).length
-    : 0;
-  const remaining = Math.max(Number(slot.capacity || 1) - confirmed, 0);
-
-  return {
-    confirmed,
-    interested,
-    remaining,
-    full: remaining <= 0,
-  };
-}
-
-function getSlotEndDate(slot) {
-  if (!slot?.date) return null;
-  const period = PERIOD_MAP[slot.periodKey];
-  const endTime = period?.end || "23:59";
-  const date = new Date(`${slot.date}T${endTime}:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function hasSlotEnded(slot) {
-  const endDate = getSlotEndDate(slot);
-  return !!endDate && endDate.getTime() < Date.now();
-}
-
-function isRequestCompleted(request) {
-  return (request?.operationStatus || "active") === "completed";
-}
-
-function isPastScheduledRequest(request, slots = []) {
-  if (!request?.assignedSlotId || isRequestCompleted(request)) return false;
-  const assignedSlot = slots.find((slot) => slot.id === request.assignedSlotId);
-  return hasSlotEnded(assignedSlot);
-}
-
-function getRequestTimestampValue(value) {
-  if (!value) return 0;
-  if (typeof value.seconds === "number") return value.seconds;
-  if (value instanceof Date) return Math.floor(value.getTime() / 1000);
-  return 0;
-}
-
-function getRequestAssignedSlotOrder(request, slots = []) {
-  const slot = slots.find((item) => item.id === request?.assignedSlotId);
-  if (!slot) return Number.MAX_SAFE_INTEGER;
-  const periodIndex = PERIODS.findIndex((period) => period.key === slot.periodKey);
-  const safePeriodIndex = periodIndex >= 0 ? periodIndex : 99;
-  return Number(`${String(slot.date || "9999-12-31").replaceAll("-", "")}${String(safePeriodIndex).padStart(2, "0")}`);
-}
-
-function getRequestDefaultPriority(request) {
-  const status = request?.participantConfirmationStatus || "pending";
-  if (status === "change_requested") return 0;
-  if (status === "pending") return 1;
-  return 2;
-}
-
-function getDaySummary(dateKey, slots) {
-  const daySlots = slots.filter((slot) => slot.date === dateKey && slot.isPublished !== false);
-  const slotCount = daySlots.length;
-  const totalRemaining = daySlots.reduce((sum, slot) => sum + getSlotMetrics(slot).remaining, 0);
-  const fullCount = daySlots.filter((slot) => getSlotMetrics(slot).full).length;
-
-  return {
-    slotCount,
-    totalRemaining,
-    fullCount,
-  };
-}
-
-
-function getAdminDaySummary(dateKey, slots, requests = []) {
-  const daySlots = slots.filter((slot) => slot.date === dateKey);
-  const slotCount = daySlots.length;
-  const publishedCount = daySlots.filter((slot) => slot.isPublished !== false).length;
-  const hiddenCount = daySlots.filter((slot) => slot.isPublished === false).length;
-  const totalCapacity = daySlots.reduce((sum, slot) => sum + Number(slot.capacity || 0), 0);
-  const totalConfirmed = daySlots.reduce((sum, slot) => sum + getSlotMetrics(slot, requests).confirmed, 0);
-  const totalRemaining = daySlots.reduce((sum, slot) => sum + getSlotMetrics(slot, requests).remaining, 0);
-  const fullCount = daySlots.filter((slot) => getSlotMetrics(slot, requests).full).length;
-
-  return {
-    slotCount,
-    publishedCount,
-    hiddenCount,
-    totalCapacity,
-    totalConfirmed,
-    totalRemaining,
-    fullCount,
-  };
 }
 
 function downloadText(filename, text, mimeType = "application/json") {
@@ -2187,6 +1680,7 @@ function ParticipantResponsePage({
   error,
   requestItem,
   assignedSlot,
+  studyTitle,
   responseNote,
   setResponseNote,
   onSubmitChangeRequest,
@@ -2243,6 +1737,20 @@ function ParticipantResponsePage({
                   )}
                 </div>
                 {assignedSlot?.note ? <div className="mt-2 whitespace-pre-line text-sm text-slate-500">{assignedSlot.note}</div> : null}
+                {assignedSlot?.date && assignedSlot?.periodKey ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadIcsFile(
+                        "schedule.ics",
+                        [{ slot: assignedSlot, summary: studyTitle || "実験参加", uid: `lablink-${requestItem?.id || "unknown"}@lablink` }]
+                      )
+                    }
+                    className="mt-4 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-medium text-teal-700 transition hover:bg-teal-100"
+                  >
+                    カレンダーに追加（.ics）
+                  </button>
+                ) : null}
               </div>
 
               {submitMessage ? (
@@ -3270,9 +2778,31 @@ function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservat
                 日程ごとの確定状況を開いて確認できます。申込カードを押すと該当申込へ移動します。
               </p>
             </div>
-            <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-teal-700 shadow-sm">
-              {summaryOpen ? "閉じる" : "開く"}
-            </span>
+            <div className="flex items-center gap-2">
+              {scheduleGroups.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    downloadIcsFile(
+                      "confirmed-schedule.ics",
+                      scheduleGroups.map((group) => ({
+                        slot: group.slot,
+                        summary: activeStudy?.title || "実験",
+                        uid: `lablink-${group.slot.id}@lablink`,
+                      })),
+                      activeStudy?.title || "LabLink"
+                    );
+                  }}
+                  className="rounded-full border border-teal-200 bg-white px-3 py-1.5 text-xs font-semibold text-teal-700 shadow-sm transition hover:bg-teal-50"
+                >
+                  .ics エクスポート
+                </button>
+              ) : null}
+              <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-teal-700 shadow-sm">
+                {summaryOpen ? "閉じる" : "開く"}
+              </span>
+            </div>
           </div>
         </summary>
         <div className="mt-4 px-1 pb-1">
@@ -5737,6 +5267,12 @@ export default function ExperimentParticipantScheduler() {
       return false;
     }
 
+    if (!participantForm.email.trim().includes("@") || !participantForm.email.trim().includes(".")) {
+      setMessage("メールアドレスの形式が正しくありません。");
+      showToast("メールアドレスを確認してください。", "error");
+      return false;
+    }
+
     return true;
   }
 
@@ -5861,13 +5397,16 @@ export default function ExperimentParticipantScheduler() {
 
     try {
       if (firebaseReady) {
-        await Promise.all(
-          newSlots.map((slot) => addDoc(collection(firestore, "slots"), {
+        const batch = writeBatch(firestore);
+        newSlots.forEach((slot) => {
+          const newRef = doc(collection(firestore, "slots"));
+          batch.set(newRef, {
             ...slot,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
-          }))
-        );
+          });
+        });
+        await batch.commit();
       } else {
         setSlots((prev) => sortSlots([
           ...prev,
@@ -6059,10 +5598,7 @@ export default function ExperimentParticipantScheduler() {
             const nextData = nextSnap.data();
             const capacity = Number(nextData.capacity || 1);
             const confirmedCount = Number(nextData.confirmedCount || 0);
-            const movingWithinDifferentSlots = previousSlotId && previousSlotId !== slotId;
 
-            // 同じ枠への再確定ではない前提
-            // 変更先が別枠で満席なら不可
             if (confirmedCount >= capacity) {
               throw new Error("slot-full");
             }
@@ -6129,12 +5665,12 @@ export default function ExperimentParticipantScheduler() {
         showToast("確定を解除しました。", "success");
       }
     } catch (error) {
-  console.error("handleAssignRequest error:", error);
-  showToast(
-    `確定処理に失敗しました: ${error?.code || ""} ${error?.message || "unknown error"}`,
-    "error"
-  );
-}
+      console.error("handleAssignRequest error:", error);
+      showToast(
+        `確定処理に失敗しました: ${error?.code || ""} ${error?.message || "unknown error"}`,
+        "error"
+      );
+    }
   }
 
   async function handleToggleRequestCompleted(requestItem, shouldComplete) {
@@ -6956,6 +6492,7 @@ export default function ExperimentParticipantScheduler() {
             location: participantResponseRequest.assignedLocation || "",
             note: participantResponseRequest.assignedNote || "",
           } : null}
+          studyTitle={activeExperimentInfo?.title || ""}
           responseNote={participantResponseNote}
           setResponseNote={setParticipantResponseNote}
           onSubmitChangeRequest={submitParticipantChangeRequest}

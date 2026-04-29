@@ -1423,7 +1423,11 @@ exports.notifyAdminOnNewRequest = onDocumentCreated("requests/{requestId}", asyn
   if (!data || !NOTIFY_ADMIN_EMAIL) return;
 
   const preferredSlotIds = Array.isArray(data.preferredSlotIds) ? data.preferredSlotIds : [];
-  const slotMap = await getSlotMap(preferredSlotIds);
+  const [slotMap, study] = await Promise.all([
+    getSlotMap(preferredSlotIds),
+    getStudyInfo(data.studyId || ""),
+  ]);
+  const studyTitle = getStudyTitleFromData(data, study);
   const preferredLines = preferredSlotIds.length
     ? preferredSlotIds.map((slotId, index) => `${index + 1}. ${slotToText(slotMap.get(slotId))}`)
     : ["希望枠なし"];
@@ -1433,6 +1437,7 @@ exports.notifyAdminOnNewRequest = onDocumentCreated("requests/{requestId}", asyn
   const text = [
     "新しい申込が届きました。",
     "",
+    `実験: ${studyTitle}`,
     `氏名: ${data.name || ""}`,
     `メール: ${data.email || ""}`,
     `所属・学年: ${data.affiliation || ""}`,
@@ -1445,6 +1450,7 @@ exports.notifyAdminOnNewRequest = onDocumentCreated("requests/{requestId}", asyn
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; color: #0f172a;">
       <h2 style="margin: 0 0 16px;">新しい申込が届きました</h2>
+      <p><strong>実験:</strong> ${escapeHtml(studyTitle)}</p>
       <p><strong>氏名:</strong> ${escapeHtml(data.name || "")}</p>
       <p><strong>メール:</strong> ${escapeHtml(data.email || "")}</p>
       <p><strong>所属・学年:</strong> ${escapeHtml(data.affiliation || "")}</p>
