@@ -5158,14 +5158,17 @@ export default function ExperimentParticipantScheduler() {
       return;
     }
 
-    const publicSlotsQuery = query(collection(firestore, "slots"), where("isPublished", "==", true));
+    const publicSlotsQuery = query(
+      collection(firestore, "slots"),
+      where("studyId", "==", selectedStudyId),
+      where("isPublished", "==", true)
+    );
     const unsubscribePublicSlots = onSnapshot(
       publicSlotsQuery,
       (snapshot) => {
         if (page === "participant" || page === "admin-login") {
           const nextSlots = snapshot.docs
-            .map((item) => withStudyId({ id: item.id, ...item.data() }))
-            .filter((slot) => isRecordInStudy(slot, selectedStudyId));
+            .map((item) => withStudyId({ id: item.id, ...item.data() }));
           if (page !== "admin") setSlots(sortSlots(nextSlots));
         }
         setSlotsLoading(false);
@@ -5267,8 +5270,17 @@ export default function ExperimentParticipantScheduler() {
     if (page !== "admin" || !authUser) return undefined;
 
     setAdminStudiesLoading(true);
+    const userEmail = (authUser.email || "").toLowerCase();
+    const isSuperAdmin = ALLOWED_ADMIN_EMAILS.includes(userEmail);
+    // スーパー管理者は全募集、それ以外は自分が管理者の募集のみ
+    const studiesQuery = isSuperAdmin
+      ? collection(firestore, "studies")
+      : query(
+          collection(firestore, "studies"),
+          where("adminEmails", "array-contains", userEmail)
+        );
     const unsubscribe = onSnapshot(
-      collection(firestore, "studies"),
+      studiesQuery,
       (snapshot) => {
         const nextStudies = snapshot.docs
           .map((item) => normalizeStudyInfo(item.data(), item.id))
@@ -5278,7 +5290,7 @@ export default function ExperimentParticipantScheduler() {
             if (aTime !== bTime) return bTime - aTime;
             return (a.title || "").localeCompare(b.title || "", "ja");
           });
-
+ 
         setAdminStudies(nextStudies);
         setAdminStudiesLoading(false);
       },
@@ -5289,9 +5301,9 @@ export default function ExperimentParticipantScheduler() {
         showToast("実験一覧の取得に失敗しました。", "error");
       }
     );
-
+ 
     return () => unsubscribe();
-  }, [page, authUser, selectedStudyId]);
+  }, [page, authUser]);   // ← selectedStudyId を削除
 
 
   useEffect(() => {
@@ -5353,11 +5365,10 @@ export default function ExperimentParticipantScheduler() {
     if (!firebaseReady || page !== "admin" || !authUser) return undefined;
 
     const unsubscribeSlots = onSnapshot(
-      collection(firestore, "slots"),
+      query(collection(firestore, "slots"), where("studyId", "==", selectedStudyId)),
       (snapshot) => {
         const nextSlots = snapshot.docs
-          .map((item) => withStudyId({ id: item.id, ...item.data() }))
-          .filter((slot) => isRecordInStudy(slot, selectedStudyId));
+          .map((item) => withStudyId({ id: item.id, ...item.data() }));
         setSlots(sortSlots(nextSlots));
         setSlotsLoading(false);
         setDataError("");
@@ -5370,11 +5381,10 @@ export default function ExperimentParticipantScheduler() {
     );
 
     const unsubscribeRequests = onSnapshot(
-      collection(firestore, "requests"),
+      query(collection(firestore, "requests"), where("studyId", "==", selectedStudyId)),
       (snapshot) => {
         const nextRequests = snapshot.docs
           .map((item) => withStudyId({ id: item.id, ...item.data() }))
-          .filter((request) => isRecordInStudy(request, selectedStudyId))
           .sort((a, b) => {
             const aTime = a.createdAt?.seconds || 0;
             const bTime = b.createdAt?.seconds || 0;
