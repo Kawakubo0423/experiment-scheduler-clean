@@ -319,7 +319,7 @@ function PublicSiteHeader({ onOpenHelp, onOpenAdmin, onOpenHome, onOpenReservati
   );
 }
 
-function AdminSiteHeader({ onBack, onLogoClick, onLogout, adminEmail, backLabel = "トップへ戻る" }) {
+function AdminSiteHeader({ onBack, onLogoClick, onLogout, adminEmail, backLabel = "トップへ戻る", onOpenProfile }) {
   return (
     <header className="sticky top-0 z-30 border-b border-white/70 bg-white/85 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
@@ -327,7 +327,15 @@ function AdminSiteHeader({ onBack, onLogoClick, onLogout, adminEmail, backLabel 
           <LabLinkBrand compact subtitle="実験者向け管理画面" />
         </button>
         <div className="flex shrink-0 items-center gap-2">
-          {adminEmail ? (
+          {adminEmail && onOpenProfile ? (
+            <button
+              type="button"
+              onClick={onOpenProfile}
+              className="hidden max-w-[280px] truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-100 lg:inline-flex"
+            >
+              {adminEmail}
+            </button>
+          ) : adminEmail ? (
             <span className="hidden max-w-[280px] truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-500 lg:inline-flex">
               {adminEmail}
             </span>
@@ -2489,6 +2497,7 @@ function AdminStudyManager({
   onLoadTemplate,
 }) {
   const [templateNameInput, setTemplateNameInput] = useState("");
+  const [fieldHelp, setFieldHelp] = useState(null); // "ownerEmail" | "adminEmails" | null
   const sortedStudies = Array.isArray(adminStudies) ? adminStudies : [];
 
   const showForm = mode === "form" || mode === "all" || (mode === "list" && Boolean(editingStudyId));
@@ -2623,7 +2632,15 @@ function AdminStudyManager({
 
           <div className="grid gap-4 lg:grid-cols-[1fr_1fr_220px]">
             <label className="text-sm">
-              <div className="mb-1.5 text-slate-600">オーナーメール <span className="text-rose-500">*</span></div>
+              <div className="mb-1.5 flex items-center gap-1.5 text-slate-600">
+                オーナーメール <span className="text-rose-500">*</span>
+                <button
+                  type="button"
+                  onClick={() => setFieldHelp("ownerEmail")}
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-500 hover:bg-slate-300"
+                  aria-label="オーナーメールの説明"
+                >?</button>
+              </div>
               <input
                 required
                 type="email"
@@ -2633,7 +2650,15 @@ function AdminStudyManager({
               />
             </label>
             <label className="text-sm">
-              <div className="mb-1.5 text-slate-600">管理者メール</div>
+              <div className="mb-1.5 flex items-center gap-1.5 text-slate-600">
+                管理者メール
+                <button
+                  type="button"
+                  onClick={() => setFieldHelp("adminEmails")}
+                  className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-500 hover:bg-slate-300"
+                  aria-label="管理者メールの説明"
+                >?</button>
+              </div>
               <textarea
                 value={studyForm.adminEmailsText}
                 onChange={(event) => setStudyForm((prev) => ({ ...prev, adminEmailsText: event.target.value }))}
@@ -2994,6 +3019,38 @@ function AdminStudyManager({
         )}
       </Card>
       ) : null}
+
+      {fieldHelp === "ownerEmail" && (
+        <ModalShell title="オーナーメールとは" onClose={() => setFieldHelp(null)} eyebrow="HELP">
+          <div className="space-y-4 text-sm text-slate-700">
+            <p>この募集の<strong>管理責任者</strong>のメールアドレスです。</p>
+            <ul className="list-disc space-y-2 pl-5">
+              <li>募集の作成者・オーナーとして記録されます。</li>
+              <li>他の研究者には自分の募集として表示されます。</li>
+              <li>テンプレートの所有者判定にも使われます。</li>
+            </ul>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+              通常はログイン中のメールアドレスが自動入力されます。
+            </div>
+          </div>
+        </ModalShell>
+      )}
+
+      {fieldHelp === "adminEmails" && (
+        <ModalShell title="管理者メールとは" onClose={() => setFieldHelp(null)} eyebrow="HELP">
+          <div className="space-y-4 text-sm text-slate-700">
+            <p>この募集の<strong>管理画面にアクセスできるメールアドレス</strong>の一覧です。</p>
+            <ul className="list-disc space-y-2 pl-5">
+              <li>ここに登録されたメールアドレスでログインすると、この募集の日程・申込を管理できます。</li>
+              <li>複数人で共同管理したい場合は、複数のアドレスを入力してください。</li>
+              <li>オーナーのメールは自動的に含まれます。</li>
+            </ul>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+              1行に1つ、またはカンマ区切りで入力してください。
+            </div>
+          </div>
+        </ModalShell>
+      )}
     </div>
   );
 }
@@ -3358,6 +3415,7 @@ function AdminPage({
   onToggleRequestCompleted,
   onBack,
   onLogout,
+  onOpenProfile,
   adminEmail,
   isLoading,
   onSeedSampleData,
@@ -3564,6 +3622,7 @@ function AdminPage({
         onBack={adminTab === "slots" || adminTab === "requests" ? () => setAdminTab("studies") : onBack}
         onLogoClick={onBack}
         onLogout={onLogout}
+        onOpenProfile={onOpenProfile}
         adminEmail={adminEmail}
         backLabel={adminTab === "slots" || adminTab === "requests" ? "募集管理へ戻る" : "トップへ戻る"}
       />
@@ -5067,6 +5126,149 @@ function ResearcherPendingPage({ authUser, onBack, onLogout }) {
           <button onClick={onLogout} className="mt-6 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
             ログアウト
           </button>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function ResearcherProfilePage({ authUser, profile, onBack, onLogout, onSave, onDelete, saving, deleting }) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ name: profile?.name || "", affiliation: profile?.affiliation || "", contactEmail: profile?.contactEmail || "" });
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    setForm({ name: profile?.name || "", affiliation: profile?.affiliation || "", contactEmail: profile?.contactEmail || "" });
+  }, [profile]);
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    onSave(form, () => setEditing(false));
+  }
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#f8fafc_34%,_#eef2ff_100%)] px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-2xl">
+        <div className="mb-6 flex flex-col gap-3 rounded-[28px] border border-white/70 bg-white/80 px-5 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <LabLinkBrand compact subtitle="プロフィール" />
+          <div className="flex gap-2">
+            <button onClick={onBack} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              <ArrowLeftIcon />
+              管理画面へ戻る
+            </button>
+            <button onClick={onLogout} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+              ログアウト
+            </button>
+          </div>
+        </div>
+
+        <Card className="space-y-5">
+          <SectionHeader eyebrow="PROFILE" title="登録者プロフィール" description="LabLinkに登録されているあなたの情報を確認・編集できます。" />
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Googleアカウント</span>
+            <div className="mt-1 font-medium text-slate-900">{authUser?.email || "—"}</div>
+          </div>
+
+          {!editing ? (
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">氏名</div>
+                  <div className="mt-1 text-slate-900">{profile?.name || "—"}</div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">所属・職位</div>
+                  <div className="mt-1 text-slate-900">{profile?.affiliation || "—"}</div>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">連絡用メールアドレス</div>
+                <div className="mt-1 text-slate-900">{profile?.contactEmail || "—"}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">ステータス</div>
+                <div className="mt-1">
+                  {profile?.status === "approved" ? (
+                    <StatusBadge tone="emerald">承認済み</StatusBadge>
+                  ) : profile?.status === "pending" ? (
+                    <StatusBadge tone="amber">承認待ち</StatusBadge>
+                  ) : (
+                    <StatusBadge tone="slate">{profile?.status || "不明"}</StatusBadge>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditing(true)}
+                  className="flex-1 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  プロフィールを編集
+                </button>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <label className="block text-sm">
+                <div className="mb-1.5 text-slate-600">氏名 <span className="text-rose-500">*</span></div>
+                <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" />
+              </label>
+              <label className="block text-sm">
+                <div className="mb-1.5 text-slate-600">所属・職位 <span className="text-rose-500">*</span></div>
+                <input required value={form.affiliation} onChange={(e) => setForm((p) => ({ ...p, affiliation: e.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" />
+              </label>
+              <label className="block text-sm">
+                <div className="mb-1.5 text-slate-600">連絡用メールアドレス <span className="text-rose-500">*</span></div>
+                <input required type="email" value={form.contactEmail} onChange={(e) => setForm((p) => ({ ...p, contactEmail: e.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" />
+              </label>
+              <div className="flex gap-3">
+                <button type="submit" disabled={saving} className="flex-1 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50">
+                  {saving ? "保存中..." : "変更を保存"}
+                </button>
+                <button type="button" onClick={() => setEditing(false)} className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  キャンセル
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div className="border-t border-slate-200 pt-5">
+            <h3 className="mb-3 text-sm font-semibold text-slate-700">登録の解除</h3>
+            {!confirmDelete ? (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100"
+              >
+                <TrashIcon />
+                研究者登録を解除する
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                  本当に研究者登録を解除しますか？この操作は取り消せません。作成済みの募集データは残ります。
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={onDelete}
+                    disabled={deleting}
+                    className="rounded-2xl bg-rose-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                  >
+                    {deleting ? "解除中..." : "解除する"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(false)}
+                    className="rounded-2xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </Card>
       </div>
     </div>
@@ -7111,6 +7313,44 @@ export default function ExperimentParticipantScheduler() {
     }
   }
 
+  const [savingResearcherProfile, setSavingResearcherProfile] = useState(false);
+  const [deletingResearcherProfile, setDeletingResearcherProfile] = useState(false);
+
+  async function handleUpdateResearcherProfile(form, onSuccess) {
+    if (!authUser || !firebaseReady) return;
+    try {
+      setSavingResearcherProfile(true);
+      await updateDoc(doc(firestore, "researchers", authUser.uid), {
+        name: form.name.trim(),
+        affiliation: form.affiliation.trim(),
+        contactEmail: form.contactEmail.trim().toLowerCase(),
+        updatedAt: serverTimestamp(),
+      });
+      showToast("プロフィールを更新しました。", "success");
+      if (onSuccess) onSuccess();
+    } catch (error) {
+      console.error(error);
+      showToast("更新に失敗しました。", "error");
+    } finally {
+      setSavingResearcherProfile(false);
+    }
+  }
+
+  async function handleDeleteResearcherRegistration() {
+    if (!authUser || !firebaseReady) return;
+    try {
+      setDeletingResearcherProfile(true);
+      await deleteDoc(doc(firestore, "researchers", authUser.uid));
+      showToast("研究者登録を解除しました。", "success");
+      setPage("landing");
+    } catch (error) {
+      console.error(error);
+      showToast("解除に失敗しました。", "error");
+    } finally {
+      setDeletingResearcherProfile(false);
+    }
+  }
+
   function handleLoadTemplate(template) {
     const newForm = buildStudyFormFromTemplate(template, authUser?.email || "");
     setStudyForm(newForm);
@@ -7287,6 +7527,17 @@ export default function ExperimentParticipantScheduler() {
           onBack={navigateToLanding}
           onLogout={handleAdminLogout}
         />
+      ) : page === "researcher-profile" ? (
+        <ResearcherProfilePage
+          authUser={authUser}
+          profile={researcherProfile}
+          onBack={() => setPage("admin")}
+          onLogout={handleAdminLogout}
+          onSave={handleUpdateResearcherProfile}
+          onDelete={handleDeleteResearcherRegistration}
+          saving={savingResearcherProfile}
+          deleting={deletingResearcherProfile}
+        />
       ) : page === "admin" ? (
         adminAuthorized ? (
           <AdminPage
@@ -7318,6 +7569,7 @@ export default function ExperimentParticipantScheduler() {
             onToggleRequestCompleted={handleToggleRequestCompleted}
             onBack={navigateToLanding}
             onLogout={handleAdminLogout}
+            onOpenProfile={isApprovedResearcher ? () => setPage("researcher-profile") : null}
             adminEmail={authUser?.email || ""}
             isLoading={slotsLoading || requestsLoading || adminStudiesLoading}
             onSeedSampleData={seedSampleData}
