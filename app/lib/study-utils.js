@@ -14,6 +14,26 @@ export function normalizeExperimentInfo(raw = {}) {
   };
 }
 
+export function normalizeCustomField(raw = {}) {
+  return {
+    id: raw.id || "",
+    label: raw.label || "",
+    type: ["text", "textarea", "select", "radio", "checkbox"].includes(raw.type) ? raw.type : "text",
+    required: raw.required === true,
+    options: Array.isArray(raw.options) ? raw.options.filter(Boolean) : [],
+  };
+}
+
+export function normalizeNotificationTemplates(raw = {}) {
+  const normTpl = (tpl = {}) => ({ subject: tpl.subject ?? "", body: tpl.body ?? "" });
+  return {
+    onAssigned: normTpl(raw.onAssigned),
+    onChanged: normTpl(raw.onChanged),
+    onUnassigned: normTpl(raw.onUnassigned),
+    onNewRequest: normTpl(raw.onNewRequest),
+  };
+}
+
 export function normalizeStudyInfo(raw = {}, id = DEFAULT_STUDY_ID) {
   return {
     id,
@@ -30,6 +50,8 @@ export function normalizeStudyInfo(raw = {}, id = DEFAULT_STUDY_ID) {
     status: raw.status ?? "recruiting",
     ownerEmail: raw.ownerEmail ?? "",
     adminEmails: Array.isArray(raw.adminEmails) ? raw.adminEmails : [],
+    customFields: Array.isArray(raw.customFields) ? raw.customFields.map(normalizeCustomField) : [],
+    notificationTemplates: normalizeNotificationTemplates(raw.notificationTemplates),
     createdAt: raw.createdAt ?? null,
     updatedAt: raw.updatedAt ?? null,
   };
@@ -88,6 +110,8 @@ export function buildStudyFormFromStudy(study = {}, adminEmail = "") {
     adminEmailsText: adminEmails.join("\n"),
     isPublished: safeStudy.isPublished === true,
     status: safeStudy.status || "recruiting",
+    customFields: safeStudy.customFields,
+    notificationTemplates: safeStudy.notificationTemplates,
   };
 }
 
@@ -107,6 +131,29 @@ export function buildStudyFormFromExperimentInfo(experimentInfo = DEFAULT_EXPERI
     adminEmailsText: adminEmail || "",
     isPublished: true,
     status: "recruiting",
+    customFields: [],
+    notificationTemplates: normalizeNotificationTemplates({}),
+  };
+}
+
+export function buildStudyFormFromTemplate(template = {}, adminEmail = "") {
+  return {
+    studyId: createAutoStudyId(),
+    title: template.title || "",
+    description: template.description || "",
+    duration: template.duration || "",
+    reward: template.reward || "",
+    organization: template.organization || "",
+    location: template.location || "",
+    managerName: template.managerName || "",
+    contactEmail: template.contactEmail || "",
+    notes: template.notes || "",
+    ownerEmail: adminEmail || "",
+    adminEmailsText: adminEmail || "",
+    isPublished: false,
+    status: "draft",
+    customFields: Array.isArray(template.customFields) ? template.customFields.map(normalizeCustomField) : [],
+    notificationTemplates: normalizeNotificationTemplates(template.notificationTemplates),
   };
 }
 
@@ -176,5 +223,26 @@ export function buildStudyPayloadFromForm(form, adminEmail = "") {
     adminEmails,
     isPublished: form.isPublished === true,
     status: form.status || "recruiting",
+    customFields: Array.isArray(form.customFields) ? form.customFields.map(normalizeCustomField) : [],
+    notificationTemplates: normalizeNotificationTemplates(form.notificationTemplates),
+  };
+}
+
+export function buildStudyTemplatePayload(form, templateName, adminEmail = "") {
+  const base = buildStudyPayloadFromForm(form, adminEmail);
+  return {
+    name: (templateName || "").trim(),
+    ownerEmail: base.ownerEmail || adminEmail || "",
+    title: base.title,
+    description: base.description,
+    duration: base.duration,
+    reward: base.reward,
+    organization: base.organization,
+    location: base.location,
+    managerName: base.managerName,
+    contactEmail: base.contactEmail,
+    notes: base.notes,
+    customFields: base.customFields,
+    notificationTemplates: base.notificationTemplates,
   };
 }

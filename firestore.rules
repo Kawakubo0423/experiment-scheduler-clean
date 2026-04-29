@@ -1,0 +1,494 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─────────────────────────────────────────────────
+    // 基本ヘルパー
+    // ─────────────────────────────────────────────────
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // サイト全体のスーパー管理者（全コレクションを管理可能）
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.email != null
+        && request.auth.token.email in [
+          "is0611xi@ed.ritsumei.ac.jp",
+          "kuuma0423@gmail.com"
+        ];
+    }
+
+    // 特定の募集の管理者（adminEmails に含まれている）
+    // ※ adminEmails は小文字で保存されている想定
+    function isStudyAdmin(studyId) {
+      return signedIn()
+        && studyId != null
+        && studyId.size() > 0
+        && exists(/databases/$(database)/documents/studies/$(studyId))
+        && get(/databases/$(database)/documents/studies/$(studyId))
+             .data.adminEmails.hasAny([request.auth.token.email.lower()]);
+    }
+
+    // 特定の募集のオーナー（ownerEmail と一致する）
+    function isStudyOwner(studyId) {
+      return signedIn()
+        && studyId != null
+        && studyId.size() > 0
+        && exists(/databases/$(database)/documents/studies/$(studyId))
+        && get(/databases/$(database)/documents/studies/$(studyId))
+             .data.ownerEmail == request.auth.token.email.lower();
+    }
+
+    // 承認済み研究者（researchers/{uid} に status=="approved" が存在する）
+    function isApprovedResearcher() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/researchers/$(request.auth.uid))
+        && get(/databases/$(database)/documents/researchers/$(request.auth.uid))
+             .data.status == "approved";
+    }
+
+    // ─────────────────────────────────────────────────
+    // バリデーションヘルパー
+    // ─────────────────────────────────────────────────
+
+    function optionalString(fieldName) {
+      return !request.resource.data.keys().hasAny([fieldName]) ||
+        request.resource.data[fieldName] is string;
+    }
+
+    function optionalBool(fieldName) {
+      return !request.resource.data.keys().hasAny([fieldName]) ||
+        request.resource.data[fieldName] is bool;
+    }
+
+    function optionalTimestamp(fieldName) {
+      return !request.resource.data.keys().hasAny([fieldName]) ||
+        request.resource.data[fieldName] is timestamp;
+    }
+
+    function optionalTimestampOrNull(fieldName) {
+      return !request.resource.data.keys().hasAny([fieldName]) ||
+        request.resource.data[fieldName] == null ||
+        request.resource.data[fieldName] is timestamp;
+    }
+
+    function optionalOperationStatus() {
+      return !request.resource.data.keys().hasAny(["operationStatus"]) ||
+        (
+          request.resource.data.operationStatus is string &&
+          request.resource.data.operationStatus in ["active", "completed"]
+        );
+    }
+
+    function validSlotData() {
+      return
+        request.resource.data.date is string &&
+        request.resource.data.periodKey is string &&
+        request.resource.data.capacity is number &&
+        request.resource.data.capacity >= 1 &&
+        request.resource.data.confirmedCount is number &&
+        request.resource.data.confirmedCount >= 0 &&
+        request.resource.data.confirmedCount <= request.resource.data.capacity &&
+        request.resource.data.isPublished is bool &&
+        request.resource.data.location is string &&
+        request.resource.data.note is string &&
+        optionalString("studyId") &&
+        optionalTimestamp("createdAt") &&
+        optionalTimestamp("updatedAt");
+    }
+
+    function validRequestCreateData() {
+      return
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.email is string &&
+        request.resource.data.email.size() > 0 &&
+        request.resource.data.affiliation is string &&
+        request.resource.data.affiliation.size() > 0 &&
+        request.resource.data.note is string &&
+        request.resource.data.preferredSlotIds is list &&
+        request.resource.data.preferredSlotIds.size() > 0 &&
+        request.resource.data.preferredSlotIds.size() <= 5 &&
+        request.resource.data.assignedSlotId is string &&
+        request.resource.data.assignedSlotId == "" &&
+        request.resource.data.status is string &&
+        request.resource.data.status == "requested" &&
+        request.resource.data.participantResponseToken is string &&
+        request.resource.data.participantResponseToken.size() > 10 &&
+        request.resource.data.participantConfirmationStatus is string &&
+        request.resource.data.participantConfirmationStatus == "pending" &&
+        request.resource.data.participantResponseNote is string &&
+        optionalString("studyId") &&
+        optionalOperationStatus() &&
+        optionalTimestamp("completedAt") &&
+        optionalString("lineLinkCode") &&
+        optionalString("lineUserId") &&
+        optionalString("lineDisplayName") &&
+        optionalBool("lineNotifyEnabled") &&
+        optionalTimestamp("lineLinkedAt") &&
+        optionalTimestamp("createdAt") &&
+        optionalTimestamp("updatedAt") &&
+        optionalTimestampOrNull("participantRespondedAt");
+    }
+
+    function validRequestAdminUpdateData() {
+      return
+        request.resource.data.name is string &&
+        request.resource.data.email is string &&
+        request.resource.data.affiliation is string &&
+        request.resource.data.note is string &&
+        request.resource.data.preferredSlotIds is list &&
+        request.resource.data.preferredSlotIds.size() <= 5 &&
+        request.resource.data.assignedSlotId is string &&
+        request.resource.data.status is string &&
+        request.resource.data.participantResponseToken is string &&
+        request.resource.data.participantConfirmationStatus is string &&
+        request.resource.data.participantConfirmationStatus in [
+          "pending",
+          "confirmed",
+          "change_requested"
+        ] &&
+        request.resource.data.participantResponseNote is string &&
+        optionalString("studyId") &&
+        optionalOperationStatus() &&
+        optionalTimestamp("completedAt") &&
+        optionalString("lineLinkCode") &&
+        optionalString("lineUserId") &&
+        optionalString("lineDisplayName") &&
+        optionalBool("lineNotifyEnabled") &&
+        optionalTimestamp("lineLinkedAt") &&
+        optionalTimestamp("createdAt") &&
+        optionalTimestamp("updatedAt") &&
+        optionalTimestampOrNull("participantRespondedAt");
+    }
+
+    function validExperimentInfoData() {
+      return
+        request.resource.data.title is string &&
+        request.resource.data.description is string &&
+        request.resource.data.duration is string &&
+        request.resource.data.reward is string &&
+        request.resource.data.organization is string &&
+        request.resource.data.managerName is string &&
+        request.resource.data.contactEmail is string &&
+        request.resource.data.notes is string &&
+        optionalTimestamp("updatedAt");
+    }
+
+    function validStudyData() {
+      return
+        request.resource.data.title is string &&
+        request.resource.data.description is string &&
+        request.resource.data.duration is string &&
+        request.resource.data.reward is string &&
+        request.resource.data.organization is string &&
+        request.resource.data.location is string &&
+        request.resource.data.managerName is string &&
+        request.resource.data.contactEmail is string &&
+        request.resource.data.notes is string &&
+        request.resource.data.ownerEmail is string &&
+        request.resource.data.adminEmails is list &&
+        request.resource.data.isPublished is bool &&
+        request.resource.data.status is string &&
+        request.resource.data.status in [
+          "draft",
+          "recruiting",
+          "paused",
+          "closed"
+        ] &&
+        optionalString("visibility") &&
+        optionalTimestamp("createdAt") &&
+        optionalTimestamp("updatedAt");
+    }
+
+    // ─────────────────────────────────────────────────
+    // slots コレクション
+    // ─────────────────────────────────────────────────
+    match /slots/{slotId} {
+      allow get, list: if resource.data.isPublished == true;
+
+      allow get, list: if isAdmin()
+        || isStudyAdmin(resource.data.studyId);
+
+      allow create: if (isAdmin() || isStudyAdmin(request.resource.data.studyId))
+        && request.resource.data.keys().hasAll([
+          "date", "periodKey", "capacity", "confirmedCount",
+          "isPublished", "location", "note"
+        ])
+        && request.resource.data.keys().hasOnly([
+          "date", "periodKey", "capacity", "confirmedCount",
+          "isPublished", "location", "note", "studyId",
+          "createdAt", "updatedAt"
+        ])
+        && validSlotData();
+
+      allow update: if (isAdmin() || isStudyAdmin(resource.data.studyId))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "date", "periodKey", "capacity", "confirmedCount",
+          "isPublished", "location", "note", "studyId",
+          "updatedAt"
+        ])
+        && validSlotData();
+
+      allow delete: if isAdmin() || isStudyAdmin(resource.data.studyId);
+    }
+
+    // ─────────────────────────────────────────────────
+    // requests コレクション
+    // ─────────────────────────────────────────────────
+    match /requests/{requestId} {
+      // 参加者の申込送信: 認証不要（誰でも申込可能）
+      // customFieldValues を hasOnly に追加（カスタム項目の回答）
+      allow create: if
+        request.resource.data.keys().hasAll([
+          "name", "email", "affiliation", "note",
+          "preferredSlotIds", "assignedSlotId", "status",
+          "participantResponseToken", "participantConfirmationStatus", "participantResponseNote"
+        ])
+        && request.resource.data.keys().hasOnly([
+          "name", "email", "affiliation", "note",
+          "preferredSlotIds", "assignedSlotId", "status",
+          "participantResponseToken", "participantConfirmationStatus", "participantResponseNote",
+          "studyId", "operationStatus", "completedAt", "createdAt", "updatedAt", "participantRespondedAt",
+          "lineLinkCode", "lineUserId", "lineDisplayName", "lineNotifyEnabled", "lineLinkedAt",
+          "customFieldValues"
+        ])
+        && validRequestCreateData();
+
+      allow get, list: if isAdmin() || isStudyAdmin(resource.data.studyId);
+
+      // customFieldValues を affectedKeys に追加
+      allow update: if (isAdmin() || isStudyAdmin(resource.data.studyId))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "name", "email", "affiliation", "note",
+          "preferredSlotIds", "assignedSlotId", "status",
+          "participantResponseToken", "participantConfirmationStatus", "participantResponseNote",
+          "studyId", "operationStatus", "completedAt", "participantRespondedAt", "updatedAt",
+          "lineLinkCode", "lineUserId", "lineDisplayName", "lineNotifyEnabled", "lineLinkedAt",
+          "customFieldValues"
+        ])
+        && validRequestAdminUpdateData();
+
+      allow delete: if isAdmin() || isStudyAdmin(resource.data.studyId);
+    }
+
+    // ─────────────────────────────────────────────────
+    // participantResponses コレクション
+    // ─────────────────────────────────────────────────
+    match /participantResponses/{token} {
+      allow get: if true;
+
+      allow create: if isAdmin()
+        || isStudyAdmin(request.resource.data.studyId);
+
+      allow update: if (
+          (isAdmin() || isStudyAdmin(resource.data.studyId))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "participantConfirmationStatus",
+            "participantResponseNote",
+            "participantRespondedAt",
+            "updatedAt"
+          ])
+          && request.resource.data.participantConfirmationStatus is string
+          && request.resource.data.participantConfirmationStatus in [
+            "pending",
+            "confirmed",
+            "change_requested",
+            "invalid"
+          ]
+          && request.resource.data.participantResponseNote is string
+          && optionalTimestampOrNull("participantRespondedAt")
+          && optionalTimestamp("updatedAt")
+          && request.resource.data.requestId == resource.data.requestId
+          && request.resource.data.name == resource.data.name
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.affiliation == resource.data.affiliation
+          && request.resource.data.assignedSlotId == resource.data.assignedSlotId
+          && request.resource.data.assignedDate == resource.data.assignedDate
+          && request.resource.data.assignedPeriodKey == resource.data.assignedPeriodKey
+          && request.resource.data.assignedLocation == resource.data.assignedLocation
+          && request.resource.data.assignedNote == resource.data.assignedNote
+        ) || (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "participantConfirmationStatus",
+            "participantResponseNote",
+            "participantRespondedAt",
+            "updatedAt"
+          ])
+          && resource.data.participantConfirmationStatus != "invalid"
+          && exists(/databases/$(database)/documents/requests/$(resource.data.requestId))
+          && request.resource.data.participantConfirmationStatus is string
+          && request.resource.data.participantConfirmationStatus in [
+            "confirmed",
+            "change_requested"
+          ]
+          && request.resource.data.participantResponseNote is string
+          && optionalTimestampOrNull("participantRespondedAt")
+          && optionalTimestamp("updatedAt")
+          && request.resource.data.requestId == resource.data.requestId
+          && request.resource.data.name == resource.data.name
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.affiliation == resource.data.affiliation
+          && request.resource.data.assignedSlotId == resource.data.assignedSlotId
+          && request.resource.data.assignedDate == resource.data.assignedDate
+          && request.resource.data.assignedPeriodKey == resource.data.assignedPeriodKey
+          && request.resource.data.assignedLocation == resource.data.assignedLocation
+          && request.resource.data.assignedNote == resource.data.assignedNote
+        );
+
+      allow delete: if isAdmin() || isStudyAdmin(resource.data.studyId);
+    }
+
+    // ─────────────────────────────────────────────────
+    // studies コレクション
+    // ─────────────────────────────────────────────────
+    match /studies/{studyId} {
+      allow get: if resource.data.isPublished == true
+        || isAdmin()
+        || isStudyAdmin(studyId);
+
+      allow list: if resource.data.isPublished == true
+        || isAdmin()
+        || (signedIn()
+            && resource.data.adminEmails.hasAny([request.auth.token.email.lower()]));
+
+      // customFields, notificationTemplates を hasOnly に追加
+      // スーパー管理者または承認済み研究者（自分がオーナーの募集のみ）が作成可能
+      allow create: if (isAdmin() || (isApprovedResearcher()
+          && request.resource.data.ownerEmail == request.auth.token.email.lower()
+          && request.resource.data.adminEmails.hasAny([request.auth.token.email.lower()])
+        ))
+        && request.resource.data.keys().hasAll([
+          "title", "description", "duration", "reward",
+          "organization", "location", "managerName", "contactEmail", "notes",
+          "ownerEmail", "adminEmails", "isPublished", "status"
+        ])
+        && request.resource.data.keys().hasOnly([
+          "title", "description", "duration", "reward",
+          "organization", "location", "managerName", "contactEmail", "notes",
+          "ownerEmail", "adminEmails", "isPublished", "status",
+          "visibility", "createdAt", "updatedAt",
+          "customFields", "notificationTemplates"
+        ])
+        && validStudyData();
+
+      // customFields, notificationTemplates を affectedKeys に追加
+      allow update: if (isAdmin() || isStudyAdmin(studyId))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "title", "description", "duration", "reward",
+          "organization", "location", "managerName", "contactEmail", "notes",
+          "ownerEmail", "adminEmails", "isPublished", "status",
+          "visibility", "updatedAt",
+          "customFields", "notificationTemplates"
+        ])
+        && validStudyData();
+
+      allow delete: if isAdmin();
+    }
+
+    // ─────────────────────────────────────────────────
+    // researchers コレクション（新規）
+    // 実験募集者の登録申請・承認管理
+    // ─────────────────────────────────────────────────
+    match /researchers/{uid} {
+      // 本人は自分のドキュメントを読める
+      allow get: if signedIn() && request.auth.uid == uid;
+
+      // スーパー管理者は全件読める（承認・拒否のため）
+      allow list: if isAdmin();
+
+      // 本人が新規作成（申請）: status は必ず "pending"
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasAll(["uid", "email", "name", "affiliation", "contactEmail", "status"])
+        && request.resource.data.keys().hasOnly(["uid", "email", "name", "affiliation", "contactEmail", "status", "createdAt"])
+        && request.resource.data.uid == uid
+        && request.resource.data.email == request.auth.token.email.lower()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.affiliation is string
+        && request.resource.data.contactEmail is string
+        && request.resource.data.status == "pending";
+
+      // スーパー管理者のみ更新可能（承認・拒否）
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status", "approvedAt", "approvedBy", "rejectionReason", "updatedAt"
+        ])
+        && request.resource.data.status in ["approved", "rejected", "pending"];
+
+      // スーパー管理者のみ削除可能
+      allow delete: if isAdmin();
+    }
+
+    // ─────────────────────────────────────────────────
+    // studyTemplates コレクション（新規）
+    // 募集テンプレートの保存・読み込み
+    // ownerEmail が自分のテンプレートのみ操作可能
+    // ─────────────────────────────────────────────────
+    match /studyTemplates/{templateId} {
+      allow read: if signedIn()
+        && resource.data.ownerEmail == request.auth.token.email.lower();
+
+      allow create: if signedIn()
+        && request.resource.data.ownerEmail == request.auth.token.email.lower();
+
+      allow delete: if isAdmin()
+        || (signedIn() && resource.data.ownerEmail == request.auth.token.email.lower());
+
+      // テンプレートは更新不可（削除して再作成）
+      allow update: if false;
+    }
+
+    // ─────────────────────────────────────────────────
+    // settings/experimentInfo（レガシー）
+    // ─────────────────────────────────────────────────
+    match /settings/experimentInfo {
+      allow get: if true;
+
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasAll([
+          "title", "description", "duration", "reward",
+          "organization", "managerName", "contactEmail", "notes"
+        ])
+        && request.resource.data.keys().hasOnly([
+          "title", "description", "duration", "reward",
+          "organization", "managerName", "contactEmail", "notes",
+          "updatedAt"
+        ])
+        && validExperimentInfoData();
+
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "title", "description", "duration", "reward",
+          "organization", "managerName", "contactEmail", "notes",
+          "updatedAt"
+        ])
+        && validExperimentInfoData();
+
+      allow delete: if false;
+    }
+
+    // ─────────────────────────────────────────────────
+    // LINE関連・メール（クライアントからのアクセス不可）
+    // ─────────────────────────────────────────────────
+    match /lineUsers/{lineUserId} {
+      allow read, write: if false;
+    }
+
+    match /lineSessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    match /mail/{mailId} {
+      allow read, write: if false;
+    }
+
+    // デフォルト: 全拒否
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

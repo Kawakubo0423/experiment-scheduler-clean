@@ -23,11 +23,14 @@ import {
 import {
   normalizeExperimentInfo,
   normalizeStudyInfo,
+  normalizeCustomField,
+  normalizeNotificationTemplates,
   studyToExperimentInfo,
   getStudyStatusLabel,
   getStudyStatusTone,
   buildStudyFormFromStudy,
   buildStudyFormFromExperimentInfo,
+  buildStudyFormFromTemplate,
   normalizeStudyId,
   createAutoStudyId,
   getRecordStudyId,
@@ -35,6 +38,7 @@ import {
   withStudyId,
   parseAdminEmails,
   buildStudyPayloadFromForm,
+  buildStudyTemplatePayload,
 } from "./lib/study-utils";
 import {
   getPeriodLabel,
@@ -2296,6 +2300,85 @@ function ParticipantPage({
                     />
                   </label>
 
+                  {(activeStudy?.customFields || []).map((field) => {
+                    const val = (participantForm.customFieldValues || {})[field.id] ?? (field.type === "checkbox" ? [] : "");
+                    const setVal = (newVal) => setParticipantForm((prev) => ({
+                      ...prev,
+                      customFieldValues: { ...(prev.customFieldValues || {}), [field.id]: newVal },
+                    }));
+                    return (
+                      <div key={field.id} className="block text-sm">
+                        <div className="mb-1.5 text-slate-600">
+                          {field.label}
+                          {field.required ? <span className="ml-1 text-rose-500">*</span> : null}
+                        </div>
+                        {field.type === "text" && (
+                          <input
+                            required={field.required}
+                            value={val}
+                            onChange={(e) => setVal(e.target.value)}
+                            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
+                          />
+                        )}
+                        {field.type === "textarea" && (
+                          <textarea
+                            required={field.required}
+                            value={val}
+                            onChange={(e) => setVal(e.target.value)}
+                            className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
+                          />
+                        )}
+                        {field.type === "select" && (
+                          <select
+                            required={field.required}
+                            value={val}
+                            onChange={(e) => setVal(e.target.value)}
+                            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
+                          >
+                            <option value="">選択してください</option>
+                            {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
+                        )}
+                        {field.type === "radio" && (
+                          <div className="flex flex-wrap gap-3">
+                            {(field.options || []).map((opt) => (
+                              <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
+                                <input
+                                  type="radio"
+                                  name={`custom_${field.id}`}
+                                  value={opt}
+                                  checked={val === opt}
+                                  onChange={() => setVal(opt)}
+                                  className="h-4 w-4"
+                                />
+                                {opt}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        {field.type === "checkbox" && (
+                          <div className="flex flex-wrap gap-3">
+                            {(field.options || []).map((opt) => (
+                              <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
+                                <input
+                                  type="checkbox"
+                                  value={opt}
+                                  checked={Array.isArray(val) && val.includes(opt)}
+                                  onChange={(e) => {
+                                    const next = Array.isArray(val) ? [...val] : [];
+                                    setVal(e.target.checked ? [...next, opt] : next.filter((v) => v !== opt));
+                                  }}
+                                  className="h-4 w-4 rounded"
+                                />
+                                {opt}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
                   <div className="rounded-3xl bg-slate-50 p-4">
                     <div className="text-sm font-medium text-slate-700">選択中の希望枠 <span className="text-rose-500">*</span></div>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -2399,7 +2482,13 @@ function AdminStudyManager({
   onManageSlots,
   onManageRequests,
   onBackToStudyList,
+  studyTemplates = [],
+  savingTemplate,
+  onSaveAsTemplate,
+  onDeleteTemplate,
+  onLoadTemplate,
 }) {
+  const [templateNameInput, setTemplateNameInput] = useState("");
   const sortedStudies = Array.isArray(adminStudies) ? adminStudies : [];
 
   const showForm = mode === "form" || mode === "all" || (mode === "list" && Boolean(editingStudyId));
@@ -2576,6 +2665,220 @@ function AdminStudyManager({
             />
             トップページに公開する
           </label>
+
+          <details className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <summary className="cursor-pointer select-none text-sm font-semibold text-slate-700">
+              申込フォームのカスタム項目
+              <span className="ml-2 rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-500">
+                {(studyForm.customFields || []).length} 項目
+              </span>
+            </summary>
+            <div className="mt-4 space-y-3">
+              {(studyForm.customFields || []).map((field, idx) => (
+                <div key={field.id || idx} className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0 grid gap-2 sm:grid-cols-[1fr_140px_100px_80px]">
+                      <input
+                        value={field.label}
+                        onChange={(e) => setStudyForm((prev) => {
+                          const next = [...prev.customFields];
+                          next[idx] = { ...next[idx], label: e.target.value };
+                          return { ...prev, customFields: next };
+                        })}
+                        placeholder="項目名"
+                        className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                      />
+                      <select
+                        value={field.type}
+                        onChange={(e) => setStudyForm((prev) => {
+                          const next = [...prev.customFields];
+                          next[idx] = { ...next[idx], type: e.target.value };
+                          return { ...prev, customFields: next };
+                        })}
+                        className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                      >
+                        <option value="text">テキスト</option>
+                        <option value="textarea">テキスト（複数行）</option>
+                        <option value="select">ドロップダウン</option>
+                        <option value="radio">ラジオボタン</option>
+                        <option value="checkbox">チェックボックス</option>
+                      </select>
+                      <label className="flex items-center gap-2 text-xs text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={field.required}
+                          onChange={(e) => setStudyForm((prev) => {
+                            const next = [...prev.customFields];
+                            next[idx] = { ...next[idx], required: e.target.checked };
+                            return { ...prev, customFields: next };
+                          })}
+                          className="h-3.5 w-3.5 rounded"
+                        />
+                        必須
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() => setStudyForm((prev) => {
+                            const next = [...prev.customFields];
+                            [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                            return { ...prev, customFields: next };
+                          })}
+                          className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-500 disabled:opacity-30 hover:bg-slate-50"
+                        >↑</button>
+                        <button
+                          type="button"
+                          disabled={idx === (studyForm.customFields || []).length - 1}
+                          onClick={() => setStudyForm((prev) => {
+                            const next = [...prev.customFields];
+                            [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                            return { ...prev, customFields: next };
+                          })}
+                          className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-500 disabled:opacity-30 hover:bg-slate-50"
+                        >↓</button>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStudyForm((prev) => ({ ...prev, customFields: prev.customFields.filter((_, i) => i !== idx) }))}
+                      className="shrink-0 rounded-xl border border-rose-100 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-100"
+                    >
+                      削除
+                    </button>
+                  </div>
+                  {["select", "radio", "checkbox"].includes(field.type) && (
+                    <div className="mt-3">
+                      <div className="mb-1 text-xs text-slate-500">選択肢（1行に1つ）</div>
+                      <textarea
+                        value={(field.options || []).join("\n")}
+                        onChange={(e) => setStudyForm((prev) => {
+                          const next = [...prev.customFields];
+                          next[idx] = { ...next[idx], options: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) };
+                          return { ...prev, customFields: next };
+                        })}
+                        rows={3}
+                        placeholder={"選択肢A\n選択肢B\n選択肢C"}
+                        className="min-h-20 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() => setStudyForm((prev) => ({
+                  ...prev,
+                  customFields: [...(prev.customFields || []), { id: `field_${Date.now()}`, label: "", type: "text", required: false, options: [] }],
+                }))}
+                className="w-full rounded-2xl border border-dashed border-slate-300 py-3 text-sm font-medium text-slate-500 hover:border-slate-400 hover:text-slate-700"
+              >
+                + 項目を追加
+              </button>
+            </div>
+          </details>
+
+          <details className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <summary className="cursor-pointer select-none text-sm font-semibold text-slate-700">
+              メール・LINE通知テンプレート
+            </summary>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              空欄の場合はシステムのデフォルト文言が使われます。変数: {"{{name}}"} {"{{studyTitle}}"} {"{{date}}"} {"{{period}}"} {"{{location}}"}
+            </p>
+            <div className="mt-4 space-y-4">
+              {[
+                { key: "onAssigned", label: "日程確定時" },
+                { key: "onChanged", label: "日程変更時" },
+                { key: "onUnassigned", label: "日程解除時" },
+                { key: "onNewRequest", label: "新規申込時（管理者宛）" },
+              ].map(({ key, label }) => {
+                const tpl = (studyForm.notificationTemplates || {})[key] || { subject: "", body: "" };
+                return (
+                  <div key={key} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+                    <input
+                      value={tpl.subject}
+                      onChange={(e) => setStudyForm((prev) => ({
+                        ...prev,
+                        notificationTemplates: {
+                          ...(prev.notificationTemplates || {}),
+                          [key]: { ...(prev.notificationTemplates?.[key] || {}), subject: e.target.value },
+                        },
+                      }))}
+                      placeholder="件名（空欄=デフォルト）"
+                      className="mb-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    />
+                    <textarea
+                      value={tpl.body}
+                      onChange={(e) => setStudyForm((prev) => ({
+                        ...prev,
+                        notificationTemplates: {
+                          ...(prev.notificationTemplates || {}),
+                          [key]: { ...(prev.notificationTemplates?.[key] || {}), body: e.target.value },
+                        },
+                      }))}
+                      rows={4}
+                      placeholder="本文（空欄=デフォルト）"
+                      className="min-h-24 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+
+          {onSaveAsTemplate && (
+            <details className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+              <summary className="cursor-pointer select-none text-sm font-semibold text-emerald-800">
+                募集テンプレート
+              </summary>
+              <div className="mt-4 space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    value={templateNameInput}
+                    onChange={(e) => setTemplateNameInput(e.target.value)}
+                    placeholder="テンプレート名"
+                    className="flex-1 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-400"
+                  />
+                  <button
+                    type="button"
+                    disabled={savingTemplate || !templateNameInput.trim()}
+                    onClick={() => {
+                      onSaveAsTemplate(templateNameInput.trim());
+                      setTemplateNameInput("");
+                    }}
+                    className="shrink-0 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-800 disabled:opacity-50"
+                  >
+                    {savingTemplate ? "保存中..." : "現在の入力を保存"}
+                  </button>
+                </div>
+                {studyTemplates.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold text-emerald-700">保存済みテンプレート</div>
+                    {studyTemplates.map((tpl) => (
+                      <div key={tpl.id} className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-white px-3 py-2.5">
+                        <div className="flex-1 min-w-0 text-sm font-medium text-slate-800 truncate">{tpl.name}</div>
+                        <button
+                          type="button"
+                          onClick={() => onLoadTemplate(tpl)}
+                          className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                        >
+                          読み込む
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDeleteTemplate(tpl.id)}
+                          className="shrink-0 rounded-lg border border-rose-100 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-100"
+                        >
+                          削除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </details>
+          )}
 
           <div className="flex flex-wrap gap-3">
             <button
@@ -3094,6 +3397,17 @@ function AdminPage({
   onSelectStudyScope,
   onOpenReservationPage,
   onOpenLineCodeHelp,
+  onExportCsv,
+  studyTemplates,
+  savingTemplate,
+  onSaveAsTemplate,
+  onDeleteTemplate,
+  onLoadTemplate,
+  isSuperAdmin,
+  researchers,
+  researchersLoading,
+  onApproveResearcher,
+  onRejectResearcher,
 }) {
   const operationStudies = Array.isArray(adminStudies) && adminStudies.length > 0 ? adminStudies : SAMPLE_STUDIES;
   const selectedOperationStudy = operationStudies.find((study) => study.id === selectedStudyId) || operationStudies[0];
@@ -3256,6 +3570,42 @@ function AdminPage({
       <div className="mx-auto max-w-7xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
         {adminTab === "studies" || adminTab === "study-new" ? <AdminHero adminEmail={adminEmail} /> : null}
 
+        {isSuperAdmin && (
+          <div className="mb-4 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setAdminTab("studies")}
+              className={classNames(
+                "rounded-2xl px-4 py-2 text-sm font-medium transition",
+                adminTab === "studies" || adminTab === "study-new" || adminTab === "operation" || adminTab === "slots" || adminTab === "requests" || adminTab === "dashboard"
+                  ? adminTab === "researchers"
+                    ? "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    : "bg-slate-900 text-white"
+                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              )}
+            >
+              募集・運営管理
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdminTab("researchers")}
+              className={classNames(
+                "relative rounded-2xl px-4 py-2 text-sm font-medium transition",
+                adminTab === "researchers"
+                  ? "bg-slate-900 text-white"
+                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              )}
+            >
+              研究者管理
+              {(researchers || []).some((r) => r.status === "pending") ? (
+                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">
+                  {(researchers || []).filter((r) => r.status === "pending").length}
+                </span>
+              ) : null}
+            </button>
+          </div>
+        )}
+
         {isLoading ? <LoadingCard title="管理データを読み込んでいます..." /> : null}
 
         {adminTab === "slots" || adminTab === "requests" ? (
@@ -3352,6 +3702,11 @@ function AdminPage({
             repairingLegacyData={repairingLegacyData}
             mode="list"
             onOpenReservationPage={onOpenReservationPage}
+            studyTemplates={studyTemplates}
+            savingTemplate={savingTemplate}
+            onSaveAsTemplate={onSaveAsTemplate}
+            onDeleteTemplate={onDeleteTemplate}
+            onLoadTemplate={onLoadTemplate}
             onCreateStudy={() => {
               onResetStudyForm();
               setAdminTab("study-new");
@@ -3384,6 +3739,11 @@ function AdminPage({
             mode="form"
             onOpenReservationPage={onOpenReservationPage}
             onBackToStudyList={() => setAdminTab("studies")}
+            studyTemplates={studyTemplates}
+            savingTemplate={savingTemplate}
+            onSaveAsTemplate={onSaveAsTemplate}
+            onDeleteTemplate={onDeleteTemplate}
+            onLoadTemplate={onLoadTemplate}
           />
         )}
 
@@ -4066,6 +4426,15 @@ function AdminPage({
                   <option value="updatedDesc">更新日時: 新しい順</option>
                 </select>
               </div>
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onExportCsv}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100"
+                >
+                  CSVエクスポート ({filteredRequests.length}件)
+                </button>
+              </div>
             </div>
 
             {filteredRequests.length === 0 ? (
@@ -4249,6 +4618,26 @@ function AdminPage({
                         </div>
 
                         {request.note ? <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-600">{request.note}</div> : null}
+                        {(() => {
+                          const cfv = request.customFieldValues;
+                          const fields = selectedOperationStudy?.customFields || [];
+                          if (!cfv || fields.length === 0) return null;
+                          const entries = fields.filter((f) => cfv[f.id] !== undefined && cfv[f.id] !== "" && !(Array.isArray(cfv[f.id]) && cfv[f.id].length === 0));
+                          if (entries.length === 0) return null;
+                          return (
+                            <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm">
+                              <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">カスタム項目</div>
+                              <div className="space-y-1">
+                                {entries.map((f) => (
+                                  <div key={f.id} className="flex flex-wrap gap-1 text-slate-700">
+                                    <span className="font-medium text-slate-500">{f.label}:</span>
+                                    <span>{Array.isArray(cfv[f.id]) ? cfv[f.id].join(", ") : String(cfv[f.id])}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
                         {request.participantResponseNote ? (
                           <div
                             className={classNames(
@@ -4482,6 +4871,203 @@ function AdminPage({
             )}
           </div>
         )}
+
+        {adminTab === "researchers" && (
+          <div className="space-y-4">
+            <Card className="p-5 shadow-none">
+              <SectionHeader
+                eyebrow="RESEARCHERS"
+                title="研究者アカウント管理"
+                description="登録申請中・承認済み・拒否済みの研究者アカウントを管理します。"
+                action={<StatusBadge tone="sky">{(researchers || []).length}件</StatusBadge>}
+              />
+              {researchersLoading ? (
+                <div className="py-6 text-center text-sm text-slate-500">読み込み中...</div>
+              ) : (researchers || []).length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
+                  登録申請はまだありません。
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {["pending", "approved", "rejected"].map((statusGroup) => {
+                    const group = (researchers || []).filter((r) => r.status === statusGroup);
+                    if (group.length === 0) return null;
+                    const groupLabel = { pending: "承認待ち", approved: "承認済み", rejected: "拒否済み" }[statusGroup];
+                    const groupTone = { pending: "amber", approved: "emerald", rejected: "slate" }[statusGroup];
+                    return (
+                      <div key={statusGroup}>
+                        <div className="mb-2 flex items-center gap-2">
+                          <StatusBadge tone={groupTone}>{groupLabel}</StatusBadge>
+                          <span className="text-xs text-slate-400">{group.length}件</span>
+                        </div>
+                        <div className="grid gap-3 lg:grid-cols-2">
+                          {group.map((researcher) => (
+                            <div key={researcher.id} className="rounded-3xl border border-slate-200 bg-white p-5">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="font-semibold text-slate-900">{researcher.name}</div>
+                                  <div className="mt-1 text-sm text-slate-500">{researcher.affiliation}</div>
+                                  <div className="mt-1 text-xs text-slate-400">Googleアカウント: {researcher.email}</div>
+                                  <div className="mt-0.5 text-xs text-slate-400">連絡先: {researcher.contactEmail}</div>
+                                  {researcher.approvedBy ? (
+                                    <div className="mt-0.5 text-xs text-slate-400">承認者: {researcher.approvedBy}</div>
+                                  ) : null}
+                                </div>
+                                <StatusBadge tone={groupTone}>{groupLabel}</StatusBadge>
+                              </div>
+                              {statusGroup === "pending" ? (
+                                <div className="mt-4 flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => onApproveResearcher(researcher.id)}
+                                    className="flex-1 rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+                                  >
+                                    承認する
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => onRejectResearcher(researcher.id)}
+                                    className="flex-1 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-100"
+                                  >
+                                    拒否する
+                                  </button>
+                                </div>
+                              ) : statusGroup === "approved" ? (
+                                <div className="mt-4">
+                                  <button
+                                    type="button"
+                                    onClick={() => onRejectResearcher(researcher.id)}
+                                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+                                  >
+                                    承認を取り消す
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="mt-4">
+                                  <button
+                                    type="button"
+                                    onClick={() => onApproveResearcher(researcher.id)}
+                                    className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
+                                  >
+                                    承認に変更する
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ResearcherRegisterPage({ authUser, onGoogleLogin, onBack, registerForm, setRegisterForm, onSubmit, loading, error }) {
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#f8fafc_34%,_#eef2ff_100%)] px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-6 flex flex-col gap-3 rounded-[28px] border border-white/70 bg-white/80 px-5 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <LabLinkBrand compact subtitle="研究者登録" />
+          <button onClick={onBack} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            <ArrowLeftIcon />
+            LabLinkトップへ戻る
+          </button>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-[1fr,0.95fr]">
+          <Card className="bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(51,65,85,0.92))] text-white">
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10">
+              <LockIcon />
+            </div>
+            <h1 className="mt-5 text-3xl font-bold tracking-tight">研究者として登録する</h1>
+            <p className="mt-4 text-sm leading-7 text-slate-200">
+              LabLinkで実験参加者の募集を行うためには、研究者アカウントの登録が必要です。申請後、管理者が内容を確認して承認します。
+            </p>
+            <div className="mt-6 grid gap-3 text-sm text-slate-200">
+              <div className="rounded-2xl bg-white/10 p-4">自分の実験募集ページを作成</div>
+              <div className="rounded-2xl bg-white/10 p-4">申込の日程確定・管理</div>
+              <div className="rounded-2xl bg-white/10 p-4">メール・LINE通知の活用</div>
+            </div>
+          </Card>
+
+          <div className="space-y-6">
+            {!authUser ? (
+              <Card>
+                <SectionHeader eyebrow="STEP 1" title="Googleでログイン" description="まず研究者として使用するGoogleアカウントでログインしてください。" />
+                <button onClick={onGoogleLogin} className="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-800 transition hover:bg-slate-50">
+                  <GoogleIcon />
+                  Googleでログインする
+                </button>
+              </Card>
+            ) : (
+              <Card>
+                <SectionHeader eyebrow="STEP 2" title="登録情報を入力" description="申請内容を記入してください。管理者が確認後に承認します。" />
+                <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  ログイン中: {authUser.email}
+                </div>
+                {error ? (
+                  <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
+                ) : null}
+                <form onSubmit={onSubmit} className="space-y-4">
+                  <label className="block text-sm">
+                    <div className="mb-1.5 text-slate-600">氏名 <span className="text-rose-500">*</span></div>
+                    <input required value={registerForm.name} onChange={(e) => setRegisterForm((p) => ({ ...p, name: e.target.value }))} placeholder="山田 太郎" className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" />
+                  </label>
+                  <label className="block text-sm">
+                    <div className="mb-1.5 text-slate-600">所属・職位 <span className="text-rose-500">*</span></div>
+                    <input required value={registerForm.affiliation} onChange={(e) => setRegisterForm((p) => ({ ...p, affiliation: e.target.value }))} placeholder="例: 立命館大学 情報理工学部 助教" className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" />
+                  </label>
+                  <label className="block text-sm">
+                    <div className="mb-1.5 text-slate-600">連絡用メールアドレス <span className="text-rose-500">*</span></div>
+                    <input required type="email" value={registerForm.contactEmail} onChange={(e) => setRegisterForm((p) => ({ ...p, contactEmail: e.target.value }))} placeholder="例: yamada@ed.ritsumei.ac.jp" className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400" />
+                    <p className="mt-1.5 text-xs text-slate-500">管理者からの連絡先として使用します。Googleアカウントと異なっていても構いません。</p>
+                  </label>
+                  <button type="submit" disabled={loading} className="w-full rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-50">
+                    {loading ? "申請中..." : "研究者登録を申請する"}
+                  </button>
+                </form>
+              </Card>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResearcherPendingPage({ authUser, onBack, onLogout }) {
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#f8fafc_34%,_#eef2ff_100%)] px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-xl">
+        <div className="mb-6 flex flex-col gap-3 rounded-[28px] border border-white/70 bg-white/80 px-5 py-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <LabLinkBrand compact subtitle="承認待ち" />
+          <button onClick={onBack} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            <ArrowLeftIcon />
+            トップへ戻る
+          </button>
+        </div>
+        <Card className="text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-3xl">⏳</div>
+          <h1 className="mt-5 text-2xl font-bold text-slate-900">承認をお待ちください</h1>
+          <p className="mt-3 text-sm leading-7 text-slate-600">
+            研究者登録の申請を受け付けました。管理者が内容を確認後、登録メールアドレスへご連絡します。
+          </p>
+          {authUser ? (
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              申請アカウント: {authUser.email}
+            </div>
+          ) : null}
+          <button onClick={onLogout} className="mt-6 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            ログアウト
+          </button>
+        </Card>
       </div>
     </div>
   );
@@ -4494,6 +5080,7 @@ function AdminLoginPage({
   firebaseEnabled,
   onBack,
   onGoogleLogin,
+  onOpenResearcherRegister,
 }) {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#f8fafc_34%,_#eef2ff_100%)] px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
@@ -4514,39 +5101,36 @@ function AdminLoginPage({
             <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10">
               <LockIcon />
             </div>
-            <h1 className="mt-5 text-3xl font-bold tracking-tight">LabLink 管理者ページ</h1>
+            <h1 className="mt-5 text-3xl font-bold tracking-tight">LabLink 実験者ページ</h1>
             <p className="mt-4 text-sm leading-7 text-slate-200">
-              Googleログインで管理者を認証します。許可されたメールアドレスのみ、申込一覧と日程確定処理へアクセスできます。
+              Googleアカウントでログインします。管理者は申込一覧・日程確定へ、承認済みの研究者は自分の募集を管理できます。
             </p>
             <div className="mt-6 grid gap-3 text-sm text-slate-200">
-              <div className="rounded-2xl bg-white/10 p-4">申込一覧の閲覧</div>
+              <div className="rounded-2xl bg-white/10 p-4">申込一覧の閲覧・管理</div>
               <div className="rounded-2xl bg-white/10 p-4">日程枠の追加・削除</div>
               <div className="rounded-2xl bg-white/10 p-4">希望枠からの日程確定</div>
             </div>
           </Card>
 
-          <div className="space-y-6">
+          <div className="space-y-4">
             {!firebaseEnabled ? <SetupNotice /> : null}
             <Card>
               <SectionHeader
                 eyebrow="LOGIN"
                 title="Googleでログイン"
-                description="Firebase Authentication を使って管理者ログインを行います。"
+                description="ログイン後、管理者または研究者として利用できます。"
               />
-
               <div className="space-y-4">
                 {authUser ? (
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                     現在のログインアカウント: {authUser.email}
                   </div>
                 ) : null}
-
                 {authError ? (
                   <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                     {authError}
                   </div>
                 ) : null}
-
                 <button
                   disabled={!firebaseEnabled || !authReady}
                   onClick={onGoogleLogin}
@@ -4557,6 +5141,21 @@ function AdminLoginPage({
                 </button>
               </div>
             </Card>
+            <div className="rounded-3xl border border-teal-100 bg-teal-50 px-5 py-4 text-sm">
+              <div className="font-semibold text-teal-900">はじめてご利用の研究者の方</div>
+              <p className="mt-1 text-xs leading-5 text-teal-800">
+                Googleログイン後に研究者登録を申請できます。管理者の承認後、実験募集を作成・管理できるようになります。
+              </p>
+              {onOpenResearcherRegister ? (
+                <button
+                  type="button"
+                  onClick={onOpenResearcherRegister}
+                  className="mt-3 rounded-2xl border border-teal-200 bg-white px-4 py-2 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
+                >
+                  研究者登録ページへ
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
@@ -4614,7 +5213,17 @@ export default function ExperimentParticipantScheduler() {
     affiliation: "",
     note: "",
     preferredSlotIds: [],
+    customFieldValues: {},
   });
+  const [studyTemplates, setStudyTemplates] = useState([]);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [researcherProfile, setResearcherProfile] = useState(null);
+  const [researcherProfileLoading, setResearcherProfileLoading] = useState(false);
+  const [researchers, setResearchers] = useState([]);
+  const [researchersLoading, setResearchersLoading] = useState(false);
+  const [researcherRegisterForm, setResearcherRegisterForm] = useState({ name: "", affiliation: "", contactEmail: "" });
+  const [researcherRegisterLoading, setResearcherRegisterLoading] = useState(false);
+  const [researcherRegisterError, setResearcherRegisterError] = useState("");
   const [slotForm, setSlotForm] = useState({
     date: "",
     extraDates: "",
@@ -4835,6 +5444,83 @@ export default function ExperimentParticipantScheduler() {
     return () => unsubscribe();
   }, [page, authUser]);   // ← selectedStudyId を削除
 
+  useEffect(() => {
+    if (!firebaseReady || page !== "admin" || !authUser) return undefined;
+
+    const userEmail = (authUser.email || "").toLowerCase();
+    const templatesQuery = query(
+      collection(firestore, "studyTemplates"),
+      where("ownerEmail", "==", userEmail)
+    );
+    const unsubscribe = onSnapshot(
+      templatesQuery,
+      (snapshot) => {
+        const items = snapshot.docs
+          .map((item) => ({ id: item.id, ...item.data() }))
+          .sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja"));
+        setStudyTemplates(items);
+      },
+      (error) => {
+        console.error("studyTemplates fetch error", error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [page, authUser]);
+
+  // 自分の researcher プロファイルをロード（ログイン中は常に監視）
+  useEffect(() => {
+    if (!firebaseReady || !authUser) {
+      setResearcherProfile(null);
+      setResearcherProfileLoading(false);
+      return undefined;
+    }
+    if (ALLOWED_ADMIN_EMAILS.includes((authUser.email || "").toLowerCase())) {
+      setResearcherProfile(null);
+      setResearcherProfileLoading(false);
+      return undefined;
+    }
+
+    setResearcherProfileLoading(true);
+    const unsubscribe = onSnapshot(
+      doc(firestore, "researchers", authUser.uid),
+      (snapshot) => {
+        setResearcherProfile(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
+        setResearcherProfileLoading(false);
+      },
+      (error) => {
+        console.error("researcher profile fetch error", error);
+        setResearcherProfileLoading(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [authUser]);
+
+  // 全研究者一覧（スーパー管理者のみ、管理ページ表示中）
+  useEffect(() => {
+    if (!firebaseReady || page !== "admin" || !authUser) return undefined;
+    if (!ALLOWED_ADMIN_EMAILS.includes((authUser.email || "").toLowerCase())) return undefined;
+
+    setResearchersLoading(true);
+    const unsubscribe = onSnapshot(
+      collection(firestore, "researchers"),
+      (snapshot) => {
+        const items = snapshot.docs
+          .map((item) => ({ id: item.id, ...item.data() }))
+          .sort((a, b) => {
+            const order = { pending: 0, approved: 1, rejected: 2 };
+            return (order[a.status] ?? 9) - (order[b.status] ?? 9);
+          });
+        setResearchers(items);
+        setResearchersLoading(false);
+      },
+      (error) => {
+        console.error("researchers fetch error", error);
+        setResearchersLoading(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [page, authUser]);
 
   useEffect(() => {
     if (page !== "participant-response") return;
@@ -4979,19 +5665,22 @@ export default function ExperimentParticipantScheduler() {
     setParticipantForm((prev) => ({ ...prev, preferredSlotIds: [] }));
   }, [selectedStudyId]);
 
-  const adminAuthorized = !!authUser?.email && ALLOWED_ADMIN_EMAILS.includes(authUser.email.toLowerCase());
+  const isSuperAdmin = !!authUser?.email && ALLOWED_ADMIN_EMAILS.includes(authUser.email.toLowerCase());
+  const isApprovedResearcher = !isSuperAdmin && researcherProfile?.status === "approved";
+  const isPendingResearcher = !isSuperAdmin && researcherProfile?.status === "pending";
+  const adminAuthorized = isSuperAdmin || isApprovedResearcher;
 
   useEffect(() => {
     if (!authUser?.email || editingStudyId) return;
-    setStudyForm((prev) => {
-      if (prev.ownerEmail && prev.adminEmailsText) return prev;
-      return {
-        ...prev,
-        ownerEmail: prev.ownerEmail || authUser.email.toLowerCase(),
-        adminEmailsText: prev.adminEmailsText || authUser.email.toLowerCase(),
-      };
-    });
-  }, [authUser, editingStudyId]);
+    const emailLower = authUser.email.toLowerCase();
+    const contactDefault = researcherProfile?.contactEmail || emailLower;
+    setStudyForm((prev) => ({
+      ...prev,
+      ownerEmail: prev.ownerEmail || emailLower,
+      adminEmailsText: prev.adminEmailsText || emailLower,
+      contactEmail: prev.contactEmail || contactDefault,
+    }));
+  }, [authUser, editingStudyId, researcherProfile]);
 
   const sortedSlots = useMemo(() => sortSlots(slots), [slots]);
   const allSlotsSelected = sortedSlots.length > 0 && selectedSlotIds.length === sortedSlots.length;
@@ -5273,6 +5962,18 @@ export default function ExperimentParticipantScheduler() {
       return false;
     }
 
+    const customFields = activeStudy?.customFields || [];
+    for (const field of customFields) {
+      if (!field.required) continue;
+      const val = (participantForm.customFieldValues || {})[field.id];
+      const empty = !val || (Array.isArray(val) ? val.length === 0 : !String(val).trim());
+      if (empty) {
+        setMessage(`「${field.label}」は必須項目です。`);
+        showToast(`「${field.label}」を入力してください。`, "error");
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -5298,6 +5999,7 @@ export default function ExperimentParticipantScheduler() {
           affiliation: participantForm.affiliation.trim(),
           note: participantForm.note.trim(),
           preferredSlotIds: participantForm.preferredSlotIds,
+          customFieldValues: participantForm.customFieldValues || {},
           assignedSlotId: "",
           status: "requested",
           participantResponseToken: responseToken,
@@ -5346,6 +6048,7 @@ export default function ExperimentParticipantScheduler() {
         affiliation: "",
         note: "",
         preferredSlotIds: [],
+        customFieldValues: {},
       });
       setLastLineLinkInfo({ code: lineLinkCode });
       setLineGuideOpen(true);
@@ -6269,6 +6972,152 @@ export default function ExperimentParticipantScheduler() {
   }
 
 
+  function handleExportCsv() {
+    const studyForExport = adminStudies.find((s) => s.id === selectedStudyId) || adminStudies[0];
+    const customFields = studyForExport?.customFields || [];
+    const baseHeaders = ["申込ID", "氏名", "メール", "所属・学年", "補足", "申込日時", "申込状態", "参加者確認", "確定日程", "確定日", "確定時間帯", "LINE連携", "実施状態"];
+    const customHeaders = customFields.map((f) => f.label || f.id);
+    const headers = [...baseHeaders, ...customHeaders];
+
+    const rows = filteredRequests.map((request) => {
+      const assignedSlot = sortedSlots.find((s) => s.id === request.assignedSlotId);
+      const assignedDate = assignedSlot ? formatJapaneseDate(assignedSlot.date) : "";
+      const assignedPeriod = assignedSlot ? (PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey) : "";
+      const assignedLabel = assignedSlot ? `${assignedDate} / ${assignedPeriod}` : "";
+      const createdAt = request.createdAt?.seconds ? new Date(request.createdAt.seconds * 1000).toLocaleString("ja-JP") : "";
+      const statusLabel = request.assignedSlotId ? "確定済み" : "未確定";
+      const confirmLabel = { pending: "未確認", confirmed: "確認済み", change_requested: "変更希望", invalid: "無効" }[request.participantConfirmationStatus || "pending"] || "未確認";
+      const lineLabel = request.lineNotifyEnabled && request.lineUserId ? "連携済み" : request.lineUserId ? "通知OFF" : "未連携";
+      const operationLabel = isRequestCompleted(request) ? "実施済み" : isPastScheduledRequest(request, sortedSlots) ? "予定日超過" : "未実施";
+      const baseRow = [request.id, request.name, request.email, request.affiliation, request.note, createdAt, statusLabel, confirmLabel, assignedLabel, assignedDate, assignedPeriod, lineLabel, operationLabel];
+      const customValues = customFields.map((f) => {
+        const val = (request.customFieldValues || {})[f.id];
+        if (Array.isArray(val)) return val.join(", ");
+        return val ?? "";
+      });
+      return [...baseRow, ...customValues];
+    });
+
+    const escape = (v) => {
+      const s = String(v ?? "");
+      if (s.includes(",") || s.includes('"') || s.includes("\n")) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    const csvContent = [headers, ...rows].map((row) => row.map(escape).join(",")).join("\n");
+    const bom = "﻿";
+    const blob = new Blob([bom + csvContent], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `requests_${selectedStudyId}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleSaveAsTemplate(templateName) {
+    if (!templateName.trim()) return;
+    if (!firebaseReady) {
+      showToast("Firebase接続時のみ利用できます。", "error");
+      return;
+    }
+
+    try {
+      setSavingTemplate(true);
+      const payload = buildStudyTemplatePayload(studyForm, templateName, authUser?.email || "");
+      await addDoc(collection(firestore, "studyTemplates"), {
+        ...payload,
+        createdAt: serverTimestamp(),
+      });
+      showToast("テンプレートを保存しました。", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("テンプレートの保存に失敗しました。", "error");
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
+  async function handleDeleteTemplate(templateId) {
+    if (!firebaseReady) return;
+    if (!window.confirm("このテンプレートを削除しますか？")) return;
+
+    try {
+      await deleteDoc(doc(firestore, "studyTemplates", templateId));
+      showToast("テンプレートを削除しました。", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("テンプレートの削除に失敗しました。", "error");
+    }
+  }
+
+  async function handleResearcherRegister(event) {
+    event.preventDefault();
+    if (!authUser) return;
+    if (!researcherRegisterForm.name.trim() || !researcherRegisterForm.affiliation.trim() || !researcherRegisterForm.contactEmail.trim()) {
+      setResearcherRegisterError("すべての項目を入力してください。");
+      return;
+    }
+    try {
+      setResearcherRegisterLoading(true);
+      setResearcherRegisterError("");
+      await setDoc(doc(firestore, "researchers", authUser.uid), {
+        uid: authUser.uid,
+        email: (authUser.email || "").toLowerCase(),
+        name: researcherRegisterForm.name.trim(),
+        affiliation: researcherRegisterForm.affiliation.trim(),
+        contactEmail: researcherRegisterForm.contactEmail.trim().toLowerCase(),
+        status: "pending",
+        createdAt: serverTimestamp(),
+      });
+      showToast("登録申請を送信しました。管理者の承認をお待ちください。", "success");
+    } catch (error) {
+      console.error(error);
+      setResearcherRegisterError("申請の送信に失敗しました。しばらくしてから再度お試しください。");
+    } finally {
+      setResearcherRegisterLoading(false);
+    }
+  }
+
+  async function handleApproveResearcher(researcherId) {
+    if (!firebaseReady) return;
+    try {
+      await updateDoc(doc(firestore, "researchers", researcherId), {
+        status: "approved",
+        approvedAt: serverTimestamp(),
+        approvedBy: authUser?.email || "",
+        updatedAt: serverTimestamp(),
+      });
+      showToast("研究者を承認しました。", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("承認に失敗しました。", "error");
+    }
+  }
+
+  async function handleRejectResearcher(researcherId) {
+    if (!firebaseReady) return;
+    const reason = window.prompt("拒否理由（任意）:");
+    if (reason === null) return;
+    try {
+      await updateDoc(doc(firestore, "researchers", researcherId), {
+        status: "rejected",
+        rejectionReason: reason.trim(),
+        updatedAt: serverTimestamp(),
+      });
+      showToast("拒否しました。", "success");
+    } catch (error) {
+      console.error(error);
+      showToast("拒否処理に失敗しました。", "error");
+    }
+  }
+
+  function handleLoadTemplate(template) {
+    const newForm = buildStudyFormFromTemplate(template, authUser?.email || "");
+    setStudyForm(newForm);
+    setEditingStudyId("");
+    showToast(`テンプレート「${template.name}」を読み込みました。`, "success");
+  }
+
   function navigateToLanding() {
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -6333,7 +7182,19 @@ export default function ExperimentParticipantScheduler() {
 
   function openAdminPage() {
     setAuthError("");
-    setPage(adminAuthorized ? "admin" : "admin-login");
+    if (!authUser) {
+      setPage("admin-login");
+      return;
+    }
+    if (isSuperAdmin || isApprovedResearcher) {
+      setPage("admin");
+      return;
+    }
+    if (isPendingResearcher) {
+      setPage("researcher-pending");
+      return;
+    }
+    setPage("researcher-register");
   }
 
   async function handleGoogleLogin() {
@@ -6362,14 +7223,22 @@ export default function ExperimentParticipantScheduler() {
   }
 
   useEffect(() => {
+    if (researcherProfileLoading) return;
     if (page === "admin-login" && authUser) {
-      if (adminAuthorized) {
+      if (isSuperAdmin || isApprovedResearcher) {
         setPage("admin");
+      } else if (isPendingResearcher) {
+        setPage("researcher-pending");
       } else {
-        setAuthError("このGoogleアカウントは管理者として許可されていません。");
+        setPage("researcher-register");
       }
+    } else if (page === "researcher-register" && !researcherProfileLoading) {
+      if (isSuperAdmin || isApprovedResearcher) setPage("admin");
+      else if (isPendingResearcher) setPage("researcher-pending");
+    } else if (page === "researcher-pending" && !researcherProfileLoading) {
+      if (isSuperAdmin || isApprovedResearcher) setPage("admin");
     }
-  }, [page, authUser, adminAuthorized]);
+  }, [page, authUser, isSuperAdmin, isApprovedResearcher, isPendingResearcher, researcherProfileLoading]);
 
   return (
     <>
@@ -6399,6 +7268,24 @@ export default function ExperimentParticipantScheduler() {
           firebaseEnabled={firebaseReady}
           onBack={navigateToLanding}
           onGoogleLogin={handleGoogleLogin}
+          onOpenResearcherRegister={() => setPage("researcher-register")}
+        />
+      ) : page === "researcher-register" ? (
+        <ResearcherRegisterPage
+          authUser={authUser}
+          onGoogleLogin={handleGoogleLogin}
+          onBack={navigateToLanding}
+          registerForm={researcherRegisterForm}
+          setRegisterForm={setResearcherRegisterForm}
+          onSubmit={handleResearcherRegister}
+          loading={researcherRegisterLoading}
+          error={researcherRegisterError}
+        />
+      ) : page === "researcher-pending" ? (
+        <ResearcherPendingPage
+          authUser={authUser}
+          onBack={navigateToLanding}
+          onLogout={handleAdminLogout}
         />
       ) : page === "admin" ? (
         adminAuthorized ? (
@@ -6470,6 +7357,17 @@ export default function ExperimentParticipantScheduler() {
             onSelectStudyScope={selectStudyScope}
             onOpenReservationPage={openStudyReservation}
             onOpenLineCodeHelp={() => setShowLineCodeHelp(true)}
+            onExportCsv={handleExportCsv}
+            studyTemplates={studyTemplates}
+            savingTemplate={savingTemplate}
+            onSaveAsTemplate={handleSaveAsTemplate}
+            onDeleteTemplate={handleDeleteTemplate}
+            onLoadTemplate={handleLoadTemplate}
+            isSuperAdmin={isSuperAdmin}
+            researchers={researchers}
+            researchersLoading={researchersLoading}
+            onApproveResearcher={handleApproveResearcher}
+            onRejectResearcher={handleRejectResearcher}
           />
         ) : (
           <AdminLoginPage

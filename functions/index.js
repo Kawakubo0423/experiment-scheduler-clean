@@ -2075,3 +2075,37 @@ exports.lineWebhook = onRequest(async (req, res) => {
     res.status(500).send("Internal Server Error");
   }
 });
+
+exports.notifyAdminOnNewResearcher = onDocumentCreated("researchers/{uid}", async (event) => {
+  const data = event.data?.data();
+  if (!data || !NOTIFY_ADMIN_EMAIL) return;
+
+  const subject = `【LabLink】研究者登録申請が届きました（${data.name || "氏名未入力"}）`;
+
+  const text = [
+    "新しい研究者登録申請が届きました。管理画面の「研究者管理」タブから承認・拒否を行ってください。",
+    "",
+    `氏名: ${data.name || ""}`,
+    `所属: ${data.affiliation || ""}`,
+    `Googleアカウント: ${data.email || ""}`,
+    `連絡先メール: ${data.contactEmail || ""}`,
+  ].join("\n");
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.7; color: #0f172a;">
+      <h2 style="margin: 0 0 16px;">研究者登録申請が届きました</h2>
+      <p>管理画面の「研究者管理」タブから承認・拒否を行ってください。</p>
+      <p><strong>氏名:</strong> ${escapeHtml(data.name || "")}</p>
+      <p><strong>所属:</strong> ${escapeHtml(data.affiliation || "")}</p>
+      <p><strong>Googleアカウント:</strong> ${escapeHtml(data.email || "")}</p>
+      <p><strong>連絡先メール:</strong> ${escapeHtml(data.contactEmail || "")}</p>
+    </div>
+  `;
+
+  await enqueueMail({
+    to: NOTIFY_ADMIN_EMAIL,
+    subject,
+    text,
+    html,
+  });
+});
