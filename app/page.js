@@ -430,7 +430,8 @@ function formatJapaneseDate(dateString) {
 }
 
 function formatMonthTitle(date) {
-  return date.toLocaleDateString("ja-JP", {
+  const safeDate = date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date();
+  return safeDate.toLocaleDateString("ja-JP", {
     year: "numeric",
     month: "long",
   });
@@ -524,8 +525,9 @@ function sortSlots(slots) {
 }
 
 function getMonthGrid(baseMonth) {
-  const firstDay = new Date(baseMonth.getFullYear(), baseMonth.getMonth(), 1);
-  const lastDay = new Date(baseMonth.getFullYear(), baseMonth.getMonth() + 1, 0);
+  const safeBaseMonth = baseMonth instanceof Date && !Number.isNaN(baseMonth.getTime()) ? baseMonth : new Date();
+  const firstDay = new Date(safeBaseMonth.getFullYear(), safeBaseMonth.getMonth(), 1);
+  const lastDay = new Date(safeBaseMonth.getFullYear(), safeBaseMonth.getMonth() + 1, 0);
 
   const start = new Date(firstDay);
   start.setDate(firstDay.getDate() - firstDay.getDay());
@@ -1588,14 +1590,14 @@ function ExperimentInfoCard({ info, compact = false, stats = null, openSlotCount
                 </button>
               ) : null}
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-3xl bg-white/85 p-5">
-                <div className="text-sm text-slate-500">公開中の枠</div>
-                <div className="mt-2 text-3xl font-semibold text-slate-900">{openSlotCount ?? 0}</div>
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3">
+              <div className="rounded-2xl bg-white/85 p-3 sm:rounded-3xl sm:p-5">
+                <div className="text-[11px] font-semibold text-slate-500 sm:text-sm sm:font-normal">公開中の枠</div>
+                <div className="mt-1 text-2xl font-semibold text-slate-900 sm:mt-2 sm:text-3xl">{openSlotCount ?? 0}</div>
               </div>
-              <div className="rounded-3xl bg-white/85 p-5">
-                <div className="text-sm text-slate-500">残り席数</div>
-                <div className="mt-2 text-3xl font-semibold text-slate-900">{stats.openSeats}</div>
+              <div className="rounded-2xl bg-white/85 p-3 sm:rounded-3xl sm:p-5">
+                <div className="text-[11px] font-semibold text-slate-500 sm:text-sm sm:font-normal">残り席数</div>
+                <div className="mt-1 text-2xl font-semibold text-slate-900 sm:mt-2 sm:text-3xl">{stats.openSeats}</div>
               </div>
             </div>
           </div>
@@ -3237,22 +3239,22 @@ function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservat
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
-          <div className="text-xs font-semibold text-slate-500">申込件数</div>
-          <div className="mt-2 text-2xl font-bold text-slate-950">{stats?.requestCount ?? 0}</div>
+      <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 sm:rounded-3xl sm:p-4">
+          <div className="text-[11px] font-semibold text-slate-500 sm:text-xs">申込件数</div>
+          <div className="mt-1 text-xl font-bold text-slate-950 sm:mt-2 sm:text-2xl">{stats?.requestCount ?? 0}</div>
         </div>
-        <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
-          <div className="text-xs font-semibold text-slate-500">未確定</div>
-          <div className="mt-2 text-2xl font-bold text-slate-950">{stats?.pending ?? 0}</div>
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 sm:rounded-3xl sm:p-4">
+          <div className="text-[11px] font-semibold text-slate-500 sm:text-xs">未確定</div>
+          <div className="mt-1 text-xl font-bold text-slate-950 sm:mt-2 sm:text-2xl">{stats?.pending ?? 0}</div>
         </div>
-        <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
-          <div className="text-xs font-semibold text-slate-500">確定済み</div>
-          <div className="mt-2 text-2xl font-bold text-slate-950">{stats?.confirmed ?? 0}</div>
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 sm:rounded-3xl sm:p-4">
+          <div className="text-[11px] font-semibold text-slate-500 sm:text-xs">確定済み</div>
+          <div className="mt-1 text-xl font-bold text-slate-950 sm:mt-2 sm:text-2xl">{stats?.confirmed ?? 0}</div>
         </div>
-        <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
-          <div className="text-xs font-semibold text-slate-500">残り席数</div>
-          <div className="mt-2 text-2xl font-bold text-slate-950">{stats?.openSeats ?? 0}</div>
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 sm:rounded-3xl sm:p-4">
+          <div className="text-[11px] font-semibold text-slate-500 sm:text-xs">残り席数</div>
+          <div className="mt-1 text-xl font-bold text-slate-950 sm:mt-2 sm:text-2xl">{stats?.openSeats ?? 0}</div>
         </div>
       </div>
 
@@ -3268,7 +3270,7 @@ function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservat
                 日程ごとの確定状況を開いて確認できます。申込カードを押すと該当申込へ移動します。
               </p>
             </div>
-            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-teal-700 shadow-sm">
+            <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-teal-700 shadow-sm">
               {summaryOpen ? "閉じる" : "開く"}
             </span>
           </div>
@@ -3598,7 +3600,7 @@ function AdminPage({
 
     if (!adminSelectedSlotDate) {
       setAdminSelectedSlotDate(firstDate);
-      setAdminSlotMonth(new Date(`T00:00:00`));
+      setAdminSlotMonth(new Date(`${firstDate}T00:00:00`));
     }
   }, [adminTab, sortedSlots, adminSelectedSlotDate]);
 
