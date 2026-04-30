@@ -100,6 +100,16 @@ function buildParticipantResponseUrl(token, action = "confirm") {
   return url.toString();
 }
 
+function buildStudyPublicUrl(studyId) {
+  if (typeof window === "undefined") return "";
+  const url = new URL(window.location.href);
+  url.searchParams.set("study", studyId);
+  url.searchParams.delete("token");
+  url.searchParams.delete("action");
+  url.searchParams.delete("request");
+  return url.toString();
+}
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -2498,7 +2508,17 @@ function AdminStudyManager({
 }) {
   const [templateNameInput, setTemplateNameInput] = useState("");
   const [fieldHelp, setFieldHelp] = useState(null); // "ownerEmail" | "adminEmails" | null
+  const [copiedStudyId, setCopiedStudyId] = useState("");
   const sortedStudies = Array.isArray(adminStudies) ? adminStudies : [];
+
+  function handleCopyStudyUrl(studyId) {
+    const url = buildStudyPublicUrl(studyId);
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedStudyId(studyId);
+      window.setTimeout(() => setCopiedStudyId(""), 2000);
+    });
+  }
 
   const showForm = mode === "form" || mode === "all" || (mode === "list" && Boolean(editingStudyId));
   const showList = mode === "list" || mode === "all";
@@ -2991,6 +3011,18 @@ function AdminStudyManager({
                   </button>
                   <button
                     type="button"
+                    onClick={() => handleCopyStudyUrl(study.id)}
+                    className={classNames(
+                      "rounded-2xl border px-4 py-2 text-sm font-medium transition",
+                      copiedStudyId === study.id
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    )}
+                  >
+                    {copiedStudyId === study.id ? "コピーしました" : "URLをコピー"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => onEditStudy(study)}
                     className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
@@ -3437,6 +3469,7 @@ function AdminPage({
   onBulkPublish,
   onBulkUnpublish,
   onBulkDelete,
+  onImportSlotsCSV,
   adminStudies,
   adminStudiesLoading,
   studyForm,
@@ -3985,7 +4018,7 @@ function AdminPage({
               </div>
             </Card>
 
-            <div className="px-1">
+            <div className="px-1 space-y-2">
               <button
                 type="button"
                 onClick={handleOpenAdminSlotForm}
@@ -4000,6 +4033,36 @@ function AdminPage({
                 <span className="mr-2 flex h-7 w-7 items-center justify-center rounded-full bg-sky-100 text-lg leading-none text-sky-700">＋</span>
                 新しい日程を追加
               </button>
+              <div className="flex items-center gap-2">
+                <label className="flex-1 cursor-pointer inline-flex items-center justify-center gap-2 rounded-3xl border border-dashed border-slate-300 px-4 py-3 text-sm font-medium text-slate-500 hover:border-slate-400 hover:text-slate-700 transition">
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) { onImportSlotsCSV?.(f); e.target.value = ""; }
+                    }}
+                  />
+                  CSVで一括インポート
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const header = "日付,時限,定員,場所,メモ";
+                    const example = "2025-06-01,p3,1,立命館大学 OIC,";
+                    const blob = new Blob(["﻿" + header + "\n" + example], { type: "text/csv;charset=utf-8;" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url; a.download = "slots_template.csv"; a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="shrink-0 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-xs font-medium text-slate-500 hover:bg-slate-50 transition"
+                  title="CSVテンプレートをダウンロード"
+                >
+                  テンプレート
+                </button>
+              </div>
             </div>
 
               {showAdminSlotForm ? (
@@ -5473,15 +5536,13 @@ export default function ExperimentParticipantScheduler() {
     const token = params.get("token") || "";
 
     if (token) {
-      setPage("participant-response");
-      setParticipantResponseContext({ token, action: "change" });
+      window.location.replace(`/response?token=${encodeURIComponent(token)}`);
       return;
     }
 
     const studyId = normalizeStudyId(params.get("study") || "");
     if (studyId) {
-      setSelectedStudyId(studyId);
-      setPage("participant");
+      window.location.replace(`/study/${encodeURIComponent(studyId)}`);
     }
   }, []);
 
@@ -6341,6 +6402,81 @@ export default function ExperimentParticipantScheduler() {
     } catch (error) {
       console.error(error);
       showToast("日程枠の追加に失敗しました。", "error");
+    }
+  }
+
+  async function handleImportSlotsCSV(file) {
+    if (!file) return;
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length < 2) {
+      showToast("CSVにデータ行がありません。", "error");
+      return;
+    }
+
+    const validPeriodKeys = new Set(["p1","p2","p3","p4","p5","p6","p7"]);
+    const errors = [];
+    const newSlots = [];
+
+    lines.slice(1).forEach((line, i) => {
+      const cols = line.split(",").map((c) => c.trim().replace(/^["']|["']$/g, ""));
+      const [date, periodKey, capacityStr, location = "", note = ""] = cols;
+      const rowNum = i + 2;
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        errors.push(`行${rowNum}: 日付が無効です（YYYY-MM-DD形式）`);
+        return;
+      }
+      if (!periodKey || !validPeriodKeys.has(periodKey)) {
+        errors.push(`行${rowNum}: 時限が無効です（p1〜p7）`);
+        return;
+      }
+      const capacity = parseInt(capacityStr, 10);
+      if (isNaN(capacity) || capacity < 1) {
+        errors.push(`行${rowNum}: 定員が無効です（1以上の整数）`);
+        return;
+      }
+      newSlots.push({
+        studyId: selectedStudyId,
+        date,
+        periodKey,
+        capacity,
+        confirmedCount: 0,
+        isPublished: false,
+        location: location || "",
+        note: note || "",
+      });
+    });
+
+    if (errors.length > 0) {
+      showToast(`CSVエラー:\n${errors.slice(0, 5).join("\n")}${errors.length > 5 ? `\n他${errors.length - 5}件` : ""}`, "error");
+      return;
+    }
+    if (newSlots.length === 0) {
+      showToast("インポートできる行がありませんでした。", "error");
+      return;
+    }
+
+    try {
+      if (firebaseReady) {
+        const batchSize = 400;
+        for (let i = 0; i < newSlots.length; i += batchSize) {
+          const batch = writeBatch(firestore);
+          newSlots.slice(i, i + batchSize).forEach((slot) => {
+            const newRef = doc(collection(firestore, "slots"));
+            batch.set(newRef, { ...slot, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+          });
+          await batch.commit();
+        }
+      } else {
+        setSlots((prev) => sortSlots([
+          ...prev,
+          ...newSlots.map((slot) => ({ id: crypto.randomUUID(), ...slot })),
+        ]));
+      }
+      showToast(`${newSlots.length}件の日程枠をインポートしました（すべて非公開）。`, "success");
+    } catch (error) {
+      console.error(error);
+      showToast("インポートに失敗しました。", "error");
     }
   }
 
@@ -7588,6 +7724,7 @@ export default function ExperimentParticipantScheduler() {
             setBulkNote={setBulkNote}
             bulkActionLoading={bulkActionLoading}
             onBulkUpdateNote={handleBulkUpdateNote}
+            onImportSlotsCSV={handleImportSlotsCSV}
             onBulkPublish={() => handleBulkPublishState(true)}
             onBulkUnpublish={() => handleBulkPublishState(false)}
             onBulkDelete={handleBulkDelete}

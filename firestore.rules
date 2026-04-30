@@ -16,7 +16,6 @@ service cloud.firestore {
         && request.auth.token.email != null
         && request.auth.token.email in [
           "is0611xi@ed.ritsumei.ac.jp",
-          "kuuma0423@gmail.com"
         ];
     }
 
@@ -411,6 +410,17 @@ service cloud.firestore {
         && request.resource.data.affiliation is string
         && request.resource.data.contactEmail is string
         && request.resource.data.status == "pending";
+
+      // 本人がプロフィール（name・affiliation・contactEmail）を更新可能
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "name", "affiliation", "contactEmail", "updatedAt"
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.affiliation is string
+        && request.resource.data.contactEmail is string;
 
       // スーパー管理者のみ更新可能（承認・拒否）
       allow update: if isAdmin()

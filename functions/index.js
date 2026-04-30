@@ -2109,3 +2109,34 @@ exports.notifyAdminOnNewResearcher = onDocumentCreated("researchers/{uid}", asyn
     html,
   });
 });
+
+exports.propagateResearcherContactEmail = onDocumentUpdated("researchers/{uid}", async (event) => {
+  const before = event.data?.before?.data();
+  const after = event.data?.after?.data();
+  if (!before || !after) return;
+  if (before.contactEmail === after.contactEmail) return;
+
+  const ownerEmail = (after.email || "").toLowerCase();
+  if (!ownerEmail) return;
+
+  const studiesSnap = await db.collection("studies").where("ownerEmail", "==", ownerEmail).get();
+  if (studiesSnap.empty) return;
+
+  const batches = [];
+  let batch = db.batch();
+  let count = 0;
+
+  studiesSnap.forEach((docSnap) => {
+    batch.update(docSnap.ref, {
+      contactEmail: after.contactEmail,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    count++;
+    if (count % 400 === 0) {
+      batches.push(batch.commit());
+      batch = db.batch();
+    }
+  });
+  batches.push(batch.commit());
+  await Promise.all(batches);
+});
