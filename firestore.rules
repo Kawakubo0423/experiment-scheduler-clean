@@ -429,8 +429,8 @@ service cloud.firestore {
         ])
         && request.resource.data.status in ["approved", "rejected", "pending"];
 
-      // スーパー管理者のみ削除可能
-      allow delete: if isAdmin();
+      // 本人または スーパー管理者が削除可能
+      allow delete: if (signedIn() && request.auth.uid == uid) || isAdmin();
     }
 
     // ─────────────────────────────────────────────────

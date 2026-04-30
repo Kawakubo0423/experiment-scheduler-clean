@@ -7507,39 +7507,13 @@ export default function ExperimentParticipantScheduler() {
   }
 
   function navigateToStudies() {
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("study");
-      url.searchParams.delete("request");
-      url.searchParams.delete("token");
-      url.searchParams.delete("action");
-      window.history.replaceState({}, "", url.toString());
-      window.setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
-    }
-    setPage("studies");
+    window.location.href = "/studies";
   }
 
   function openStudyReservation(study) {
     const safeStudy = study ? normalizeStudyInfo(study, study.id || DEFAULT_STUDY_ID) : activeStudy;
     const studyId = normalizeStudyId(safeStudy?.id || DEFAULT_STUDY_ID) || DEFAULT_STUDY_ID;
-
-    setSelectedStudyId(studyId);
-    setSelectedDate("");
-    setParticipantForm((prev) => ({ ...prev, preferredSlotIds: [] }));
-
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.set("study", studyId);
-      url.searchParams.delete("request");
-      url.searchParams.delete("token");
-      url.searchParams.delete("action");
-      window.history.pushState({}, "", url.toString());
-    }
-
-    setPage("participant");
-    if (typeof window !== "undefined") {
-      window.setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
-    }
+    window.location.href = `/study/${encodeURIComponent(studyId)}`;
   }
 
   function selectStudyScope(studyId) {
