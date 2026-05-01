@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useState, Suspense } from "react";
+import React, { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, onSnapshot, updateDoc, serverTimestamp } from "firebase/firestore";
 import { firestore, firebaseReady } from "@/app/lib/firebase";
 import { PERIOD_MAP } from "@/app/lib/constants";
 import { formatJapaneseDate } from "@/app/lib/date-utils";
@@ -29,6 +29,11 @@ function ResponseContent() {
   const [submitting, setSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState("");
   const [toast, setToast] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [msgLoading, setMsgLoading] = useState(false);
+  const [msgText, setMsgText] = useState("");
+  const [msgSending, setMsgSending] = useState(false);
+  const msgBottomRef = useRef(null);
 
   function showToast(message, tone = "info") {
     setToast({ message, tone });
@@ -109,6 +114,47 @@ function ResponseContent() {
       showToast("送信に失敗しました。", "error");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!firebaseReady || !token) return;
+    setMsgLoading(true);
+    const unsub = onSnapshot(
+      collection(firestore, "participantResponses", token, "messages"),
+      (snap) => {
+        const msgs = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+        setMessages(msgs);
+        setMsgLoading(false);
+      },
+      () => setMsgLoading(false)
+    );
+    return () => unsub();
+  }, [token]);
+
+  useEffect(() => {
+    if (!msgLoading) msgBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, msgLoading]);
+
+  async function handleSendMessage() {
+    if (!msgText.trim() || !token || msgSending) return;
+    if (!firebaseReady) return;
+    setMsgSending(true);
+    try {
+      await addDoc(collection(firestore, "participantResponses", token, "messages"), {
+        text: msgText.trim(),
+        sender: "participant",
+        senderLabel: requestItem?.name || "参加者",
+        createdAt: serverTimestamp(),
+      });
+      setMsgText("");
+    } catch (err) {
+      console.error(err);
+      showToast("送信に失敗しました。", "error");
+    } finally {
+      setMsgSending(false);
     }
   }
 
@@ -242,6 +288,63 @@ function ResponseContent() {
               </div>
             </Card>
           </div>
+        ) : null}
+
+        {!loading && !error && requestItem && requestItem.participantConfirmationStatus !== "invalid" ? (
+          <Card className="p-6">
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-900">管理者へのメッセージ</h2>
+                <p className="mt-2 text-sm leading-7 text-slate-600">
+                  日程調整の相談など、管理者に直接メッセージを送ることができます。
+                </p>
+              </div>
+
+              <div className="min-h-[80px] max-h-80 overflow-y-auto space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                {msgLoading ? (
+                  <div className="py-4 text-center text-sm text-slate-400">読み込み中...</div>
+                ) : messages.length === 0 ? (
+                  <div className="py-4 text-center text-sm text-slate-400">まだメッセージはありません。</div>
+                ) : (
+                  messages.map((msg) => (
+                    <div key={msg.id} className={classNames("flex", msg.sender === "participant" ? "justify-end" : "justify-start")}>
+                      <div className={classNames(
+                        "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-6",
+                        msg.sender === "participant"
+                          ? "bg-teal-600 text-white"
+                          : "border border-slate-200 bg-white text-slate-800"
+                      )}>
+                        <div className="mb-0.5 text-[11px] opacity-70">
+                          {msg.senderLabel || (msg.sender === "participant" ? "あなた" : "管理者")}
+                        </div>
+                        <div className="whitespace-pre-line">{msg.text}</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+                <div ref={msgBottomRef} />
+              </div>
+
+              <div className="flex gap-2">
+                <textarea
+                  value={msgText}
+                  onChange={(e) => setMsgText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleSendMessage(); }}
+                  placeholder="メッセージを入力... (Ctrl+Enter で送信)"
+                  rows={2}
+                  className="flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-teal-400"
+                />
+                <button
+                  type="button"
+                  onClick={handleSendMessage}
+                  disabled={!msgText.trim() || msgSending}
+                  className="self-end rounded-2xl bg-teal-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-teal-500 disabled:opacity-40"
+                >
+                  {msgSending ? "送信中..." : "送信"}
+                </button>
+              </div>
+            </div>
+          </Card>
         ) : null}
       </div>
     </div>

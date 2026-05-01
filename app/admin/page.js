@@ -2004,7 +2004,7 @@ function AdminPage({
       icon: <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>,
     },
     {
-      key: "slots", label: "枠管理", keys: ["slots"],
+      key: "slots", label: "日程管理", keys: ["slots"],
       icon: <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>,
     },
     {
@@ -2158,11 +2158,11 @@ function AdminPage({
                   {adminTab === "slots" ? "SCHEDULE MANAGEMENT" : "REQUESTS"}
                 </div>
                 <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">
-                  {adminTab === "slots" ? "枠管理" : "申込管理"}
+                  {adminTab === "slots" ? "日程管理" : "申込管理"}
                 </h1>
                 {selectedOperationStudy ? (
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <span className="truncate text-sm text-slate-500">{selectedOperationStudy.title || "無題の募集"}</span>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-base font-semibold text-slate-800">{selectedOperationStudy.title || "無題の募集"}</span>
                     <StatusBadge tone={selectedOperationStudy.isPublished ? "emerald" : "slate"}>
                       {selectedOperationStudy.isPublished ? "公開中" : "非公開"}
                     </StatusBadge>
@@ -3443,6 +3443,13 @@ function AdminPage({
                         </button>
                       </div>
                     </div>
+                    {request.participantResponseToken ? (
+                      <RequestMessageThread
+                        key={request.participantResponseToken}
+                        token={request.participantResponseToken}
+                        adminLabel={authUser?.displayName || authUser?.email || "管理者"}
+                      />
+                    ) : null}
                     </div>
                   </div>
                   </React.Fragment>
@@ -3924,6 +3931,113 @@ function AdminLoginPage({
 }
 
 
+
+function RequestMessageThread({ token, adminLabel }) {
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [replyText, setReplyText] = useState("");
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    if (!firebaseReady || !token) {
+      setLoading(false);
+      return;
+    }
+    const unsub = onSnapshot(
+      collection(firestore, "participantResponses", token, "messages"),
+      (snap) => {
+        const msgs = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+        setMessages(msgs);
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return () => unsub();
+  }, [token]);
+
+  useEffect(() => {
+    if (!loading) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  async function handleSend() {
+    if (!replyText.trim() || !token || sending) return;
+    setSending(true);
+    try {
+      await addDoc(collection(firestore, "participantResponses", token, "messages"), {
+        text: replyText.trim(),
+        sender: "admin",
+        senderLabel: adminLabel || "管理者",
+        createdAt: serverTimestamp(),
+      });
+      setReplyText("");
+    } catch (err) {
+      console.error("Message send error:", err);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/40">
+      <div className="flex items-center gap-2 border-b border-indigo-100 px-4 py-3">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 16c0 1.1-.9 2-2 2H7l-4 4V6c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v10z" />
+        </svg>
+        <div className="text-sm font-semibold text-indigo-900">参加者とのメッセージ</div>
+        {messages.length > 0 ? (
+          <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">{messages.length}件</span>
+        ) : null}
+      </div>
+      <div className="min-h-[60px] max-h-60 overflow-y-auto space-y-3 px-4 py-3">
+        {loading ? (
+          <div className="py-2 text-center text-xs text-slate-400">読み込み中...</div>
+        ) : messages.length === 0 ? (
+          <div className="py-2 text-center text-xs text-slate-400">まだメッセージはありません。</div>
+        ) : (
+          messages.map((msg) => (
+            <div key={msg.id} className={classNames("flex", msg.sender === "admin" ? "justify-end" : "justify-start")}>
+              <div className={classNames(
+                "max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-6",
+                msg.sender === "admin"
+                  ? "bg-slate-900 text-white"
+                  : "border border-slate-200 bg-white text-slate-800"
+              )}>
+                <div className="mb-0.5 text-[11px] opacity-60">
+                  {msg.senderLabel || (msg.sender === "admin" ? "管理者" : "参加者")}
+                </div>
+                <div className="whitespace-pre-line">{msg.text}</div>
+              </div>
+            </div>
+          ))
+        )}
+        <div ref={bottomRef} />
+      </div>
+      <div className="border-t border-indigo-100 p-3">
+        <div className="flex gap-2">
+          <textarea
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleSend(); }}
+            placeholder="返信を入力... (Ctrl+Enter で送信)"
+            rows={2}
+            className="flex-1 resize-none rounded-2xl border border-indigo-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-400"
+          />
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={!replyText.trim() || sending}
+            className="self-end rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-40"
+          >
+            {sending ? "送信中" : "送信"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminDashboard() {
   const [slots, setSlots] = useState([]);
