@@ -3447,7 +3447,7 @@ function AdminPage({
                       <RequestMessageThread
                         key={request.participantResponseToken}
                         token={request.participantResponseToken}
-                        adminLabel={authUser?.displayName || authUser?.email || "管理者"}
+                        adminLabel={adminEmail || "管理者"}
                       />
                     ) : null}
                     </div>

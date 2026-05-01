@@ -25,7 +25,6 @@ function ResponseContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [requestItem, setRequestItem] = useState(null);
-  const [responseNote, setResponseNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState("");
   const [toast, setToast] = useState(null);
@@ -41,7 +40,7 @@ function ResponseContent() {
   }
 
   useEffect(() => {
-    document.title = "変更希望ページ | LabLink";
+    document.title = "連絡・確認ページ | LabLink";
   }, []);
 
   useEffect(() => {
@@ -70,7 +69,6 @@ function ResponseContent() {
         }
         const data = { id: snap.id, ...snap.data() };
         setRequestItem(data);
-        setResponseNote(data.participantResponseNote || "");
         if (data.participantConfirmationStatus === "invalid") {
           setError("すでにこの申し込みは無効になっています。管理者側で申込が削除された、または現在は利用できない状態です。あらためて参加を希望する場合は、予約サイトから再び日程を申し込んでください。");
         }
@@ -85,37 +83,6 @@ function ResponseContent() {
 
     return () => { cancelled = true; };
   }, [token]);
-
-  async function handleSubmitChangeRequest() {
-    if (!firebaseReady || !token) return;
-    if (requestItem?.participantConfirmationStatus === "invalid") {
-      setError("すでにこの申し込みは無効になっています。変更希望は登録できません。");
-      showToast("この申し込みは無効です。", "error");
-      return;
-    }
-    try {
-      setSubmitting(true);
-      await updateDoc(doc(firestore, "participantResponses", token), {
-        participantConfirmationStatus: "change_requested",
-        participantResponseNote: responseNote.trim(),
-        participantRespondedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      setRequestItem((prev) => ({ ...prev, participantConfirmationStatus: "change_requested", participantResponseNote: responseNote.trim() }));
-      setSubmitMessage("変更希望を送信しました。管理者が内容を確認し、あらためてご連絡します。");
-      showToast("変更希望を受け付けました。", "success");
-    } catch (err) {
-      console.error(err);
-      if (err?.code === "permission-denied") {
-        setError("すでにこの申し込みは無効になっている可能性があります。最新のメールから開き直すか、あらためて参加を希望する場合は、予約サイトから再び日程を申し込んでください。");
-      } else {
-        setError("送信に失敗しました。時間をおいて再度お試しください。");
-      }
-      showToast("送信に失敗しました。", "error");
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   useEffect(() => {
     if (!firebaseReady || !token) return;
@@ -139,8 +106,7 @@ function ResponseContent() {
   }, [messages, msgLoading]);
 
   async function handleSendMessage() {
-    if (!msgText.trim() || !token || msgSending) return;
-    if (!firebaseReady) return;
+    if (!msgText.trim() || !token || msgSending || !firebaseReady) return;
     setMsgSending(true);
     try {
       await addDoc(collection(firestore, "participantResponses", token, "messages"), {
@@ -158,6 +124,51 @@ function ResponseContent() {
     }
   }
 
+  async function handleSubmitChangeRequest() {
+    if (!firebaseReady || !token) return;
+    if (!msgText.trim()) {
+      showToast("メッセージを入力してください。", "error");
+      return;
+    }
+    if (requestItem?.participantConfirmationStatus === "invalid") {
+      showToast("この申し込みは無効です。", "error");
+      return;
+    }
+    try {
+      setSubmitting(true);
+      await addDoc(collection(firestore, "participantResponses", token, "messages"), {
+        text: msgText.trim(),
+        sender: "participant",
+        senderLabel: requestItem?.name || "参加者",
+        isChangeRequest: true,
+        createdAt: serverTimestamp(),
+      });
+      await updateDoc(doc(firestore, "participantResponses", token), {
+        participantConfirmationStatus: "change_requested",
+        participantResponseNote: msgText.trim(),
+        participantRespondedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setRequestItem((prev) => ({
+        ...prev,
+        participantConfirmationStatus: "change_requested",
+        participantResponseNote: msgText.trim(),
+      }));
+      setMsgText("");
+      setSubmitMessage("変更希望を申請しました。管理者が確認後、あらためてご連絡します。");
+      showToast("変更希望を受け付けました。", "success");
+    } catch (err) {
+      console.error(err);
+      if (err?.code === "permission-denied") {
+        setError("すでにこの申し込みは無効になっている可能性があります。最新のメールから開き直すか、あらためて参加を希望する場合は、予約サイトから再び日程を申し込んでください。");
+      } else {
+        showToast("送信に失敗しました。時間をおいて再度お試しください。", "error");
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const confirmationStatus = requestItem?.participantConfirmationStatus || "pending";
   const assignedSlot = requestItem ? {
     date: requestItem.assignedDate || "",
@@ -166,11 +177,12 @@ function ResponseContent() {
     note: requestItem.assignedNote || "",
   } : null;
   const hasAssignedSlot = Boolean(assignedSlot?.date && assignedSlot?.periodKey);
+  const isInvalid = requestItem?.participantConfirmationStatus === "invalid";
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#f8fafc_38%,_#eef2ff_100%)] text-slate-900">
       <ActionToast toast={toast} onClose={() => setToast(null)} />
-      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
         <ResponsePageHeader />
 
         {loading ? <LoadingCard title="確認情報を読み込んでいます..." /> : null}
@@ -190,161 +202,176 @@ function ResponseContent() {
 
         {!loading && !error && requestItem ? (
           <div className="space-y-5">
-            <Card className="p-6">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="text-xl font-semibold text-slate-900">{requestItem.name || "参加者様"}</div>
-                <StatusBadge tone={getParticipantConfirmationTone(confirmationStatus)}>{getParticipantConfirmationLabel(confirmationStatus)}</StatusBadge>
-              </div>
-              <div className="mt-4 space-y-2 text-sm text-slate-600">
-                <div><span className="font-medium text-slate-800">登録メール:</span> {requestItem.email || "未登録"}</div>
-                <div><span className="font-medium text-slate-800">所属・学年:</span> {requestItem.affiliation || "未入力"}</div>
-              </div>
 
-              <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                <div className="text-sm font-medium text-slate-700">現在の確定日程</div>
-                <div className="mt-3 text-base font-semibold text-slate-900">
+            {/* ── 申込情報カード ── */}
+            <Card className="overflow-hidden p-0">
+              <div className={classNames(
+                "h-1.5 w-full",
+                confirmationStatus === "change_requested"
+                  ? "bg-gradient-to-r from-rose-400 to-orange-400"
+                  : confirmationStatus === "confirmed"
+                  ? "bg-gradient-to-r from-emerald-400 to-teal-400"
+                  : "bg-gradient-to-r from-teal-400 to-indigo-400"
+              )} />
+              <div className="p-6">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">MY APPLICATION</div>
+                    <div className="mt-2 text-2xl font-bold text-slate-900">{requestItem.name || "参加者様"}</div>
+                  </div>
+                  <StatusBadge tone={getParticipantConfirmationTone(confirmationStatus)}>
+                    {getParticipantConfirmationLabel(confirmationStatus)}
+                  </StatusBadge>
+                </div>
+
+                <div className="mt-5">
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">確定日程</div>
                   {hasAssignedSlot ? (
-                    <>
-                      {formatJapaneseDate(assignedSlot.date)} / {PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}
-                      {assignedSlot.location ? " / " + assignedSlot.location : ""}
-                    </>
+                    <div className="mt-2 rounded-2xl border border-teal-100 bg-teal-50/70 p-4">
+                      <div className="text-base font-bold text-slate-900">
+                        {formatJapaneseDate(assignedSlot.date)}
+                        <span className="mx-1.5 font-normal text-slate-400">/</span>
+                        {PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}
+                        {assignedSlot.location ? (
+                          <span className="ml-1 font-normal text-slate-600"> / {assignedSlot.location}</span>
+                        ) : null}
+                      </div>
+                      {assignedSlot.note ? (
+                        <div className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-500">{assignedSlot.note}</div>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => downloadIcsFile("schedule.ics", [{ slot: assignedSlot, summary: "実験参加", uid: `lablink-${requestItem?.id || "unknown"}@lablink` }])}
+                        className="mt-3 inline-flex items-center gap-1.5 rounded-2xl border border-teal-200 bg-white px-4 py-2 text-sm font-medium text-teal-700 transition hover:bg-teal-50"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        カレンダーに追加（.ics）
+                      </button>
+                    </div>
                   ) : (
-                    "現在、確定済みの日程はありません。"
+                    <div className="mt-2 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      まだ日程は確定していません。管理者が確認後、ご連絡します。
+                    </div>
                   )}
                 </div>
-                {assignedSlot?.note ? <div className="mt-2 whitespace-pre-line text-sm text-slate-500">{assignedSlot.note}</div> : null}
-                {hasAssignedSlot ? (
-                  <button
-                    type="button"
-                    onClick={() => downloadIcsFile("schedule.ics", [{ slot: assignedSlot, summary: "実験参加", uid: `lablink-${requestItem?.id || "unknown"}@lablink` }])}
-                    className="mt-4 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-medium text-teal-700 transition hover:bg-teal-100"
-                  >
-                    カレンダーに追加（.ics）
-                  </button>
+
+                <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm text-slate-500">
+                  <div><span className="font-medium text-slate-700">メール:</span> {requestItem.email || "—"}</div>
+                  <div><span className="font-medium text-slate-700">所属・学年:</span> {requestItem.affiliation || "—"}</div>
+                </div>
+
+                {requestItem.participantResponseNote ? (
+                  <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm">
+                    <div className="text-xs font-semibold text-slate-400">直近の変更希望の内容</div>
+                    <div className="mt-1 whitespace-pre-line leading-6 text-slate-600">{requestItem.participantResponseNote}</div>
+                  </div>
+                ) : null}
+
+                {submitMessage ? (
+                  <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800">
+                    {submitMessage}
+                  </div>
                 ) : null}
               </div>
-
-              {submitMessage ? (
-                <div className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm leading-7 text-emerald-800">{submitMessage}</div>
-              ) : null}
-
-              {requestItem.participantResponseNote ? (
-                <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-4">
-                  <div className="text-sm font-medium text-slate-700">直近の連絡内容</div>
-                  <div className="mt-2 whitespace-pre-line text-sm leading-7 text-slate-600">{requestItem.participantResponseNote}</div>
-                </div>
-              ) : null}
             </Card>
 
-            <Card className="p-6">
-              <div className="space-y-5">
-                <div>
-                  <h2 className="text-xl font-semibold text-slate-900">変更希望を送信する</h2>
-                  <p className="mt-2 text-sm leading-7 text-slate-600">
-                    参加が難しい場合や再調整を希望する場合は、理由や参加可能な日時を入力して送信してください。
+            {/* ── 日程確認の案内 ── */}
+            {hasAssignedSlot && !isInvalid ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900">
+                <span className="font-semibold">日程に問題がない場合</span>は、このページではなくメール内の「この日程で確認しました」ボタンから確認済みにしてください。
+              </div>
+            ) : null}
+
+            {/* ── 管理者に連絡するカード ── */}
+            {!isInvalid ? (
+              <Card className="overflow-hidden p-0">
+                <div className="border-b border-slate-100 px-6 py-5">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">MESSAGE</div>
+                  <h2 className="mt-1 text-lg font-bold text-slate-900">管理者に連絡する</h2>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    日程の変更・質問など、管理者に直接メッセージを送れます。
+                    日程を変更したい場合は「<span className="font-medium text-rose-600">変更希望として送信</span>」を使ってください。
                   </p>
                 </div>
 
-                <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-900">
-                  日程に問題がない場合は、このページではなく、メール内の青い「この日程で確認しました」ボタンから確認済みにしてください。
+                {/* チャットエリア */}
+                <div className="min-h-[80px] max-h-72 overflow-y-auto bg-slate-50/60 px-6 py-4">
+                  {msgLoading ? (
+                    <div className="py-4 text-center text-sm text-slate-400">読み込み中...</div>
+                  ) : messages.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-slate-400">まだメッセージはありません。</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {messages.map((msg) => (
+                        <div key={msg.id} className={classNames("flex", msg.sender === "participant" ? "justify-end" : "justify-start")}>
+                          <div className={classNames(
+                            "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-6",
+                            msg.sender === "participant"
+                              ? "bg-teal-600 text-white"
+                              : "border border-slate-200 bg-white text-slate-800"
+                          )}>
+                            <div className="mb-0.5 flex items-center gap-1.5 text-[11px] opacity-70">
+                              <span>{msg.senderLabel || (msg.sender === "participant" ? "あなた" : "管理者")}</span>
+                              {msg.isChangeRequest ? (
+                                <span className={classNames(
+                                  "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                                  msg.sender === "participant" ? "bg-white/20 text-white" : "bg-rose-100 text-rose-700"
+                                )}>変更希望</span>
+                              ) : null}
+                            </div>
+                            <div className="whitespace-pre-line">{msg.text}</div>
+                          </div>
+                        </div>
+                      ))}
+                      <div ref={msgBottomRef} />
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-4 rounded-3xl border border-rose-200 bg-rose-50/60 p-5">
-                  <div>
-                    <h3 className="text-lg font-semibold text-rose-950">変更希望</h3>
-                    <p className="mt-2 text-sm leading-7 text-rose-900/80">
-                      できるだけ具体的に、参加できない理由や参加可能な日時を記入してください。
-                    </p>
-                  </div>
-
-                  <label className="block text-sm">
-                    <div className="mb-1.5 text-rose-900">変更内容・ご都合</div>
-                    <textarea
-                      value={responseNote}
-                      onChange={(e) => setResponseNote(e.target.value)}
-                      placeholder="例）この時間は授業があるため参加できません。来週火曜3〜5限なら参加できます。"
-                      className="min-h-36 w-full rounded-2xl border border-rose-200 bg-white px-4 py-3 outline-none transition focus:border-rose-400"
-                    />
-                  </label>
-
-                  <div className="flex flex-wrap gap-3">
+                {/* 入力エリア */}
+                <div className="border-t border-slate-100 px-6 py-5">
+                  <textarea
+                    value={msgText}
+                    onChange={(e) => setMsgText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleSendMessage(); }}
+                    placeholder="メッセージを入力... (Ctrl+Enter で送信)"
+                    rows={3}
+                    className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-teal-400"
+                  />
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={handleSubmitChangeRequest}
-                      disabled={submitting || !hasAssignedSlot}
-                      className="rounded-2xl bg-rose-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-rose-500 disabled:opacity-60"
+                      onClick={handleSendMessage}
+                      disabled={!msgText.trim() || msgSending}
+                      className="rounded-2xl bg-teal-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-teal-500 disabled:opacity-40"
                     >
-                      {submitting ? "送信中..." : confirmationStatus === "change_requested" ? "もう一度、変更希望を送信する" : "変更希望を送信する"}
+                      {msgSending ? "送信中..." : "送信"}
                     </button>
+                    {hasAssignedSlot ? (
+                      <button
+                        type="button"
+                        onClick={handleSubmitChangeRequest}
+                        disabled={!msgText.trim() || submitting}
+                        className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-100 disabled:opacity-40"
+                      >
+                        {submitting ? "送信中..." : "変更希望として送信"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => router.push("/")}
-                      className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      className="ml-auto rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
                     >
                       予約ページへ戻る
                     </button>
                   </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
+            ) : null}
+
           </div>
-        ) : null}
-
-        {!loading && !error && requestItem && requestItem.participantConfirmationStatus !== "invalid" ? (
-          <Card className="p-6">
-            <div className="space-y-4">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">管理者へのメッセージ</h2>
-                <p className="mt-2 text-sm leading-7 text-slate-600">
-                  日程調整の相談など、管理者に直接メッセージを送ることができます。
-                </p>
-              </div>
-
-              <div className="min-h-[80px] max-h-80 overflow-y-auto space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                {msgLoading ? (
-                  <div className="py-4 text-center text-sm text-slate-400">読み込み中...</div>
-                ) : messages.length === 0 ? (
-                  <div className="py-4 text-center text-sm text-slate-400">まだメッセージはありません。</div>
-                ) : (
-                  messages.map((msg) => (
-                    <div key={msg.id} className={classNames("flex", msg.sender === "participant" ? "justify-end" : "justify-start")}>
-                      <div className={classNames(
-                        "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-6",
-                        msg.sender === "participant"
-                          ? "bg-teal-600 text-white"
-                          : "border border-slate-200 bg-white text-slate-800"
-                      )}>
-                        <div className="mb-0.5 text-[11px] opacity-70">
-                          {msg.senderLabel || (msg.sender === "participant" ? "あなた" : "管理者")}
-                        </div>
-                        <div className="whitespace-pre-line">{msg.text}</div>
-                      </div>
-                    </div>
-                  ))
-                )}
-                <div ref={msgBottomRef} />
-              </div>
-
-              <div className="flex gap-2">
-                <textarea
-                  value={msgText}
-                  onChange={(e) => setMsgText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleSendMessage(); }}
-                  placeholder="メッセージを入力... (Ctrl+Enter で送信)"
-                  rows={2}
-                  className="flex-1 resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-teal-400"
-                />
-                <button
-                  type="button"
-                  onClick={handleSendMessage}
-                  disabled={!msgText.trim() || msgSending}
-                  className="self-end rounded-2xl bg-teal-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-teal-500 disabled:opacity-40"
-                >
-                  {msgSending ? "送信中..." : "送信"}
-                </button>
-              </div>
-            </div>
-          </Card>
         ) : null}
       </div>
     </div>
