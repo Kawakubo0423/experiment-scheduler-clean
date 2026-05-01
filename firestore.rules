@@ -384,7 +384,7 @@ service cloud.firestore {
         ])
         && validStudyData();
 
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isStudyOwner(studyId);
     }
 
     // ─────────────────────────────────────────────────

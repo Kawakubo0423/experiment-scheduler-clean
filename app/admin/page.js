@@ -978,7 +978,7 @@ function AdminStudyManager({
                       <StatusBadge tone={study.isPublished ? "emerald" : "slate"}>{study.isPublished ? "公開中" : "非公開"}</StatusBadge>
                       <StatusBadge tone={getStudyStatusTone(study.status)}>{getStudyStatusLabel(study.status)}</StatusBadge>
                     </div>
-                    <h3 className="mt-4 text-lg font-bold text-slate-950">{study.title}</h3>
+                    <h3 className="mt-4 break-words text-lg font-bold leading-snug text-slate-950">{study.title}</h3>
                   </div>
                   <button
                     type="button"
@@ -1309,6 +1309,11 @@ function AdminDashboardPanel({
   const pendingResearchers = isSuperAdmin ? (researchers || []).filter((r) => r.status === "pending").length : 0;
   const hasUrgent = changeRequested > 0 || stats.pending > 0 || pendingResearchers > 0;
 
+  const step1Done = adminStudies.length > 0;
+  const step2Done = sortedSlots.length > 0;
+  const step3Done = publishedSlotCount > 0;
+  const showGettingStarted = !(step1Done && step2Done && step3Done);
+
   const statItems = [
     { label: "総申込数", value: stats.requestCount, unit: "件", tone: "slate", onClick: () => setAdminTab("requests") },
     { label: "未確定", value: stats.pending, unit: "件", tone: stats.pending > 0 ? "amber" : "slate", onClick: () => setAdminTab("requests") },
@@ -1342,6 +1347,85 @@ function AdminDashboardPanel({
           </button>
         ))}
       </div>
+
+      {showGettingStarted && (
+        <Card className="overflow-hidden p-0 shadow-none">
+          <div className="border-b border-slate-100 bg-gradient-to-r from-teal-50 to-blue-50 px-5 py-4 sm:px-6">
+            <div className="text-xs font-semibold tracking-[0.18em] text-teal-700">GETTING STARTED</div>
+            <h2 className="mt-1 text-lg font-bold text-slate-900">はじめる 3ステップ</h2>
+            <p className="mt-0.5 text-sm text-slate-500">以下の手順で実験募集を公開できます。完了したステップは自動的にチェックされます。</p>
+          </div>
+          <div className="grid divide-y divide-slate-100 sm:divide-x sm:divide-y-0 sm:grid-cols-3">
+            {[
+              {
+                step: "01",
+                done: step1Done,
+                title: "募集を作成する",
+                desc: "実験のタイトル・概要・謝礼・担当者などの基本情報を登録します。",
+                action: "募集を作成する",
+                onClick: () => setAdminTab("studies"),
+                tone: "teal",
+              },
+              {
+                step: "02",
+                done: step2Done,
+                title: "候補日程を追加する",
+                desc: "参加者に提示する日程枠（日付・時限・定員）を追加します。",
+                action: "日程を追加する",
+                onClick: () => setAdminTab("slots"),
+                tone: "blue",
+              },
+              {
+                step: "03",
+                done: step3Done,
+                title: "公開して募集開始",
+                desc: "日程枠を公開状態にすると参加者の予約ページに表示されます。",
+                action: "日程を公開する",
+                onClick: () => setAdminTab("slots"),
+                tone: "emerald",
+              },
+            ].map(({ step, done, title, desc, action, onClick, tone }) => {
+              const toneAccent = { teal: "text-teal-600", blue: "text-blue-600", emerald: "text-emerald-600" }[tone];
+              const toneBtnActive = { teal: "bg-teal-600 hover:bg-teal-500", blue: "bg-blue-600 hover:bg-blue-500", emerald: "bg-emerald-600 hover:bg-emerald-500" }[tone];
+              return (
+                <div key={step} className={classNames("relative flex flex-col gap-3 p-5 sm:p-6", done ? "bg-slate-50/60" : "bg-white")}>
+                  <div className="flex items-center gap-3">
+                    {done ? (
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100">
+                        <svg viewBox="0 0 24 24" className="h-4 w-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M5 13l4 4L19 7" />
+                        </svg>
+                      </span>
+                    ) : (
+                      <span className={classNames("flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold", {
+                        teal: "border-teal-200 text-teal-600",
+                        blue: "border-blue-200 text-blue-600",
+                        emerald: "border-emerald-200 text-emerald-600",
+                      }[tone])}>
+                        {step}
+                      </span>
+                    )}
+                    <span className={classNames("text-sm font-bold", done ? "text-slate-400 line-through" : "text-slate-900")}>{title}</span>
+                  </div>
+                  <p className="text-xs leading-5 text-slate-500">{desc}</p>
+                  {!done && (
+                    <button
+                      type="button"
+                      onClick={onClick}
+                      className={classNames("mt-auto rounded-2xl px-4 py-2 text-xs font-semibold text-white transition", toneBtnActive)}
+                    >
+                      {action} →
+                    </button>
+                  )}
+                  {done && (
+                    <span className="mt-auto text-xs font-semibold text-emerald-600">完了</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
         <Card className="p-5 shadow-none">
@@ -1885,12 +1969,12 @@ function AdminPage({
         backLabel={adminTab === "slots" || adminTab === "requests" ? "募集管理へ戻る" : "トップへ戻る"}
       />
       <div className="mx-auto max-w-7xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
-        <div className="mb-4 -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+        <div className="mb-4 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => setAdminTab("dashboard")}
             className={classNames(
-              "shrink-0 whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-medium transition",
+              "rounded-2xl px-4 py-2 text-sm font-medium transition",
               adminTab === "dashboard"
                 ? "bg-slate-900 text-white"
                 : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
@@ -1902,7 +1986,7 @@ function AdminPage({
             type="button"
             onClick={() => setAdminTab("studies")}
             className={classNames(
-              "shrink-0 whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-medium transition",
+              "rounded-2xl px-4 py-2 text-sm font-medium transition",
               ["studies", "study-new", "operation", "slots", "requests"].includes(adminTab)
                 ? "bg-slate-900 text-white"
                 : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
@@ -1915,7 +1999,7 @@ function AdminPage({
               type="button"
               onClick={() => setAdminTab("researchers")}
               className={classNames(
-                "relative shrink-0 whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-medium transition",
+                "relative rounded-2xl px-4 py-2 text-sm font-medium transition",
                 adminTab === "researchers"
                   ? "bg-slate-900 text-white"
                   : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
@@ -5309,12 +5393,6 @@ export default function AdminDashboard() {
             updatedAt: serverTimestamp(),
           });
         } else {
-          const existing = await getDoc(studyRef);
-          if (existing.exists()) {
-            showToast("同じ募集IDがすでにあります。もう一度作成してください。", "error");
-            return;
-          }
-
           await setDoc(studyRef, {
             ...payload,
             createdAt: serverTimestamp(),
