@@ -1291,6 +1291,237 @@ function AdminOperationSubNav({ adminTab, setAdminTab, selectedStudyTitle }) {
   );
 }
 
+function AdminDashboardPanel({
+  stats,
+  requests,
+  sortedSlots,
+  adminStudies,
+  researchers,
+  isSuperAdmin,
+  setAdminTab,
+  onSelectStudyScope,
+  exportJson,
+  resetAll,
+  onSeedSampleData,
+}) {
+  const changeRequested = requests.filter((r) => r.participantConfirmationStatus === "change_requested").length;
+  const publishedSlotCount = sortedSlots.filter((s) => s.isPublished !== false).length;
+  const pendingResearchers = isSuperAdmin ? (researchers || []).filter((r) => r.status === "pending").length : 0;
+  const hasUrgent = changeRequested > 0 || stats.pending > 0 || pendingResearchers > 0;
+
+  const statItems = [
+    { label: "総申込数", value: stats.requestCount, unit: "件", tone: "slate", onClick: () => setAdminTab("requests") },
+    { label: "未確定", value: stats.pending, unit: "件", tone: stats.pending > 0 ? "amber" : "slate", onClick: () => setAdminTab("requests") },
+    { label: "確定済み", value: stats.confirmed, unit: "件", tone: "emerald", onClick: () => setAdminTab("requests") },
+    { label: "変更希望", value: changeRequested, unit: "件", tone: changeRequested > 0 ? "rose" : "slate", onClick: () => setAdminTab("requests") },
+    { label: "公開中の枠", value: publishedSlotCount, unit: "枠", tone: "sky", onClick: () => setAdminTab("slots") },
+  ];
+
+  const toneBg = { slate: "bg-white border-slate-200", amber: "bg-amber-50 border-amber-200", emerald: "bg-emerald-50 border-emerald-200", rose: "bg-rose-50 border-rose-200", sky: "bg-sky-50 border-sky-200" };
+  const toneValue = { slate: "text-slate-950", amber: "text-amber-700", emerald: "text-emerald-700", rose: "text-rose-700", sky: "text-sky-700" };
+  const toneUnit = { slate: "text-slate-400", amber: "text-amber-400", emerald: "text-emerald-400", rose: "text-rose-400", sky: "text-sky-400" };
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+        {statItems.map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            onClick={item.onClick}
+            className={classNames(
+              "rounded-3xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md sm:p-5",
+              toneBg[item.tone]
+            )}
+          >
+            <div className="text-xs font-semibold text-slate-500">{item.label}</div>
+            <div className="mt-2 flex items-end gap-1 font-bold tracking-tight">
+              <span className={classNames("text-3xl sm:text-4xl", toneValue[item.tone])}>{item.value}</span>
+              <span className={classNames("mb-1 text-sm", toneUnit[item.tone])}>{item.unit}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
+        <Card className="p-5 shadow-none">
+          <SectionHeader eyebrow="QUICK ACTIONS" title="機能へのショートカット" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setAdminTab("studies")}
+              className="flex items-start gap-3 rounded-3xl border border-teal-100 bg-teal-50/70 p-4 text-left transition hover:bg-teal-50"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-teal-600 shadow-sm">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-900">募集ページ管理</div>
+                <p className="mt-0.5 text-xs leading-5 text-slate-500">募集情報の作成・編集・公開状態の管理</p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAdminTab("slots")}
+              className="flex items-start gap-3 rounded-3xl border border-blue-100 bg-blue-50/70 p-4 text-left transition hover:bg-blue-50"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <rect x="3" y="4" width="18" height="18" rx="2" />
+                  <path d="M16 2v4M8 2v4M3 10h18" />
+                </svg>
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-900">日程管理</div>
+                <p className="mt-0.5 text-xs leading-5 text-slate-500">候補日程の追加・調整・公開設定</p>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAdminTab("requests")}
+              className="flex items-start gap-3 rounded-3xl border border-emerald-100 bg-emerald-50/70 p-4 text-left transition hover:bg-emerald-50"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                </svg>
+              </div>
+              <div>
+                <div className="text-sm font-bold text-slate-900">申込一覧</div>
+                <p className="mt-0.5 text-xs leading-5 text-slate-500">申込者の確認・日程確定・変更対応</p>
+              </div>
+            </button>
+
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => setAdminTab("researchers")}
+                className="flex items-start gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:bg-slate-100"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-600 shadow-sm">
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <path d="M12 14l9-5-9-5-9 5 9 5z" />
+                    <path d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-slate-900">研究者管理</span>
+                    {pendingResearchers > 0 && (
+                      <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{pendingResearchers}</span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 text-xs leading-5 text-slate-500">研究者の申請承認・アカウント管理</p>
+                </div>
+              </button>
+            )}
+          </div>
+
+          {isSuperAdmin && (
+            <div className="mt-5 border-t border-slate-100 pt-5">
+              <div className="mb-3 text-xs font-semibold tracking-[0.18em] text-slate-400">BACKUP</div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={exportJson} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  JSONを書き出す
+                </button>
+                <button type="button" onClick={onSeedSampleData} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  デモ枠を追加
+                </button>
+                <button type="button" onClick={resetAll} className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">
+                  データを初期化
+                </button>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        <div className="space-y-5">
+          <Card className="p-5 shadow-none">
+            <SectionHeader eyebrow="TO-DO" title="要対応" />
+            {!hasUrgent ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">
+                現在、対応が必要な項目はありません
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {changeRequested > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab("requests")}
+                    className="flex w-full items-center justify-between rounded-2xl border border-rose-100 bg-rose-50 p-3 text-left transition hover:bg-rose-100"
+                  >
+                    <div>
+                      <div className="text-sm font-semibold text-rose-900">変更希望あり</div>
+                      <div className="mt-0.5 text-xs text-rose-600">申込一覧から対応してください</div>
+                    </div>
+                    <span className="ml-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-rose-500 text-xs font-bold text-white">
+                      {changeRequested}
+                    </span>
+                  </button>
+                )}
+                {stats.pending > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab("requests")}
+                    className="flex w-full items-center justify-between rounded-2xl border border-amber-100 bg-amber-50 p-3 text-left transition hover:bg-amber-100"
+                  >
+                    <div>
+                      <div className="text-sm font-semibold text-amber-900">未確定の申込</div>
+                      <div className="mt-0.5 text-xs text-amber-600">日程を確定してください</div>
+                    </div>
+                    <span className="ml-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white">
+                      {stats.pending}
+                    </span>
+                  </button>
+                )}
+                {pendingResearchers > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab("researchers")}
+                    className="flex w-full items-center justify-between rounded-2xl border border-sky-100 bg-sky-50 p-3 text-left transition hover:bg-sky-100"
+                  >
+                    <div>
+                      <div className="text-sm font-semibold text-sky-900">研究者申請</div>
+                      <div className="mt-0.5 text-xs text-sky-600">承認・却下してください</div>
+                    </div>
+                    <span className="ml-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white">
+                      {pendingResearchers}
+                    </span>
+                  </button>
+                )}
+              </div>
+            )}
+          </Card>
+
+          {adminStudies.length > 0 && (
+            <Card className="p-5 shadow-none">
+              <SectionHeader eyebrow="STUDIES" title="管理中の募集" />
+              <div className="space-y-2">
+                {adminStudies.map((study) => (
+                  <button
+                    key={study.id}
+                    type="button"
+                    onClick={() => { onSelectStudyScope(study.id); setAdminTab("slots"); }}
+                    className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white p-3 text-left transition hover:bg-slate-50"
+                  >
+                    <span className="mr-3 min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{study.title}</span>
+                    <StatusBadge tone={study.isPublished ? "emerald" : "slate"}>{study.isPublished ? "公開中" : "非公開"}</StatusBadge>
+                  </button>
+                ))}
+              </div>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 
 function AdminOperationLanding({
@@ -1654,24 +1885,32 @@ function AdminPage({
         backLabel={adminTab === "slots" || adminTab === "requests" ? "募集管理へ戻る" : "トップへ戻る"}
       />
       <div className="mx-auto max-w-7xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
-        {adminTab === "studies" || adminTab === "study-new" ? <AdminHero adminEmail={adminEmail} /> : null}
-
-        {isSuperAdmin && (
-          <div className="mb-4 flex gap-2">
-            <button
-              type="button"
-              onClick={() => setAdminTab("studies")}
-              className={classNames(
-                "rounded-2xl px-4 py-2 text-sm font-medium transition",
-                adminTab === "studies" || adminTab === "study-new" || adminTab === "operation" || adminTab === "slots" || adminTab === "requests" || adminTab === "dashboard"
-                  ? adminTab === "researchers"
-                    ? "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                    : "bg-slate-900 text-white"
-                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-              )}
-            >
-              募集・運営管理
-            </button>
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setAdminTab("dashboard")}
+            className={classNames(
+              "rounded-2xl px-4 py-2 text-sm font-medium transition",
+              adminTab === "dashboard"
+                ? "bg-slate-900 text-white"
+                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            )}
+          >
+            ダッシュボード
+          </button>
+          <button
+            type="button"
+            onClick={() => setAdminTab("studies")}
+            className={classNames(
+              "rounded-2xl px-4 py-2 text-sm font-medium transition",
+              ["studies", "study-new", "operation", "slots", "requests"].includes(adminTab)
+                ? "bg-slate-900 text-white"
+                : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            )}
+          >
+            募集・運営管理
+          </button>
+          {isSuperAdmin && (
             <button
               type="button"
               onClick={() => setAdminTab("researchers")}
@@ -1689,8 +1928,10 @@ function AdminPage({
                 </span>
               ) : null}
             </button>
-          </div>
-        )}
+          )}
+        </div>
+
+        {adminTab === "studies" || adminTab === "study-new" ? <AdminHero adminEmail={adminEmail} /> : null}
 
         {isLoading ? <LoadingCard title="管理データを読み込んでいます..." /> : null}
 
@@ -1713,61 +1954,19 @@ function AdminPage({
         ) : null}
 
         {adminTab === "dashboard" && (
-          <div className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-3xl bg-white p-5 shadow-sm"><div className="text-sm text-slate-500">申込件数</div><div className="mt-2 text-3xl font-semibold">{stats.requestCount}</div></div>
-              <div className="rounded-3xl bg-white p-5 shadow-sm"><div className="text-sm text-slate-500">未確定</div><div className="mt-2 text-3xl font-semibold">{stats.pending}</div></div>
-              <div className="rounded-3xl bg-white p-5 shadow-sm"><div className="text-sm text-slate-500">確定済み</div><div className="mt-2 text-3xl font-semibold">{stats.confirmed}</div></div>
-              <div className="rounded-3xl bg-white p-5 shadow-sm"><div className="text-sm text-slate-500">残り席数</div><div className="mt-2 text-3xl font-semibold">{stats.openSeats}</div></div>
-            </div>
-
-            <Card className="p-5 shadow-none">
-              <SectionHeader
-                eyebrow="GUIDE"
-                title="管理機能を目的ごとに分けています"
-                description="募集ページを作る・直す場所と、作成済み募集の日程や申込を運営する場所を分けています。"
-              />
-              <div className="grid gap-3 md:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => setAdminTab("studies")}
-                  className="rounded-3xl border border-teal-100 bg-teal-50 p-4 text-left text-sm leading-6 text-teal-900 transition hover:bg-teal-100"
-                >
-                  <div className="font-semibold">募集ページ管理</div>
-                  <p className="mt-1 text-xs leading-5">トップページに表示する募集を作成・編集し、公開状態を管理します。</p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAdminTab("operation")}
-                  className="rounded-3xl border border-blue-100 bg-blue-50 p-4 text-left text-sm leading-6 text-blue-900 transition hover:bg-blue-100"
-                >
-                  <div className="font-semibold">募集運営</div>
-                  <p className="mt-1 text-xs leading-5">対象の募集を選び、候補日程の追加や申込者の確認・確定を行います。</p>
-                </button>
-              </div>
-            </Card>
-
-            <Card className="p-5 shadow-none">
-              <SectionHeader
-                eyebrow="BACKUP"
-                title="データの保存と初期化"
-                description="個人情報を含むため、書き出しデータの取り扱いには注意してください。"
-                action={
-                  <button onClick={onSeedSampleData} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    デモ枠を追加
-                  </button>
-                }
-              />
-              <div className="flex flex-wrap gap-3">
-                <button onClick={exportJson} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                  JSONを書き出す
-                </button>
-                <button onClick={resetAll} className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">
-                  データを初期化
-                </button>
-              </div>
-            </Card>
-          </div>
+          <AdminDashboardPanel
+            stats={stats}
+            requests={requests}
+            sortedSlots={sortedSlots}
+            adminStudies={adminStudies}
+            researchers={researchers}
+            isSuperAdmin={isSuperAdmin}
+            setAdminTab={setAdminTab}
+            onSelectStudyScope={onSelectStudyScope}
+            exportJson={exportJson}
+            resetAll={resetAll}
+            onSeedSampleData={onSeedSampleData}
+          />
         )}
 
         {adminTab === "studies" && (
@@ -3434,7 +3633,7 @@ export default function AdminDashboard() {
   });
   const [selectedDate, setSelectedDate] = useState("");
   const [page, setPage] = useState("admin-login");
-  const [adminTab, setAdminTab] = useState("studies");
+  const [adminTab, setAdminTab] = useState("dashboard");
   const [authReady, setAuthReady] = useState(!firebaseReady);
   const [calendarView, setCalendarView] = useState("calendar");
   const [authUser, setAuthUser] = useState(null);

@@ -717,7 +717,7 @@ function LabLinkLandingPage({
             </div>
 
             <div className="mt-7 inline-flex rounded-full border border-teal-200 bg-teal-50/90 px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-teal-700">
-              RESEARCH PARTICIPATION PLATFORM
+              立命館大学 研究参加プラットフォーム
             </div>
 
             <h1 className="mx-auto mt-5 max-w-3xl bg-gradient-to-r from-slate-950 via-teal-800 to-blue-800 bg-clip-text text-[clamp(1.45rem,3.1vw,2.55rem)] font-semibold leading-[1.22] tracking-[-0.04em] text-transparent">
@@ -727,6 +727,8 @@ function LabLinkLandingPage({
             <p className="mx-auto mt-5 max-w-3xl text-sm leading-8 text-slate-600 sm:text-base">
               LabLinkは、大学で行われる研究実験の募集・予約・連絡をつなぐサービスです。参加者は募集中の実験を探して申し込み、実験者は募集情報や申込状況をまとめて管理できます。
             </p>
+
+            <p className="mt-3 text-xs text-slate-400">本サービスは立命館大学の研究者・学生を対象としています。</p>
 
           </div>
 
@@ -821,6 +823,13 @@ function LabLinkLandingPage({
           </div>
         </section>
       </main>
+
+      <footer className="border-t border-slate-200/60 bg-white/60 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-4 py-5 text-xs text-slate-400 sm:flex-row sm:px-6 lg:px-8">
+          <span>© {new Date().getFullYear()} LabLink — 立命館大学 研究参加プラットフォーム</span>
+          <span>本サービスは立命館大学の研究者・学生を対象としています。</span>
+        </div>
+      </footer>
     </div>
   );
 }
