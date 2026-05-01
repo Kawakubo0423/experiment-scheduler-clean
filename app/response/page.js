@@ -32,7 +32,7 @@ function ResponseContent() {
   const [msgLoading, setMsgLoading] = useState(false);
   const [msgText, setMsgText] = useState("");
   const [msgSending, setMsgSending] = useState(false);
-  const msgBottomRef = useRef(null);
+  const msgContainerRef = useRef(null);
 
   function showToast(message, tone = "info") {
     setToast({ message, tone });
@@ -102,7 +102,9 @@ function ResponseContent() {
   }, [token]);
 
   useEffect(() => {
-    if (!msgLoading) msgBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!msgLoading && msgContainerRef.current) {
+      msgContainerRef.current.scrollTop = msgContainerRef.current.scrollHeight;
+    }
   }, [messages, msgLoading]);
 
   async function handleSendMessage() {
@@ -289,15 +291,15 @@ function ResponseContent() {
               <Card className="overflow-hidden p-0">
                 <div className="border-b border-slate-100 px-6 py-5">
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">MESSAGE</div>
-                  <h2 className="mt-1 text-lg font-bold text-slate-900">管理者に連絡する</h2>
+                  <h2 className="mt-1 text-lg font-bold text-slate-900">管理者に相談する</h2>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
-                    日程の変更・質問など、管理者に直接メッセージを送れます。
+                    不明な点や相談など、気軽にメッセージを送ってください。
                     日程を変更したい場合は「<span className="font-medium text-rose-600">変更希望として送信</span>」を使ってください。
                   </p>
                 </div>
 
                 {/* チャットエリア */}
-                <div className="min-h-[80px] max-h-72 overflow-y-auto bg-slate-50/60 px-6 py-4">
+                <div ref={msgContainerRef} className="min-h-[80px] max-h-72 overflow-y-auto bg-slate-50/60 px-6 py-4">
                   {msgLoading ? (
                     <div className="py-4 text-center text-sm text-slate-400">読み込み中...</div>
                   ) : messages.length === 0 ? (
@@ -325,7 +327,6 @@ function ResponseContent() {
                           </div>
                         </div>
                       ))}
-                      <div ref={msgBottomRef} />
                     </div>
                   )}
                 </div>

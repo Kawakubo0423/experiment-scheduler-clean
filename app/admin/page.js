@@ -122,7 +122,7 @@ const ALLOWED_ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
   .filter(Boolean);
 
 const LINE_OFFICIAL_ACCOUNT_ID = process.env.NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_ID || "";
-const LINE_QR_IMAGE_URL = process.env.NEXT_PUBLIC_LINE_QR_IMAGE_URL || "";
+const LINE_QR_IMAGE_URL = process.env.NEXT_PUBLIC_LINE_QR_IMAGE_URL || "/line-qr.png";
 
 function buildParticipantResponseUrl(token, action = "confirm") {
   if (typeof window === "undefined") return "";
@@ -1133,8 +1133,8 @@ function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservat
 
   return (
     <Card className="mb-6 p-5 shadow-none">
-      {/* Mobile: full study info header */}
-      <div className="lg:hidden">
+      {/* Mobile full study info header — hidden; compact header above handles it on all screens */}
+      <div className="hidden">
         <div className="flex flex-col gap-5">
           <div className="min-w-0 flex-1">
             <div className="text-xs font-semibold tracking-[0.18em] text-teal-600">SELECTED STUDY</div>
@@ -1168,7 +1168,7 @@ function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservat
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
         <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 sm:rounded-3xl sm:p-4">
           <div className="text-[11px] font-semibold text-slate-500 sm:text-xs">申込件数</div>
           <div className="mt-1 text-xl font-bold text-slate-950 sm:mt-2 sm:text-2xl">{stats?.requestCount ?? 0}</div>
@@ -2151,7 +2151,7 @@ function AdminPage({
           </div>
         ) : null}
         {(adminTab === "slots" || adminTab === "requests") ? (
-          <div className="mb-4 hidden lg:block">
+          <div className="mb-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -3937,7 +3937,8 @@ function RequestMessageThread({ token, adminLabel }) {
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
-  const bottomRef = useRef(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
 
   useEffect(() => {
     if (!firebaseReady || !token) {
@@ -3959,8 +3960,10 @@ function RequestMessageThread({ token, adminLabel }) {
   }, [token]);
 
   useEffect(() => {
-    if (!loading) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+    if (!loading && isOpen && containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [messages, loading, isOpen]);
 
   async function handleSend() {
     if (!replyText.trim() || !token || sending) return;
@@ -3982,59 +3985,75 @@ function RequestMessageThread({ token, adminLabel }) {
 
   return (
     <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/40">
-      <div className="flex items-center gap-2 border-b border-indigo-100 px-4 py-3">
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 16c0 1.1-.9 2-2 2H7l-4 4V6c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v10z" />
-        </svg>
-        <div className="text-sm font-semibold text-indigo-900">参加者とのメッセージ</div>
-        {messages.length > 0 ? (
-          <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">{messages.length}件</span>
-        ) : null}
-      </div>
-      <div className="min-h-[60px] max-h-60 overflow-y-auto space-y-3 px-4 py-3">
-        {loading ? (
-          <div className="py-2 text-center text-xs text-slate-400">読み込み中...</div>
-        ) : messages.length === 0 ? (
-          <div className="py-2 text-center text-xs text-slate-400">まだメッセージはありません。</div>
-        ) : (
-          messages.map((msg) => (
-            <div key={msg.id} className={classNames("flex", msg.sender === "admin" ? "justify-end" : "justify-start")}>
-              <div className={classNames(
-                "max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-6",
-                msg.sender === "admin"
-                  ? "bg-slate-900 text-white"
-                  : "border border-slate-200 bg-white text-slate-800"
-              )}>
-                <div className="mb-0.5 text-[11px] opacity-60">
-                  {msg.senderLabel || (msg.sender === "admin" ? "管理者" : "参加者")}
-                </div>
-                <div className="whitespace-pre-line">{msg.text}</div>
-              </div>
-            </div>
-          ))
-        )}
-        <div ref={bottomRef} />
-      </div>
-      <div className="border-t border-indigo-100 p-3">
-        <div className="flex gap-2">
-          <textarea
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleSend(); }}
-            placeholder="返信を入力... (Ctrl+Enter で送信)"
-            rows={2}
-            className="flex-1 resize-none rounded-2xl border border-indigo-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-400"
-          />
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={!replyText.trim() || sending}
-            className="self-end rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-40"
-          >
-            {sending ? "送信中" : "送信"}
-          </button>
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 16c0 1.1-.9 2-2 2H7l-4 4V6c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v10z" />
+          </svg>
+          <span className="text-sm font-semibold text-indigo-900">参加者からの相談・メッセージ</span>
+          {messages.length > 0 ? (
+            <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">{messages.length}件</span>
+          ) : null}
         </div>
-      </div>
+        <svg xmlns="http://www.w3.org/2000/svg" className={classNames("h-4 w-4 shrink-0 text-indigo-400 transition-transform duration-200", isOpen ? "rotate-180" : "")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen ? (
+        <>
+          <div ref={containerRef} className="max-h-60 overflow-y-auto border-t border-indigo-100 px-4 py-3 space-y-3">
+            {loading ? (
+              <div className="py-2 text-center text-xs text-slate-400">読み込み中...</div>
+            ) : messages.length === 0 ? (
+              <div className="py-4 text-center text-xs text-slate-400">まだメッセージはありません。</div>
+            ) : (
+              messages.map((msg) => (
+                <div key={msg.id} className={classNames("flex", msg.sender === "admin" ? "justify-end" : "justify-start")}>
+                  <div className={classNames(
+                    "max-w-[80%] rounded-2xl px-3 py-2 text-sm leading-6",
+                    msg.sender === "admin"
+                      ? "bg-slate-900 text-white"
+                      : "border border-slate-200 bg-white text-slate-800"
+                  )}>
+                    <div className="mb-0.5 flex items-center gap-1.5 text-[11px] opacity-60">
+                      <span>{msg.senderLabel || (msg.sender === "admin" ? "管理者" : "参加者")}</span>
+                      {msg.isChangeRequest ? (
+                        <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">変更希望</span>
+                      ) : null}
+                    </div>
+                    <div className="whitespace-pre-line">{msg.text}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="border-t border-indigo-100 p-3">
+            <div className="flex gap-2">
+              <textarea
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleSend(); }}
+                placeholder="返信を入力... (Ctrl+Enter で送信)"
+                rows={2}
+                className="flex-1 resize-none rounded-2xl border border-indigo-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-indigo-400"
+              />
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={!replyText.trim() || sending}
+                className="self-end rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:opacity-40"
+              >
+                {sending ? "送信中" : "送信"}
+              </button>
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

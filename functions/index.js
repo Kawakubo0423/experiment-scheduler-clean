@@ -17,6 +17,8 @@ const APP_BASE_URL = process.env.APP_BASE_URL || "";
 const PARTICIPANT_CONFIRM_ENDPOINT_URL = process.env.PARTICIPANT_CONFIRM_ENDPOINT_URL || "";
 const LINE_CHANNEL_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || "";
 const LINE_CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || "";
+const LINE_OA_URL = process.env.LINE_OA_URL || "";
+const LINE_QR_IMAGE_URL = process.env.LINE_QR_IMAGE_URL || (APP_BASE_URL ? `${APP_BASE_URL}/line-qr.png` : "");
 const LINE_CHANGE_SESSION_TTL_MINUTES = 30;
 
 const CONTACT_TEXT = [
@@ -126,7 +128,8 @@ function buildLineLinkCodeTextBlock(requestData = {}) {
     "",
     "【LINE連携コード】",
     `連携コード: ${code}`,
-    "公式LINEを友だち追加し、この8桁コードを送信すると、日程案内をLINEでも受け取れます。",
+    LINE_OA_URL ? `公式LINEを友だち追加: ${LINE_OA_URL}` : "公式LINEを友だち追加し、この8桁コードを送信すると、日程案内をLINEでも受け取れます。",
+    "友だち追加後、上記コードをLINEで送信してください。",
     "※LINE連携は任意です。連携しない場合でも、メールでご連絡します。",
     "",
   ].join("\n");
@@ -136,11 +139,22 @@ function buildLineLinkCodeHtmlBlock(requestData = {}) {
   const code = String(requestData.lineLinkCode || "").trim();
   if (!code) return "";
 
+  const addFriendBtn = LINE_OA_URL
+    ? `<a href="${escapeHtml(LINE_OA_URL)}" style="display:inline-block; margin-top:12px; padding:10px 22px; background:#06c755; color:#ffffff; border-radius:12px; text-decoration:none; font-weight:700; font-size:14px;">友だち追加</a>`
+    : "";
+
+  const qrBlock = LINE_QR_IMAGE_URL
+    ? `<div style="margin-top:14px;"><div style="font-size:13px; color:#047857; margin-bottom:6px;">QRコードでも追加できます</div><img src="${escapeHtml(LINE_QR_IMAGE_URL)}" alt="LINE友だち追加QRコード" width="120" height="120" style="border-radius:10px; border:1px solid #a7f3d0; display:block;" /></div>`
+    : "";
+
   return `
     <div style="margin-top: 18px; padding: 16px; border: 1px solid #a7f3d0; background: #ecfdf5; border-radius: 16px;">
       <div style="font-weight: 700; color: #047857; margin-bottom: 8px;">LINEでも通知を受け取る</div>
-      <p style="margin: 0 0 10px; color: #065f46;">公式LINEを友だち追加し、以下の連携コードを送信すると、日程案内をLINEでも受け取れます。</p>
-      <div style="display:inline-block; padding: 10px 14px; border-radius: 12px; background: #ffffff; border: 1px solid #6ee7b7; color: #064e3b; font-size: 20px; font-weight: 800; letter-spacing: 0.18em;">${escapeHtml(code)}</div>
+      <p style="margin: 0 0 6px; color: #065f46;">公式LINEを友だち追加し、以下の連携コードを送信すると、日程案内をLINEでも受け取れます。</p>
+      ${addFriendBtn}
+      ${qrBlock}
+      <div style="margin-top:14px; font-size:13px; color:#047857; font-weight:600;">友だち追加後、このコードをLINEで送信してください</div>
+      <div style="display:inline-block; margin-top:6px; padding: 10px 14px; border-radius: 12px; background: #ffffff; border: 1px solid #6ee7b7; color: #064e3b; font-size: 20px; font-weight: 800; letter-spacing: 0.18em;">${escapeHtml(code)}</div>
       <p style="margin: 10px 0 0; font-size: 13px; color: #047857;">LINE連携は任意です。連携しない場合でも、メールでご連絡します。</p>
     </div>
   `;
@@ -1867,6 +1881,79 @@ exports.notifyAdminOnParticipantResponse = onDocumentUpdated("participantRespons
     html,
   });
 });
+
+exports.notifyOnNewChatMessage = onDocumentCreated(
+  "participantResponses/{token}/messages/{messageId}",
+  async (event) => {
+    const data = event.data?.data();
+    if (!data) return;
+
+    const token = event.params.token;
+    const sender = data.sender || "";
+    const text = data.text || "";
+
+    const responseSnap = await db.collection("participantResponses").doc(token).get();
+    if (!responseSnap.exists) return;
+    const rd = responseSnap.data() || {};
+
+    const participantEmail = rd.email || "";
+    const participantName = rd.name || "参加者";
+    const responseUrl = APP_BASE_URL ? `${APP_BASE_URL}/response?token=${token}` : "";
+
+    if (sender === "participant" && NOTIFY_ADMIN_EMAIL) {
+      const subject = `【LabLink】参加者からメッセージが届きました（${participantName}）`;
+      const textBody = [
+        `${participantName}さんからメッセージが届きました。`,
+        "",
+        "メッセージ内容:",
+        text,
+        "",
+        responseUrl ? `確認ページ: ${responseUrl}` : "",
+      ].join("\n");
+      const htmlBody = `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.7;color:#0f172a;">
+          <h2 style="margin:0 0 16px;">参加者からメッセージが届きました</h2>
+          <p><strong>送信者:</strong> ${escapeHtml(participantName)}</p>
+          <div style="margin:16px 0;padding:14px 18px;border-left:4px solid #94a3b8;background:#f8fafc;border-radius:0 12px 12px 0;">
+            <div style="white-space:pre-line;color:#334155;">${escapeHtml(text)}</div>
+          </div>
+          ${responseUrl ? `<p><a href="${escapeHtml(responseUrl)}" style="display:inline-block;padding:10px 20px;background:#0f172a;color:#fff;border-radius:12px;text-decoration:none;font-weight:600;">確認ページを開く</a></p>` : ""}
+        </div>
+      `;
+      await enqueueMail({
+        to: NOTIFY_ADMIN_EMAIL,
+        subject,
+        text: withSignatureText(textBody),
+        html: withSignatureHtml(htmlBody),
+      });
+    } else if (sender === "admin" && participantEmail) {
+      const subject = "【LabLink】管理者からメッセージが届きました";
+      const textBody = [
+        "管理者からメッセージが届きました。",
+        "",
+        "メッセージ内容:",
+        text,
+        "",
+        responseUrl ? `返信・確認はこちら: ${responseUrl}` : "",
+      ].join("\n");
+      const htmlBody = `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.7;color:#0f172a;">
+          <h2 style="margin:0 0 16px;">管理者からメッセージが届きました</h2>
+          <div style="margin:16px 0;padding:14px 18px;border-left:4px solid #6366f1;background:#eef2ff;border-radius:0 12px 12px 0;">
+            <div style="white-space:pre-line;color:#334155;">${escapeHtml(text)}</div>
+          </div>
+          ${responseUrl ? `<p><a href="${escapeHtml(responseUrl)}" style="display:inline-block;padding:10px 20px;background:#0f172a;color:#fff;border-radius:12px;text-decoration:none;font-weight:600;">返信・確認ページを開く</a></p>` : ""}
+        </div>
+      `;
+      await enqueueMail({
+        to: participantEmail,
+        subject,
+        text: withSignatureText(textBody),
+        html: withSignatureHtml(htmlBody),
+      });
+    }
+  }
+);
 
 exports.lineWebhook = onRequest(async (req, res) => {
   try {
