@@ -1885,12 +1885,12 @@ function AdminPage({
         backLabel={adminTab === "slots" || adminTab === "requests" ? "募集管理へ戻る" : "トップへ戻る"}
       />
       <div className="mx-auto max-w-7xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
-        <div className="mb-4 flex flex-wrap gap-2">
+        <div className="mb-4 -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
           <button
             type="button"
             onClick={() => setAdminTab("dashboard")}
             className={classNames(
-              "rounded-2xl px-4 py-2 text-sm font-medium transition",
+              "shrink-0 whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-medium transition",
               adminTab === "dashboard"
                 ? "bg-slate-900 text-white"
                 : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
@@ -1902,7 +1902,7 @@ function AdminPage({
             type="button"
             onClick={() => setAdminTab("studies")}
             className={classNames(
-              "rounded-2xl px-4 py-2 text-sm font-medium transition",
+              "shrink-0 whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-medium transition",
               ["studies", "study-new", "operation", "slots", "requests"].includes(adminTab)
                 ? "bg-slate-900 text-white"
                 : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
@@ -1915,7 +1915,7 @@ function AdminPage({
               type="button"
               onClick={() => setAdminTab("researchers")}
               className={classNames(
-                "relative rounded-2xl px-4 py-2 text-sm font-medium transition",
+                "relative shrink-0 whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-medium transition",
                 adminTab === "researchers"
                   ? "bg-slate-900 text-white"
                   : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
