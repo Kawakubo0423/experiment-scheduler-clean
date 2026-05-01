@@ -501,6 +501,7 @@ function AdminStudyManager({
   onLoadTemplate,
 }) {
   const [templateNameInput, setTemplateNameInput] = useState("");
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [fieldHelp, setFieldHelp] = useState(null); // "ownerEmail" | "adminEmails" | null
   const [copiedStudyId, setCopiedStudyId] = useState("");
   const sortedStudies = Array.isArray(adminStudies) ? adminStudies : [];
@@ -949,6 +950,15 @@ function AdminStudyManager({
           action={
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge tone="sky">{sortedStudies.length}件</StatusBadge>
+              {onCreateStudy && studyTemplates.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowTemplatePicker((v) => !v)}
+                  className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+                >
+                  テンプレートから作成
+                </button>
+              ) : null}
               {onCreateStudy ? (
                 <button
                   type="button"
@@ -961,6 +971,38 @@ function AdminStudyManager({
             </div>
           }
         />
+
+        {showTemplatePicker && studyTemplates.length > 0 ? (
+          <div className="mb-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-emerald-900">保存済みテンプレートから作成</div>
+              <button
+                type="button"
+                onClick={() => setShowTemplatePicker(false)}
+                className="rounded-xl border border-emerald-200 bg-white px-3 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-50"
+              >
+                閉じる
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {studyTemplates.map((tmpl) => (
+                <div key={tmpl.id} className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-slate-900">{tmpl.name || "名称未設定"}</div>
+                    {tmpl.title ? <div className="mt-0.5 truncate text-xs text-slate-500">{tmpl.title}</div> : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { onLoadTemplate?.(tmpl); setShowTemplatePicker(false); }}
+                    className="shrink-0 rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                  >
+                    読み込む
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {adminStudiesLoading ? (
           <StudyListSkeleton />
@@ -5760,6 +5802,7 @@ export default function AdminDashboard() {
     const newForm = buildStudyFormFromTemplate(template, authUser?.email || "");
     setStudyForm(newForm);
     setEditingStudyId("");
+    setAdminTab("study-new");
     showToast(`テンプレート「${template.name}」を読み込みました。`, "success");
   }
 
