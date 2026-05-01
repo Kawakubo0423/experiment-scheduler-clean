@@ -947,30 +947,31 @@ function AdminStudyManager({
           eyebrow="STUDY LIST"
           title="登録済みの募集"
           description="トップページや募集中の実験一覧に表示する募集情報を管理します。各募集カード右上の「日程・申込管理」から、個別の運営ページへ進めます。"
-          action={
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge tone="sky">{sortedStudies.length}件</StatusBadge>
-              {onCreateStudy && studyTemplates.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setShowTemplatePicker((v) => !v)}
-                  className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
-                >
-                  テンプレートから作成
-                </button>
-              ) : null}
-              {onCreateStudy ? (
-                <button
-                  type="button"
-                  onClick={onCreateStudy}
-                  className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  新規募集を作成
-                </button>
-              ) : null}
-            </div>
-          }
+          action={<StatusBadge tone="sky">{sortedStudies.length}件</StatusBadge>}
         />
+
+        {onCreateStudy ? (
+          <div className="mb-5 flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={onCreateStudy}
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+              新規募集を作成
+            </button>
+            {studyTemplates.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowTemplatePicker((v) => !v)}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                テンプレートから作成
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         {showTemplatePicker && studyTemplates.length > 0 ? (
           <div className="mb-5 rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
@@ -1369,7 +1370,7 @@ function AdminDashboardPanel({
   const toneUnit = { slate: "text-slate-400", amber: "text-amber-400", emerald: "text-emerald-400", rose: "text-rose-400", sky: "text-sky-400" };
 
   return (
-    <div className="min-w-0 space-y-5">
+    <div className="w-full min-w-0 overflow-hidden space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         {statItems.map((item) => (
           <button
@@ -1469,8 +1470,8 @@ function AdminDashboardPanel({
         </Card>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
-        <Card className="p-5 shadow-none">
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[1fr_360px]">
+        <Card className="min-w-0 overflow-hidden p-5 shadow-none">
           <SectionHeader eyebrow="QUICK ACTIONS" title="機能へのショートカット" />
           <div className="grid gap-3 sm:grid-cols-2">
             <button
@@ -1567,8 +1568,8 @@ function AdminDashboardPanel({
           )}
         </Card>
 
-        <div className="space-y-5">
-          <Card className="p-5 shadow-none">
+        <div className="min-w-0 space-y-5">
+          <Card className="min-w-0 overflow-hidden p-5 shadow-none">
             <SectionHeader eyebrow="TO-DO" title="要対応" />
             {!hasUrgent ? (
               <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">
@@ -1626,7 +1627,7 @@ function AdminDashboardPanel({
           </Card>
 
           {adminStudies.length > 0 && (
-            <Card className="p-5 shadow-none">
+            <Card className="min-w-0 overflow-hidden p-5 shadow-none">
               <SectionHeader eyebrow="STUDIES" title="管理中の募集" />
               <div className="space-y-2">
                 {adminStudies.map((study) => (
