@@ -945,9 +945,8 @@ function AdminStudyManager({
       <Card className="p-5 shadow-none">
         <SectionHeader
           eyebrow="STUDY LIST"
-          title="登録済みの募集"
+          title={<span className="inline-flex items-center gap-2">登録済みの募集<StatusBadge tone="sky">{sortedStudies.length}件</StatusBadge></span>}
           description="トップページや募集中の実験一覧に表示する募集情報を管理します。各募集カード右上の「日程・申込管理」から、個別の運営ページへ進めます。"
-          action={<StatusBadge tone="sky">{sortedStudies.length}件</StatusBadge>}
         />
 
         {onCreateStudy ? (
@@ -1134,45 +1133,38 @@ function AdminStudyScopeSelector({ adminStudies, selectedStudyId, onOpenReservat
 
   return (
     <Card className="mb-6 p-5 shadow-none">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 flex-1">
-          <div className="text-xs font-semibold tracking-[0.18em] text-teal-600">SELECTED STUDY</div>
-          <h2 className="mt-1 break-words text-2xl font-bold text-slate-950">
-            {activeStudy?.title || "選択中の募集"}
-          </h2>
-          {activeStudy?.description ? (
-            <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-600">{activeStudy.description}</p>
-          ) : (
-            <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-500">この募集の日程管理と申込管理を行います。</p>
-          )}
-
-          <div className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl bg-slate-50 px-4 py-3">所要時間：{activeStudy?.duration || "未設定"}</div>
-            <div className="rounded-2xl bg-slate-50 px-4 py-3">謝礼：{activeStudy?.reward || "未設定"}</div>
-            <div className="rounded-2xl bg-slate-50 px-4 py-3">場所：{activeStudy?.location || "未設定"}</div>
-            <div className="rounded-2xl bg-slate-50 px-4 py-3">組織：{activeStudy?.organization || "未設定"}</div>
+      {/* Mobile: full study info header */}
+      <div className="lg:hidden">
+        <div className="flex flex-col gap-5">
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-semibold tracking-[0.18em] text-teal-600">SELECTED STUDY</div>
+            <h2 className="mt-1 break-words text-2xl font-bold text-slate-950">
+              {activeStudy?.title || "選択中の募集"}
+            </h2>
+            {activeStudy?.description ? (
+              <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-600">{activeStudy.description}</p>
+            ) : (
+              <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-500">この募集の日程管理と申込管理を行います。</p>
+            )}
+            <div className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+              <div className="rounded-2xl bg-slate-50 px-4 py-3">所要時間：{activeStudy?.duration || "未設定"}</div>
+              <div className="rounded-2xl bg-slate-50 px-4 py-3">謝礼：{activeStudy?.reward || "未設定"}</div>
+              <div className="rounded-2xl bg-slate-50 px-4 py-3">場所：{activeStudy?.location || "未設定"}</div>
+              <div className="rounded-2xl bg-slate-50 px-4 py-3">組織：{activeStudy?.organization || "未設定"}</div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <StatusBadge tone={activeStudy?.isPublished ? "emerald" : "slate"}>{activeStudy?.isPublished ? "公開中" : "非公開"}</StatusBadge>
+              <StatusBadge tone={getStudyStatusTone(activeStudy?.status)}>{getStudyStatusLabel(activeStudy?.status)}</StatusBadge>
+            </div>
           </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <StatusBadge tone={activeStudy?.isPublished ? "emerald" : "slate"}>{activeStudy?.isPublished ? "公開中" : "非公開"}</StatusBadge>
-            <StatusBadge tone={getStudyStatusTone(activeStudy?.status)}>{getStudyStatusLabel(activeStudy?.status)}</StatusBadge>
+          <div className="flex flex-col gap-2">
+            <button type="button" onClick={() => onOpenReservationPage?.(activeStudy)} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">
+              予約ページを開く
+            </button>
+            <button type="button" onClick={onBackToStudyList} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50">
+              募集管理へ戻る
+            </button>
           </div>
-        </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[220px]">
-          <button
-            type="button"
-            onClick={() => onOpenReservationPage?.(activeStudy)}
-            className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-          >
-            予約ページを開く
-          </button>
-          <button
-            type="button"
-            onClick={onBackToStudyList}
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            募集管理へ戻る
-          </button>
         </div>
       </div>
 
@@ -1299,7 +1291,7 @@ function AdminOperationSubNav({ adminTab, setAdminTab, selectedStudyTitle }) {
   ];
 
   return (
-    <Card className="mb-6 p-4 shadow-none">
+    <Card className="mb-6 p-4 shadow-none lg:hidden">
       <div className="mb-3">
         <div className="text-xs font-semibold tracking-[0.18em] text-blue-600">MANAGE MENU</div>
         <h2 className="mt-1 text-lg font-bold text-slate-950">{selectedStudyTitle ? `${selectedStudyTitle} の管理メニュー` : "管理メニュー"}</h2>
@@ -2027,7 +2019,9 @@ function AdminPage({
       {/* ── PC Left Sidebar (lg+) ─────────────────────────────────────────── */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-slate-200 bg-white/95 shadow-[4px_0_24px_rgba(15,23,42,0.06)] backdrop-blur-xl lg:flex">
         <div className="shrink-0 border-b border-slate-100 px-5 py-4">
-          <LabLinkBrand compact subtitle="管理画面" />
+          <button type="button" onClick={onBack} className="min-w-0 w-full rounded-2xl text-left transition hover:opacity-75">
+            <LabLinkBrand compact subtitle="管理画面" />
+          </button>
         </div>
 
         <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
@@ -2087,7 +2081,23 @@ function AdminPage({
         ) : null}
 
         <div className="shrink-0 border-t border-slate-100 p-4 space-y-2">
-          {adminEmail ? <div className="truncate px-1 text-xs text-slate-400">{adminEmail}</div> : null}
+          {onOpenProfile ? (
+            <button
+              type="button"
+              onClick={onOpenProfile}
+              className="flex w-full items-center gap-2.5 rounded-2xl border border-slate-200 px-3 py-2.5 text-left text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-slate-800">プロフィール編集</div>
+                {adminEmail ? <div className="truncate text-[10px] text-slate-400">{adminEmail}</div> : null}
+              </div>
+            </button>
+          ) : adminEmail ? (
+            <div className="truncate px-1 text-xs text-slate-400">{adminEmail}</div>
+          ) : null}
           <button
             type="button"
             onClick={onBack}
@@ -2109,8 +2119,15 @@ function AdminPage({
       {/* ── Mobile Top Header ─────────────────────────────────────────────── */}
       <header className="sticky top-0 z-30 border-b border-white/70 bg-white/90 backdrop-blur-xl lg:hidden">
         <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <LabLinkBrand compact subtitle="管理画面" />
+          <button type="button" onClick={onBack} className="min-w-0 rounded-2xl text-left transition hover:opacity-75">
+            <LabLinkBrand compact subtitle="管理画面" />
+          </button>
           <div className="flex items-center gap-2">
+            {onOpenProfile ? (
+              <button type="button" onClick={onOpenProfile} className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50">
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+              </button>
+            ) : null}
             <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
               <span className="hidden sm:inline">トップ</span>
@@ -2124,7 +2141,63 @@ function AdminPage({
       <div className="lg:ml-64">
       <div className="mx-auto max-w-5xl overflow-x-hidden px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
 
-        {adminTab === "studies" || adminTab === "study-new" ? <AdminHero adminEmail={adminEmail} /> : null}
+        {adminTab === "studies" || adminTab === "study-new" ? <div className="lg:hidden"><AdminHero adminEmail={adminEmail} /></div> : null}
+
+        {/* PC only: compact page title instead of AdminHero / AdminStudyScopeSelector header */}
+        {(adminTab === "studies" || adminTab === "study-new") ? (
+          <div className="mb-6 hidden lg:block">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">STUDY LIST</div>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">募集管理</h1>
+          </div>
+        ) : null}
+        {(adminTab === "slots" || adminTab === "requests") ? (
+          <div className="mb-4 hidden lg:block">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  {adminTab === "slots" ? "SCHEDULE MANAGEMENT" : "REQUESTS"}
+                </div>
+                <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">
+                  {adminTab === "slots" ? "枠管理" : "申込管理"}
+                </h1>
+                {selectedOperationStudy ? (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span className="truncate text-sm text-slate-500">{selectedOperationStudy.title || "無題の募集"}</span>
+                    <StatusBadge tone={selectedOperationStudy.isPublished ? "emerald" : "slate"}>
+                      {selectedOperationStudy.isPublished ? "公開中" : "非公開"}
+                    </StatusBadge>
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenReservationPage?.(selectedOperationStudy)}
+                className="shrink-0 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                予約ページを開く
+              </button>
+            </div>
+            {adminStudies.length > 1 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {adminStudies.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => onSelectStudyScope(s.id)}
+                    className={classNames(
+                      "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                      s.id === selectedStudyId
+                        ? "bg-slate-900 text-white"
+                        : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    )}
+                  >
+                    {s.title || "無題の募集"}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {isLoading ? <LoadingCard title="管理データを読み込んでいます..." /> : null}
 
