@@ -1014,13 +1014,13 @@ function AdminStudyManager({
           <div className="grid gap-4 lg:grid-cols-2">
             {sortedStudies.map((study) => (
               <div key={study.id} className="relative rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
+                <div className="flex items-start gap-4">
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusBadge tone={study.isPublished ? "emerald" : "slate"}>{study.isPublished ? "公開中" : "非公開"}</StatusBadge>
                       <StatusBadge tone={getStudyStatusTone(study.status)}>{getStudyStatusLabel(study.status)}</StatusBadge>
                     </div>
-                    <h3 className="mt-4 break-words text-lg font-bold leading-snug text-slate-950">{study.title}</h3>
+                    <h3 className="mt-4 overflow-hidden break-words text-lg font-bold leading-snug text-slate-950">{study.title}</h3>
                   </div>
                   <button
                     type="button"
@@ -1369,7 +1369,7 @@ function AdminDashboardPanel({
   const toneUnit = { slate: "text-slate-400", amber: "text-amber-400", emerald: "text-emerald-400", rose: "text-rose-400", sky: "text-sky-400" };
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         {statItems.map((item) => (
           <button
@@ -2010,7 +2010,7 @@ function AdminPage({
         adminEmail={adminEmail}
         backLabel={adminTab === "slots" || adminTab === "requests" ? "募集管理へ戻る" : "トップへ戻る"}
       />
-      <div className="mx-auto max-w-7xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
+      <div className="mx-auto max-w-7xl overflow-x-hidden px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
         <div className="mb-4 flex flex-wrap gap-2">
           <button
             type="button"
