@@ -1291,7 +1291,7 @@ function AdminOperationSubNav({ adminTab, setAdminTab, selectedStudyTitle }) {
   ];
 
   return (
-    <Card className="mb-6 p-4 shadow-none lg:hidden">
+    <Card className="mb-6 p-4 shadow-none hidden">
       <div className="mb-3">
         <div className="text-xs font-semibold tracking-[0.18em] text-blue-600">MANAGE MENU</div>
         <h2 className="mt-1 text-lg font-bold text-slate-950">{selectedStudyTitle ? `${selectedStudyTitle} の管理メニュー` : "管理メニュー"}</h2>
@@ -3994,7 +3994,7 @@ function RequestMessageThread({ token, adminLabel }) {
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M21 16c0 1.1-.9 2-2 2H7l-4 4V6c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v10z" />
           </svg>
-          <span className="text-sm font-semibold text-indigo-900">参加者からの相談・メッセージ</span>
+          <span className="text-sm font-semibold text-indigo-900">参加者からのメッセージ</span>
           {messages.length > 0 ? (
             <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-700">{messages.length}件</span>
           ) : null}
