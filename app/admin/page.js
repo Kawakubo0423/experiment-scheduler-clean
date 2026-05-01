@@ -1,7 +1,6 @@
 "use client";
 
 import React, { forwardRef, useEffect, useMemo, useRef, useState } from "react";
-import { initializeApp, getApps, getApp } from "firebase/app";
 import {
   PERIODS,
   PERIOD_MAP,
@@ -12,34 +11,31 @@ import {
   SAMPLE_SLOTS,
   SAMPLE_REQUESTS,
   SAMPLE_STUDIES,
-} from "./lib/constants";
+} from "@/app/lib/constants";
 import {
   formatDateKey,
   formatJapaneseDate,
   formatMonthTitle,
   getJapaneseHolidayName,
   getMonthGrid,
-} from "./lib/date-utils";
+} from "@/app/lib/date-utils";
 import {
   normalizeExperimentInfo,
   normalizeStudyInfo,
-  normalizeCustomField,
-  normalizeNotificationTemplates,
-  studyToExperimentInfo,
-  getStudyStatusLabel,
-  getStudyStatusTone,
+  normalizeStudyId,
+  createAutoStudyId,
+  isRecordInStudy,
+  withStudyId,
   buildStudyFormFromStudy,
   buildStudyFormFromExperimentInfo,
   buildStudyFormFromTemplate,
-  normalizeStudyId,
-  createAutoStudyId,
-  getRecordStudyId,
-  isRecordInStudy,
-  withStudyId,
-  parseAdminEmails,
   buildStudyPayloadFromForm,
   buildStudyTemplatePayload,
-} from "./lib/study-utils";
+  studyToExperimentInfo,
+  getStudyStatusLabel,
+  getStudyStatusTone,
+  parseAdminEmails,
+} from "@/app/lib/study-utils";
 import {
   getPeriodLabel,
   sortSlots,
@@ -49,7 +45,7 @@ import {
   hasSlotEnded,
   getDaySummary,
   getAdminDaySummary,
-} from "./lib/slot-utils";
+} from "@/app/lib/slot-utils";
 import {
   generateLineLinkCode,
   getParticipantConfirmationLabel,
@@ -62,10 +58,8 @@ import {
   getRequestTimestampValue,
   getRequestAssignedSlotOrder,
   getRequestDefaultPriority,
-} from "./lib/request-utils";
-import { downloadIcsFile } from "./lib/ics-utils";
+} from "@/app/lib/request-utils";
 import {
-  getAuth,
   GoogleAuthProvider,
   onAuthStateChanged,
   signInWithPopup,
@@ -77,7 +71,6 @@ import {
   deleteField,
   deleteDoc,
   doc,
-  getFirestore,
   getDoc,
   getDocs,
   onSnapshot,
@@ -89,6 +82,47 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
+import {
+  firebaseReady,
+  firebaseAuth,
+  firestore,
+} from "@/app/lib/firebase";
+import {
+  classNames,
+  downloadText,
+  buildStudyPublicUrl,
+  GearIcon,
+  ChevronLeft,
+  ChevronRight,
+  ArrowLeftIcon,
+  LockIcon,
+  GoogleIcon,
+  HelpIcon,
+  PencilIcon,
+  TrashIcon,
+  StatusBadge,
+  Card,
+  SectionHeader,
+  IconButton,
+  LoadingCard,
+  ActionToast,
+  ModalShell,
+  LabLinkMark,
+  LabLinkBrand,
+  SetupNotice,
+  StudyPreviewCard,
+  StudyListEmptyState,
+  StudyListSkeleton,
+  LINE_ADD_FRIEND_URL,
+} from "@/app/components/shared";
+
+const ALLOWED_ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
+  .split(",")
+  .map((item) => item.trim().toLowerCase())
+  .filter(Boolean);
+
+const LINE_OFFICIAL_ACCOUNT_ID = process.env.NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_ID || "";
+const LINE_QR_IMAGE_URL = process.env.NEXT_PUBLIC_LINE_QR_IMAGE_URL || "";
 
 function buildParticipantResponseUrl(token, action = "confirm") {
   if (typeof window === "undefined") return "";
@@ -98,235 +132,6 @@ function buildParticipantResponseUrl(token, action = "confirm") {
   url.searchParams.delete("request");
   url.searchParams.delete("study");
   return url.toString();
-}
-
-function buildStudyPublicUrl(studyId) {
-  if (typeof window === "undefined") return "";
-  const url = new URL(window.location.href);
-  url.searchParams.set("study", studyId);
-  url.searchParams.delete("token");
-  url.searchParams.delete("action");
-  url.searchParams.delete("request");
-  return url.toString();
-}
-
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-};
-
-const ALLOWED_ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "")
-  .split(",")
-  .map((item) => item.trim().toLowerCase())
-  .filter(Boolean);
-
-const LINE_OFFICIAL_ACCOUNT_ID = process.env.NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_ID || "";
-const LINE_OFFICIAL_ACCOUNT_URL = process.env.NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_URL || "";
-const LINE_QR_IMAGE_URL = process.env.NEXT_PUBLIC_LINE_QR_IMAGE_URL || "";
-const LINE_ADD_FRIEND_URL =
-  LINE_OFFICIAL_ACCOUNT_URL ||
-  (LINE_OFFICIAL_ACCOUNT_ID
-    ? `https://line.me/R/ti/p/${encodeURIComponent(LINE_OFFICIAL_ACCOUNT_ID)}`
-    : "");
-
-const LABLINK_ICON_SRC = "/lablink-icon.png";
-const LABLINK_LOGO_SRC = "/lablink-logo.png";
-
-const BRAND_TAGLINE = "大学研究の実験日程予約サイト";
-
-const firebaseReady = Object.values(firebaseConfig).every(Boolean);
-
-let firebaseApp;
-let firebaseAuth;
-let firestore;
-
-if (firebaseReady) {
-  firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
-  firebaseAuth = getAuth(firebaseApp);
-  firestore = getFirestore(firebaseApp);
-}
-
-function classNames(...values) {
-  return values.filter(Boolean).join(" ");
-}
-
-function downloadText(filename, text, mimeType = "application/json") {
-  const blob = new Blob([text], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-function StatusBadge({ tone = "slate", children }) {
-  const tones = {
-    slate: "border-slate-200 bg-slate-100 text-slate-700",
-    emerald: "border-emerald-200 bg-emerald-100 text-emerald-700",
-    amber: "border-amber-200 bg-amber-100 text-amber-700",
-    rose: "border-rose-200 bg-rose-100 text-rose-700",
-    sky: "border-sky-200 bg-sky-100 text-sky-700",
-  };
-
-  return (
-    <span className={classNames("inline-flex rounded-full border px-3 py-1 text-xs font-medium", tones[tone])}>
-      {children}
-    </span>
-  );
-}
-
-const Card = forwardRef(function Card({ className = "", children }, ref) {
-  return (
-    <div
-      ref={ref}
-      className={classNames(
-        "rounded-[28px] border border-slate-200/70 bg-white/90 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur",
-        className
-      )}
-    >
-      {children}
-    </div>
-  );
-});
-
-function SectionHeader({ eyebrow, title, description, action }) {
-  return (
-    <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-      <div>
-        {eyebrow ? <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{eyebrow}</div> : null}
-        <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">{title}</h2>
-        {description ? <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p> : null}
-      </div>
-      {action}
-    </div>
-  );
-}
-
-function IconButton({ children, ...props }) {
-  return (
-    <button
-      {...props}
-      className={classNames(
-        "flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-sky-300",
-        props.className || ""
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-
-function LabLinkMark({ size = "md", className = "" }) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const sizeClass = {
-    sm: "h-10 w-10 rounded-2xl",
-    md: "h-12 w-12 rounded-[20px]",
-    lg: "h-16 w-16 rounded-[24px]",
-    xl: "h-32 w-32 rounded-[34px] sm:h-40 sm:w-40 sm:rounded-[42px]",
-  }[size] || "h-12 w-12 rounded-[20px]";
-
-  return (
-    <div
-      className={classNames(
-        "relative inline-flex shrink-0 items-center justify-center overflow-hidden border border-slate-200/80 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.10)]",
-        sizeClass,
-        className
-      )}
-    >
-      {!imageFailed ? (
-        <img
-          src={LABLINK_ICON_SRC}
-          alt="LabLink"
-          className="h-full w-full object-contain"
-          onError={() => setImageFailed(true)}
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-teal-500 to-blue-600 text-sm font-black tracking-[-0.08em] text-white">
-          LL
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LabLinkBrand({ subtitle = BRAND_TAGLINE, compact = false, className = "" }) {
-  return (
-    <div className={classNames("flex min-w-0 items-center gap-3", className)}>
-      <LabLinkMark size={compact ? "sm" : "md"} />
-      <div className="min-w-0">
-        <div className={classNames("font-bold tracking-tight text-slate-900", compact ? "text-lg" : "text-xl")}>
-          LabLink
-        </div>
-        {subtitle ? (
-          <div className="mt-0.5 truncate text-xs font-medium text-slate-500 sm:text-sm">
-            {subtitle}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function PublicSiteHeader({ onOpenHelp, onOpenAdmin, onOpenHome, onOpenReservation, activePage = "reservation" }) {
-  return (
-    <header className="sticky top-0 z-30 border-b border-white/70 bg-white/85 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
-        <button type="button" onClick={onOpenHome} className="min-w-0 rounded-2xl text-left transition hover:opacity-85">
-          <LabLinkBrand compact subtitle="大学研究の実験参加予約" />
-        </button>
-
-        <div className="flex shrink-0 items-center gap-2">
-          {LINE_ADD_FRIEND_URL ? (
-            <a
-              href={LINE_ADD_FRIEND_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="hidden rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-100 sm:inline-flex"
-            >
-              公式LINE追加
-            </a>
-          ) : null}
-          <button
-            type="button"
-            onClick={onOpenReservation}
-            className="hidden rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 sm:inline-flex"
-          >
-            募集中の実験
-          </button>
-          <button
-            type="button"
-            onClick={onOpenAdmin}
-            className="hidden rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 sm:inline-flex"
-          >
-            管理者
-          </button>
-          {LINE_ADD_FRIEND_URL ? (
-            <a
-              href={LINE_ADD_FRIEND_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-10 items-center rounded-2xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 shadow-sm sm:hidden"
-              aria-label="公式LINEを追加する"
-            >
-              LINE
-            </a>
-          ) : null}
-          <IconButton aria-label="募集中の実験を見る" onClick={onOpenReservation} title="募集中の実験" className="sm:hidden">
-            <LandingIcon type="list" />
-          </IconButton>
-          <IconButton aria-label="管理者ページへ" onClick={onOpenAdmin} title="管理者ページへ" className="sm:hidden">
-            <GearIcon />
-          </IconButton>
-        </div>
-      </div>
-    </header>
-  );
 }
 
 function AdminSiteHeader({ onBack, onLogoClick, onLogout, adminEmail, backLabel = "トップへ戻る", onOpenProfile }) {
@@ -372,118 +177,6 @@ function AdminSiteHeader({ onBack, onLogoClick, onLogout, adminEmail, backLabel 
   );
 }
 
-function TinyFeature({ title, text, tone = "teal" }) {
-  const tones = {
-    teal: "border-teal-200 bg-teal-50 text-teal-900",
-    blue: "border-blue-200 bg-blue-50 text-blue-900",
-    slate: "border-slate-200 bg-slate-50 text-slate-800",
-  };
-
-  return (
-    <div className={classNames("rounded-3xl border px-4 py-3", tones[tone])}>
-      <div className="text-sm font-semibold">{title}</div>
-      <div className="mt-1 text-xs leading-5 opacity-75">{text}</div>
-    </div>
-  );
-}
-
-function ParticipantHero({ onOpenHelp, onScrollToDetails, stats, openSlotCount }) {
-  return (
-    <section className="mb-6 overflow-hidden rounded-[34px] border border-white/80 bg-white/85 shadow-[0_24px_80px_rgba(15,23,42,0.10)] backdrop-blur">
-      <div className="grid gap-0 lg:grid-cols-[1.14fr,0.86fr]">
-        <div className="p-5 sm:p-7 lg:p-8">
-          <div className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-teal-700">
-            LABLINK RESERVATION
-          </div>
-          <h1 className="mt-5 text-[clamp(2rem,7vw,4rem)] font-bold leading-[1.04] tracking-tight text-slate-950">
-            実験日程の予約
-          </h1>
-          <p className="mt-4 max-w-2xl text-[15px] leading-7 text-slate-600 sm:text-base">
-            LabLinkは、大学研究の実験募集と参加者をつなぐ予約ページです。公開中の日程から希望枠を選び、実験担当者からの確定連絡をお待ちください。
-          </p>
-
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={onScrollToDetails}
-              className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.22)] transition hover:bg-slate-800"
-            >
-              日程を選ぶ
-            </button>
-            <button
-              type="button"
-              onClick={onOpenHelp}
-              className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              参加の流れを見る
-            </button>
-          </div>
-        </div>
-
-        <div className="border-t border-slate-100 bg-gradient-to-br from-teal-50 via-white to-blue-50 p-5 sm:p-7 lg:border-l lg:border-t-0 lg:p-8">
-          <div className="flex items-center gap-3">
-            <LabLinkMark size="lg" />
-            <div>
-              <div className="text-sm font-semibold tracking-[0.16em] text-slate-400">SERVICE CONCEPT</div>
-              <div className="mt-1 text-xl font-bold text-slate-900">実験者と参加者をつなぐ</div>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-3">
-            <TinyFeature title="公開枠から選択" text="空いている日程をカレンダー・一覧から確認できます。" tone="teal" />
-            <TinyFeature title="最大5枠まで希望提出" text="都合のよい候補を複数送信し、担当者が日程を確定します。" tone="blue" />
-            <TinyFeature title="メール・LINEで連絡" text="確定・変更・確認案内を受け取れます。LINE連携は任意です。" tone="slate" />
-          </div>
-
-          <div className="mt-5 grid grid-cols-2 gap-3">
-            <div className="rounded-3xl border border-white/80 bg-white/80 p-4">
-              <div className="text-xs font-semibold text-slate-400">公開中の枠</div>
-              <div className="mt-1 text-3xl font-bold text-slate-950">{openSlotCount}</div>
-            </div>
-            <div className="rounded-3xl border border-white/80 bg-white/80 p-4">
-              <div className="text-xs font-semibold text-slate-400">残り席数</div>
-              <div className="mt-1 text-3xl font-bold text-slate-950">{stats.openSeats}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ParticipantFlowCard({ onOpenHelp }) {
-  return (
-    <Card className="border-teal-100 bg-gradient-to-br from-white via-white to-teal-50">
-      <SectionHeader
-        eyebrow="HOW IT WORKS"
-        title="申込から参加まで"
-        description="希望枠を送信したあと、実験担当者が確認して日程を確定します。"
-        action={
-          <button
-            type="button"
-            onClick={onOpenHelp}
-            className="rounded-2xl border border-teal-200 bg-white px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50"
-          >
-            詳しく見る
-          </button>
-        }
-      />
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-        {[
-          ["01", "希望枠を選択", "空いている日程から最大5枠まで選びます。"],
-          ["02", "担当者が確定", "申込内容を確認し、参加日時を決定します。"],
-          ["03", "メールで確認", "確定案内を確認し、必要に応じてLINE連携できます。"],
-        ].map(([number, title, text]) => (
-          <div key={number} className="rounded-3xl border border-slate-200 bg-white/85 p-4">
-            <div className="text-xs font-bold tracking-[0.18em] text-teal-500">{number}</div>
-            <div className="mt-2 text-sm font-semibold text-slate-900">{title}</div>
-            <div className="mt-1 text-xs leading-5 text-slate-500">{text}</div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
 
 function AdminHero({ adminEmail }) {
   return (
@@ -501,624 +194,6 @@ function AdminHero({ adminEmail }) {
         {adminEmail ? <p className="mt-3 text-sm text-slate-500">ログイン中: {adminEmail}</p> : null}
       </div>
     </header>
-  );
-}
-
-function ResponsePageHeader({ tone = "rose" }) {
-  const toneClass = tone === "rose" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-teal-200 bg-teal-50 text-teal-700";
-
-  return (
-    <div className="mb-6 rounded-[32px] border border-white/70 bg-white/80 px-6 py-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
-      <LabLinkBrand compact />
-      <div className={classNames("mt-5 inline-flex rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.16em]", toneClass)}>
-        CHANGE REQUEST
-      </div>
-      <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">変更希望ページ</h1>
-      <p className="mt-3 text-sm leading-7 text-slate-600">
-        このページでは、確定済みの日程に対する変更希望を送信できます。
-      </p>
-    </div>
-  );
-}
-
-
-
-function LandingStat({ label, value, note }) {
-  return (
-    <div className="rounded-[28px] border border-white/80 bg-white/80 p-5 shadow-[0_14px_45px_rgba(15,23,42,0.08)]">
-      <div className="text-xs font-semibold tracking-[0.16em] text-slate-400">{label}</div>
-      <div className="mt-2 text-3xl font-bold tracking-tight text-slate-950">{value}</div>
-      {note ? <div className="mt-1 text-xs leading-5 text-slate-500">{note}</div> : null}
-    </div>
-  );
-}
-
-function LandingFeatureCard({ title, text, icon, tone = "teal" }) {
-  const tones = {
-    teal: "from-teal-50 to-white text-teal-700 border-teal-100",
-    blue: "from-blue-50 to-white text-blue-700 border-blue-100",
-    slate: "from-slate-50 to-white text-slate-700 border-slate-200",
-  };
-
-  return (
-    <div className={classNames("rounded-[30px] border bg-gradient-to-br p-5", tones[tone])}>
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm">
-        {icon}
-      </div>
-      <h3 className="mt-4 text-base font-bold text-slate-950">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-slate-600">{text}</p>
-    </div>
-  );
-}
-
-function LandingIcon({ type = "list" }) {
-  if (type === "link") {
-    return (
-      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M10 13a5 5 0 007.07 0l2.12-2.12a5 5 0 00-7.07-7.07L11 4.93" />
-        <path d="M14 11a5 5 0 00-7.07 0L4.81 13.12a5 5 0 007.07 7.07L13 19.07" />
-      </svg>
-    );
-  }
-  if (type === "bell") {
-    return (
-      <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
-        <path d="M13.73 21a2 2 0 01-3.46 0" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M8 6h13M8 12h13M8 18h13" />
-      <path d="M3.5 6l1 1 2-2M3.5 12l1 1 2-2M3.5 18l1 1 2-2" />
-    </svg>
-  );
-}
-
-function StudyPreviewCard({ study, openSlotCount, openSeats, onOpenReservation, showLegacyStats = false }) {
-  const safeStudy = study || normalizeStudyInfo({});
-  const statusTone = getStudyStatusTone(safeStudy.status);
-
-  return (
-    <div className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge tone={statusTone}>{getStudyStatusLabel(safeStudy.status)}</StatusBadge>
-        <StatusBadge tone="sky">日程予約受付中</StatusBadge>
-      </div>
-      <h3 className="mt-4 text-xl font-bold tracking-tight text-slate-950">{safeStudy.title || "研究実験 参加者募集"}</h3>
-      <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
-        {safeStudy.description || "公開中の日程から希望日時を選んで申し込めます。"}
-      </p>
-      <div className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
-        <div className="rounded-2xl bg-slate-50 px-4 py-3">
-          <span className="font-semibold text-slate-900">所要時間：</span>{safeStudy.duration || "未設定"}
-        </div>
-        <div className="rounded-2xl bg-slate-50 px-4 py-3">
-          <span className="font-semibold text-slate-900">謝礼：</span>{safeStudy.reward || "未設定"}
-        </div>
-        <div className="rounded-2xl bg-slate-50 px-4 py-3">
-          <span className="font-semibold text-slate-900">場所：</span>{safeStudy.location || safeStudy.organization || "未設定"}
-        </div>
-        <div className="rounded-2xl bg-slate-50 px-4 py-3">
-          <span className="font-semibold text-slate-900">実施組織：</span>{safeStudy.organization || "未設定"}
-        </div>
-        {showLegacyStats ? (
-          <>
-            <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-emerald-900">
-              <span className="font-semibold">公開枠：</span>{openSlotCount}枠
-            </div>
-            <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-emerald-900">
-              <span className="font-semibold">残り席数：</span>{openSeats}席
-            </div>
-          </>
-        ) : null}
-      </div>
-      <button
-        type="button"
-        onClick={() => onOpenReservation?.(safeStudy)}
-        disabled={safeStudy.status === "closed" || safeStudy.status === "draft"}
-        className="mt-5 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.20)] transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
-      >
-        {safeStudy.status === "closed" ? "募集は終了しました" : "この実験の日程を見る"}
-      </button>
-    </div>
-  );
-}
-
-function StudyListEmptyState({ studiesError }) {
-  return (
-    <div className="rounded-[32px] border border-dashed border-slate-300 bg-slate-50/80 p-6 text-center">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-3xl bg-white text-slate-400 shadow-sm">
-        <LandingIcon type="list" />
-      </div>
-      <h3 className="mt-4 text-base font-bold text-slate-900">現在表示できる実験がありません</h3>
-      <p className="mt-2 text-sm leading-6 text-slate-500">
-        {studiesError || "公開中の実験が登録されると、ここに実験カードが表示されます。"}
-      </p>
-    </div>
-  );
-}
-
-function StudyListSkeleton() {
-  return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      {[0, 1].map((item) => (
-        <div key={item} className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-[0_18px_55px_rgba(15,23,42,0.06)]">
-          <div className="h-6 w-32 animate-pulse rounded-full bg-slate-100" />
-          <div className="mt-5 h-7 w-3/4 animate-pulse rounded-full bg-slate-100" />
-          <div className="mt-4 space-y-2">
-            <div className="h-4 animate-pulse rounded-full bg-slate-100" />
-            <div className="h-4 w-5/6 animate-pulse rounded-full bg-slate-100" />
-          </div>
-          <div className="mt-5 grid gap-2 sm:grid-cols-2">
-            <div className="h-12 animate-pulse rounded-2xl bg-slate-100" />
-            <div className="h-12 animate-pulse rounded-2xl bg-slate-100" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-
-function LabLinkLandingPage({
-  studies,
-  studiesLoading,
-  onOpenStudies,
-  onOpenAdmin,
-  onOpenHelp,
-}) {
-  return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#eff6ff_30%,_#f8fafc_60%,_#eef2ff_100%)] text-slate-900">
-      <PublicSiteHeader
-        onOpenHelp={onOpenHelp}
-        onOpenAdmin={onOpenAdmin}
-        onOpenHome={() => {}}
-        onOpenReservation={onOpenStudies}
-        activePage="home"
-      />
-
-      <style jsx global>{`
-        @keyframes lablink-fade-up {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes lablink-logo-float {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-6px); }
-        }
-        @keyframes lablink-soft-glow {
-          0%, 100% { opacity: 0.55; transform: scale(1); }
-          50% { opacity: 0.9; transform: scale(1.06); }
-        }
-      `}</style>
-
-      <main className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-        <section className="relative overflow-hidden rounded-[42px] border border-white/80 bg-white/88 px-5 py-10 shadow-[0_30px_100px_rgba(15,23,42,0.12)] backdrop-blur sm:px-8 sm:py-12 lg:px-12 lg:py-14">
-          <div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-teal-200/55 blur-3xl" style={{ animation: "lablink-soft-glow 6s ease-in-out infinite" }} />
-          <div className="pointer-events-none absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-blue-200/55 blur-3xl" style={{ animation: "lablink-soft-glow 7s ease-in-out 0.8s infinite" }} />
-
-          <div className="relative mx-auto max-w-5xl text-center" style={{ animation: "lablink-fade-up 0.7s ease-out both" }}>
-            <div className="mx-auto flex justify-center">
-              <div
-                className="rounded-[28px] bg-white/82 px-5 py-4 shadow-[0_22px_70px_rgba(15,23,42,0.12)] ring-1 ring-white/90 sm:px-7 sm:py-5"
-                style={{ animation: "lablink-logo-float 5.2s ease-in-out 0.9s infinite" }}
-              >
-                <img
-                  src={LABLINK_LOGO_SRC}
-                  alt="LabLink"
-                  className="h-auto w-[170px] object-contain sm:w-[225px] lg:w-[270px]"
-                  onError={(event) => {
-                    event.currentTarget.style.display = "none";
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="mt-7 inline-flex rounded-full border border-teal-200 bg-teal-50/90 px-3 py-1 text-[11px] font-semibold tracking-[0.22em] text-teal-700">
-              RESEARCH PARTICIPATION PLATFORM
-            </div>
-
-            <h1 className="mx-auto mt-5 max-w-3xl bg-gradient-to-r from-slate-950 via-teal-800 to-blue-800 bg-clip-text text-[clamp(1.45rem,3.1vw,2.55rem)] font-semibold leading-[1.22] tracking-[-0.04em] text-transparent">
-              研究参加を、もっと身近に。
-            </h1>
-
-            <p className="mx-auto mt-5 max-w-3xl text-sm leading-8 text-slate-600 sm:text-base">
-              LabLinkは、大学で行われる研究実験の募集・予約・連絡をつなぐサービスです。参加者は募集中の実験を探して申し込み、実験者は募集情報や申込状況をまとめて管理できます。
-            </p>
-
-          </div>
-
-          <div className="relative mt-10 grid gap-4 lg:grid-cols-2" style={{ animation: "lablink-fade-up 0.7s ease-out 0.12s both" }}>
-            <button
-              type="button"
-              onClick={onOpenStudies}
-              className="group rounded-[30px] border border-teal-100 bg-white/86 p-6 text-left shadow-[0_18px_55px_rgba(15,23,42,0.07)] transition hover:-translate-y-1 hover:border-teal-200 hover:bg-white"
-            >
-              <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-teal-50 text-teal-700 ring-1 ring-teal-100">
-                  <LandingIcon type="list" />
-                </div>
-                <div>
-                  <div className="text-xs font-semibold tracking-[0.18em] text-teal-700">FOR PARTICIPANTS</div>
-                  <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-950">実験に参加したい方</h2>
-                  <p className="mt-2 text-sm leading-7 text-slate-600">
-                    募集中の実験を一覧で確認し、内容や日程を見て参加申込へ進めます。
-                  </p>
-                  <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-teal-700">
-                    募集中の実験を見る
-                    <span className="transition group-hover:translate-x-1">→</span>
-                  </div>
-                </div>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={onOpenAdmin}
-              className="group rounded-[30px] border border-blue-100 bg-white/86 p-6 text-left shadow-[0_18px_55px_rgba(15,23,42,0.07)] transition hover:-translate-y-1 hover:border-blue-200 hover:bg-white"
-            >
-              <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
-                  <LandingIcon type="link" />
-                </div>
-                <div>
-                  <div className="text-xs font-semibold tracking-[0.18em] text-blue-700">FOR ORGANIZERS</div>
-                  <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-950">実験を募集・管理する方</h2>
-                  <p className="mt-2 text-sm leading-7 text-slate-600">
-                    募集ページの作成、候補日程の追加、申込者の確認・確定を行えます。
-                  </p>
-                  <div className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-blue-700">
-                    管理者ページへ
-                    <span className="transition group-hover:translate-x-1">→</span>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-        </section>
-
-        <section className="mt-5 rounded-[34px] border border-white/80 bg-white/72 p-5 shadow-sm backdrop-blur sm:p-6" style={{ animation: "lablink-fade-up 0.7s ease-out 0.2s both" }}>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="text-xs font-semibold tracking-[0.18em] text-slate-400">ABOUT LABLINK</div>
-              <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">LabLinkでできること</h2>
-            </div>
-            <p className="max-w-2xl text-sm leading-7 text-slate-500">
-              参加者は実験を探して申し込み、実験者は募集ページ・日程・申込状況をまとめて管理できます。
-            </p>
-          </div>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-3">
-            <div className="rounded-[26px] border border-teal-100 bg-teal-50/70 p-5">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-teal-700 shadow-sm">
-                <LandingIcon type="list" />
-              </div>
-              <h3 className="mt-4 font-bold text-slate-950">参加者は実験を探しやすく</h3>
-              <p className="mt-2 text-sm leading-7 text-slate-600">
-                募集中の実験を一覧で確認し、内容に合う実験の予約ページへ進めます。
-              </p>
-            </div>
-            <div className="rounded-[26px] border border-blue-100 bg-blue-50/70 p-5">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-blue-700 shadow-sm">
-                <LandingIcon type="calendar" />
-              </div>
-              <h3 className="mt-4 font-bold text-slate-950">実験者は運営を管理しやすく</h3>
-              <p className="mt-2 text-sm leading-7 text-slate-600">
-                募集情報の作成、候補日程の公開、申込者の確定・変更を管理できます。
-              </p>
-            </div>
-            <div className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-5">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-slate-700 shadow-sm">
-                <LandingIcon type="link" />
-              </div>
-              <h3 className="mt-4 font-bold text-slate-950">連絡はメールとLINEで確認</h3>
-              <p className="mt-2 text-sm leading-7 text-slate-600">
-                確定・変更の案内はメールを基本に、希望者は公式LINEでも受け取れます。
-              </p>
-            </div>
-          </div>
-        </section>
-      </main>
-    </div>
-  );
-}
-
-function StudyBrowsePage({
-  studies,
-  studiesLoading,
-  studiesError,
-  onOpenReservation,
-  onOpenAdmin,
-  onOpenHelp,
-  onOpenHome,
-}) {
-  const studyList = Array.isArray(studies) ? studies : [];
-
-  return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#eff6ff_30%,_#f8fafc_60%,_#eef2ff_100%)] text-slate-900">
-      <PublicSiteHeader
-        onOpenHelp={onOpenHelp}
-        onOpenAdmin={onOpenAdmin}
-        onOpenHome={onOpenHome}
-        onOpenReservation={() => {}}
-        activePage="studies"
-      />
-
-      <main className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-        <section className="mb-8 rounded-[34px] border border-white/80 bg-white/85 p-6 shadow-[0_20px_70px_rgba(15,23,42,0.08)] backdrop-blur sm:p-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <div className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-teal-700">
-                STUDIES
-              </div>
-              <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">募集中の実験</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-                現在公開されている実験募集です。参加したい実験を選ぶと、その実験専用の予約ページに進みます。
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onOpenHome}
-              className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              トップへ戻る
-            </button>
-          </div>
-        </section>
-
-        {studiesLoading ? (
-          <StudyListSkeleton />
-        ) : studyList.length > 0 ? (
-          <div className="grid gap-4 lg:grid-cols-2">
-            {studyList.map((study) => (
-              <StudyPreviewCard
-                key={study.id}
-                study={study}
-                onOpenReservation={onOpenReservation}
-              />
-            ))}
-          </div>
-        ) : (
-          <StudyListEmptyState studiesError={studiesError} />
-        )}
-      </main>
-    </div>
-  );
-}
-
-function GearIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M12 3.75l1.16 2.35a1 1 0 00.77.54l2.6.38-1.88 1.83a1 1 0 00-.29.88l.44 2.59-2.32-1.22a1 1 0 00-.93 0l-2.32 1.22.44-2.59a1 1 0 00-.29-.88L7.47 7.02l2.6-.38a1 1 0 00.77-.54L12 3.75z" />
-      <circle cx="12" cy="12" r="2.75" />
-      <path d="M3.75 12h2.1M18.15 12h2.1M12 18.15v2.1M12 3.75v2.1" />
-    </svg>
-  );
-}
-
-function ChevronLeft() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M15 18l-6-6 6-6" />
-    </svg>
-  );
-}
-
-function ChevronRight() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M9 18l6-6-6-6" />
-    </svg>
-  );
-}
-
-function ArrowLeftIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M15 18l-6-6 6-6" />
-    </svg>
-  );
-}
-
-function LockIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <rect x="5" y="11" width="14" height="9" rx="2" />
-      <path d="M8 11V8a4 4 0 118 0v3" />
-    </svg>
-  );
-}
-
-function GoogleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-      <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.2-.9 2.3-1.9 3.1l3.1 2.4c1.8-1.7 2.9-4.1 2.9-6.9 0-.7-.1-1.4-.2-2.1H12z" />
-      <path fill="#34A853" d="M6.6 14.3l-.7.6-2.5 1.9C5 20 8.2 22 12 22c2.7 0 5-.9 6.7-2.5l-3.1-2.4c-.9.6-2 .9-3.6.9-2.7 0-4.9-1.8-5.7-4.2z" />
-      <path fill="#4A90E2" d="M3.4 7.8C2.8 9 2.5 10.5 2.5 12s.3 3 .9 4.2c0 0 3.2-2.5 3.2-2.5-.2-.6-.3-1.1-.3-1.7s.1-1.2.3-1.7L3.4 7.8z" />
-      <path fill="#FBBC05" d="M12 6.1c1.8 0 3.3.6 4.5 1.7l2.7-2.7C17 3 14.7 2 12 2 8.2 2 5 4 3.4 7.8l3.2 2.5C7.1 7.9 9.3 6.1 12 6.1z" />
-    </svg>
-  );
-}
-
-function HelpIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M9.8 9.2a2.45 2.45 0 014.4 1.5c0 1.7-1.8 2.2-2.2 3.4" />
-      <circle cx="12" cy="17" r=".9" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function PencilIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M4 20l4.5-1 9.7-9.7a1.8 1.8 0 000-2.6l-.7-.7a1.8 1.8 0 00-2.6 0L5.2 15.7 4 20z" />
-      <path d="M13.5 6.5l4 4" />
-    </svg>
-  );
-}
-
-function TrashIcon({ className = "h-4 w-4" }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M4 7h16" />
-      <path d="M10 11v6" />
-      <path d="M14 11v6" />
-      <path d="M6 7l1 14h10l1-14" />
-      <path d="M9 7V4h6v3" />
-    </svg>
-  );
-}
-
-function ModalShell({ title, onClose, children, eyebrow = "LabLink" }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-5">
-      <button className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={onClose} aria-label="閉じる" />
-      <div className="relative z-10 w-full max-w-xl overflow-hidden rounded-[26px] border border-white/70 bg-white shadow-2xl sm:rounded-[30px]">
-        <div className="max-h-[78dvh] overflow-y-auto p-4 sm:max-h-[84vh] sm:p-6">
-        <div className="mb-5 flex items-start justify-between gap-4">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{eyebrow}</div>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">{title}</h2>
-          </div>
-          <IconButton onClick={onClose} aria-label="閉じる">×</IconButton>
-        </div>
-        {children}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function HelpModal({ onClose }) {
-  return (
-    <ModalShell title="予約ページの使い方" onClose={onClose}>
-      <div className="grid gap-4 md:grid-cols-3">
-        {[
-          ["1", "日付を選ぶ", "空きがある日付をカレンダーで押すと、その日の詳細枠へ自動で移動します。"],
-          ["2", "時間を選ぶ", "立命館大学の時限に合わせた枠から、希望する日時を最大5つまで選べます。"],
-          ["3", "送信する", "氏名、メールアドレス、所属・学年を入力して送信すれば申込完了です。確定連絡は迷惑メールに入る場合もあるため、送信後は受信箱と迷惑メールを両方確認してください。"],
-        ].map(([number, title, text]) => (
-          <div key={number} className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-sm font-semibold text-white">{number}</div>
-            <div className="text-base font-semibold text-slate-900">{title}</div>
-            <div className="mt-2 text-sm leading-6 text-slate-500">{text}</div>
-          </div>
-        ))}
-      </div>
-      <div className="mt-6 rounded-3xl border border-sky-200 bg-sky-50 p-5 text-sm leading-7 text-slate-700">
-        入力した氏名やメールアドレスは、日程調整と連絡のための利用を想定しています。他の参加者には表示されません。
-      </div>
-    </ModalShell>
-  );
-}
-
-function SetupNotice() {
-  return (
-    <Card className="border-amber-200 bg-amber-50">
-      <SectionHeader
-        eyebrow="SETUP"
-        title="Firebase / Firestore の設定がまだです"
-        description="リアルタイム共有のために、認証だけでなく Firestore を使います。下の環境変数を確認してください。"
-      />
-      <div className="space-y-3 text-sm text-slate-700">
-        <p>`.env.local` と Vercel の Environment Variables に次を追加してください。</p>
-        <pre className="overflow-auto rounded-2xl bg-slate-900 p-4 text-slate-100">NEXT_PUBLIC_FIREBASE_API_KEY=...
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=...
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=...
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=...
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
-NEXT_PUBLIC_FIREBASE_APP_ID=...
-NEXT_PUBLIC_ADMIN_EMAILS=your-mail@example.com</pre>
-        <p>Firebase Authentication で Google ログインを有効化し、Firestore の Rules で公開枠と管理者権限を分けてください。</p>
-      </div>
-    </Card>
-  );
-}
-
-function PrivacyNote() {
-  return (
-    <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-600">
-      入力された個人情報は、実験日程の調整と連絡のための利用を想定しています。参加者同士には表示されず、管理者ページはログインした管理者のみが閲覧できます。
-    </div>
-  );
-}
-
-
-function ExperimentInfoCard({ info, compact = false, stats = null, openSlotCount = null, onRetry, setupMode = false }) {
-  const detailItems = [
-    ["所要時間", info.duration],
-    ["謝礼", info.reward],
-    ["場所", info.location],
-    ["実施組織", info.organization],
-    ["実験担当者", info.managerName],
-    ["連絡先", info.contactEmail],
-  ].filter(([, value]) => String(value || "").trim());
-
-  return (
-    <Card className={compact ? "p-5 shadow-none" : ""}>
-      <SectionHeader
-        eyebrow="STUDY INFO"
-        title={info.title || DEFAULT_EXPERIMENT_INFO.title}
-        description="参加前に確認してほしい実験内容です。日程選択の前にご確認ください。"
-      />
-
-      <div className="space-y-5">
-        {String(info.description || "").trim() ? (
-          <div className="rounded-3xl bg-slate-50 p-5 text-sm leading-7 text-slate-700">
-            {info.description}
-          </div>
-        ) : null}
-
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {detailItems.map(([label, value]) => (
-            <div key={label} className="rounded-3xl border border-slate-200 bg-white p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</div>
-              <div className="mt-2 text-sm font-medium leading-6 text-slate-800 break-words">{value}</div>
-            </div>
-          ))}
-        </div>
-
-        {String(info.notes || "").trim() ? (
-          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <div className="text-sm font-medium text-slate-700">補足事項</div>
-            <div className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-600">
-              {info.notes}
-            </div>
-          </div>
-        ) : null}
-
-        {stats ? (
-          <div className="rounded-3xl border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-blue-50 p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="text-xs font-semibold tracking-[0.18em] text-teal-600">RECEPTION STATUS</div>
-                <h3 className="mt-1 text-base font-bold text-slate-950">現在の受付状況</h3>
-                <p className="mt-1 text-sm leading-6 text-slate-500">公開中の日程枠と残り席数を確認できます。</p>
-              </div>
-              {!setupMode && typeof onRetry === "function" ? (
-                <button onClick={onRetry} className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                  最新状態を再取得
-                </button>
-              ) : null}
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:gap-3">
-              <div className="rounded-2xl bg-white/85 p-3 sm:rounded-3xl sm:p-5">
-                <div className="text-[11px] font-semibold text-slate-500 sm:text-sm sm:font-normal">公開中の枠</div>
-                <div className="mt-1 text-2xl font-semibold text-slate-900 sm:mt-2 sm:text-3xl">{openSlotCount ?? 0}</div>
-              </div>
-              <div className="rounded-2xl bg-white/85 p-3 sm:rounded-3xl sm:p-5">
-                <div className="text-[11px] font-semibold text-slate-500 sm:text-sm sm:font-normal">残り席数</div>
-                <div className="mt-1 text-2xl font-semibold text-slate-900 sm:mt-2 sm:text-3xl">{stats.openSeats}</div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </Card>
   );
 }
 
@@ -1233,35 +308,6 @@ function ExperimentInfoEditor({
   );
 }
 
-function LoadingCard({ title = "読み込み中..." }) {
-  return (
-    <Card>
-      <div className="text-sm text-slate-500">{title}</div>
-    </Card>
-  );
-}
-
-function ActionToast({ toast, onClose }) {
-  if (!toast) return null;
-
-  const styles = {
-    success: "border-emerald-200 bg-emerald-50 text-emerald-800",
-    info: "border-sky-200 bg-sky-50 text-sky-800",
-    error: "border-rose-200 bg-rose-50 text-rose-800",
-  };
-
-  return (
-    <div className="fixed left-1/2 top-4 z-[60] w-[calc(100%-1.5rem)] max-w-md -translate-x-1/2 sm:top-6">
-      <div className={classNames("rounded-2xl border px-4 py-3 text-sm shadow-lg", styles[toast.tone] || styles.info)}>
-        <div className="flex items-start justify-between gap-3">
-          <div>{toast.message}</div>
-          <button onClick={onClose} className="font-medium opacity-70 hover:opacity-100">×</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 
 function LineLinkCodeHelpModal({ onClose }) {
   return (
@@ -1283,6 +329,7 @@ function LineLinkCodeHelpModal({ onClose }) {
     </ModalShell>
   );
 }
+
 
 function EditSlotModal({ form, setForm, onSave, onClose, saving }) {
   return (
@@ -1363,6 +410,7 @@ function EditSlotModal({ form, setForm, onSave, onClose, saving }) {
 }
 
 
+
 function AssignmentConfirmModal({ dialog, onConfirm, onClose, loading }) {
   if (!dialog) return null;
 
@@ -1421,1060 +469,6 @@ function AssignmentConfirmModal({ dialog, onConfirm, onClose, loading }) {
   );
 }
 
-
-function ParticipantRequestConfirmModal({ open, participantForm, sortedSlots, onConfirm, onClose, loading }) {
-  if (!open) return null;
-
-  const selectedSlots = participantForm.preferredSlotIds
-    .map((slotId) => sortedSlots.find((slot) => slot.id === slotId))
-    .filter(Boolean);
-
-  return (
-    <ModalShell title="この内容で申し込みますか？" onClose={onClose}>
-      <div className="space-y-5">
-        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-700">
-          <div><span className="font-medium">氏名:</span> {participantForm.name}</div>
-          <div className="mt-1 break-all"><span className="font-medium">メールアドレス:</span> {participantForm.email}</div>
-          <div className="mt-1"><span className="font-medium">所属・学年:</span> {participantForm.affiliation}</div>
-          {participantForm.note.trim() ? (
-            <div className="mt-3">
-              <div className="font-medium">補足</div>
-              <div className="mt-1 whitespace-pre-line rounded-2xl bg-white px-3 py-2 text-slate-600">{participantForm.note.trim()}</div>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="rounded-3xl border border-slate-200 bg-white p-4">
-          <div className="text-sm font-medium text-slate-700">希望枠</div>
-          <div className="mt-3 space-y-2">
-            {selectedSlots.map((slot) => (
-              <div key={slot.id} className="rounded-2xl bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                {formatJapaneseDate(slot.date)} / {PERIOD_MAP[slot.periodKey]?.label || slot.periodKey}
-                {slot.location ? ` / ${slot.location}` : ""}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-3xl border border-amber-300 bg-amber-50 p-4 text-sm leading-7 text-amber-950">
-          送信後、日程の確定や変更に関する重要な連絡を、登録したメールアドレス宛にお送りします。
-          通常の受信箱ではなく迷惑メールに入る場合もあるため、受信箱と迷惑メールの両方を必ず確認してください。
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={loading}
-            className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
-          >
-            {loading ? "送信中..." : "この内容で送信する"}
-          </button>
-
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            入力内容を修正する
-          </button>
-        </div>
-      </div>
-    </ModalShell>
-  );
-}
-
-
-function LineLinkGuideModal({ lineLinkInfo, onClose, onToast }) {
-  const [copied, setCopied] = useState(false);
-
-  if (!lineLinkInfo?.code) return null;
-
-  const showCopiedFeedback = () => {
-    setCopied(true);
-    onToast?.({ tone: "success", message: "連携コードをコピーしました。公式LINEのトーク画面に貼り付けて送信してください。" });
-    window.setTimeout(() => setCopied(false), 1800);
-  };
-
-  const handleCopyCode = async () => {
-    try {
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(lineLinkInfo.code);
-        showCopiedFeedback();
-        return;
-      }
-    } catch (error) {
-      console.error("Failed to copy LINE link code:", error);
-    }
-
-    try {
-      const textArea = document.createElement("textarea");
-      textArea.value = lineLinkInfo.code;
-      textArea.setAttribute("readonly", "");
-      textArea.style.position = "absolute";
-      textArea.style.left = "-9999px";
-      document.body.appendChild(textArea);
-      textArea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textArea);
-      showCopiedFeedback();
-    } catch (error) {
-      console.error("Fallback copy failed:", error);
-      onToast?.({ tone: "error", message: "コピーに失敗しました。連携コードを手動で選択してコピーしてください。" });
-    }
-  };
-
-  const LineIcon = ({ className = "" }) => (
-    <span className={classNames("inline-flex items-center justify-center rounded-full bg-[#06C755] text-white", className)}>
-      <span className="rounded-full bg-white px-1.5 py-1 text-[10px] font-black leading-none tracking-tight text-[#06C755]">
-        LINE
-      </span>
-    </span>
-  );
-
-  const CopyIcon = () => (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-5 w-5">
-      <path
-        d="M8 7.5A2.5 2.5 0 0 1 10.5 5H17a2.5 2.5 0 0 1 2.5 2.5V14a2.5 2.5 0 0 1-2.5 2.5h-1.5v-2H17a.5.5 0 0 0 .5-.5V7.5A.5.5 0 0 0 17 7h-6.5a.5.5 0 0 0-.5.5V9H8V7.5Z"
-        fill="currentColor"
-      />
-      <path
-        d="M4.5 10A2.5 2.5 0 0 1 7 7.5h6.5A2.5 2.5 0 0 1 16 10v6.5A2.5 2.5 0 0 1 13.5 19H7a2.5 2.5 0 0 1-2.5-2.5V10Zm2.5-.5a.5.5 0 0 0-.5.5v6.5a.5.5 0 0 0 .5.5h6.5a.5.5 0 0 0 .5-.5V10a.5.5 0 0 0-.5-.5H7Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-
-  return (
-    <ModalShell title="LINEでも通知を受け取る（オススメ）" onClose={onClose}>
-      <div className="space-y-5 text-sm leading-7 text-slate-700">
-        <div className="rounded-[28px] border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 text-emerald-950 sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-            <div className="min-w-0 flex-1">
-              <div className="text-xl font-bold text-slate-900">申込が完了しました</div>
-              <p className="mt-2 text-sm leading-7 text-slate-700">
-                日程の確定・変更・確認の案内をLINEでも受け取りたい方は、以下の手順で公式LINEと申込情報を連携してください。
-              </p>
-              <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-6 text-emerald-800 sm:text-sm">
-                LINE連携は任意です。連携しない場合でも、これまで通りメールで日程のご連絡をお送りします。
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 sm:p-6">
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-base font-bold text-white shadow-sm">
-                1
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-lg font-semibold text-slate-900">公式LINEを追加</div>
-                <p className="mt-2 text-sm leading-7 text-slate-600">
-                  QRコードを読み取るか、友だち追加ボタンから公式LINEを追加してください。
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.9fr)] lg:items-center">
-              {LINE_QR_IMAGE_URL ? (
-                <div className="rounded-3xl border border-emerald-200 bg-white p-4 text-center shadow-sm sm:p-5">
-                  <img
-                    src={LINE_QR_IMAGE_URL}
-                    alt="公式LINE友だち追加用QRコード"
-                    className="mx-auto h-36 w-36 rounded-2xl object-contain sm:h-52 sm:w-52"
-                  />
-                  <div className="mt-3 text-sm font-medium text-emerald-800">QRコードで友だち追加</div>
-                </div>
-              ) : null}
-
-              <div className={classNames("space-y-3", !LINE_QR_IMAGE_URL && "lg:col-span-2")}>
-                {LINE_ADD_FRIEND_URL ? (
-                  <a
-                    href={LINE_ADD_FRIEND_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex w-full items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 py-4 shadow-sm transition hover:bg-emerald-50 active:scale-[0.99] sm:w-auto sm:min-w-[260px]"
-                    aria-label="公式LINEを友だち追加する"
-                  >
-                    <img
-                      src="https://scdn.line-apps.com/n/line_add_friends/btn/ja.png"
-                      alt="友だち追加"
-                      className="h-11 w-auto sm:h-12"
-                    />
-                  </a>
-                ) : null}
-
-
-                {LINE_OFFICIAL_ACCOUNT_ID ? (
-                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs leading-6 text-emerald-900 sm:text-sm">
-                    LINEアプリでID検索する場合：
-                    <span className="ml-1 font-semibold">{LINE_OFFICIAL_ACCOUNT_ID}</span>
-                  </div>
-                ) : null}
-
-                {!LINE_QR_IMAGE_URL && !LINE_ADD_FRIEND_URL ? (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-amber-900 sm:text-sm">
-                    公式LINEのQRコードまたは友だち追加ボタンがまだ設定されていません。管理者側で
-                    <span className="mx-1 font-semibold">NEXT_PUBLIC_LINE_QR_IMAGE_URL</span>
-                    または
-                    <span className="mx-1 font-semibold">NEXT_PUBLIC_LINE_OFFICIAL_ACCOUNT_URL</span>
-                    を設定してください。
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 sm:p-6">
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-base font-bold text-white shadow-sm">
-                2
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-lg font-semibold text-slate-900">連携コードを送信</div>
-                <p className="mt-2 text-sm leading-7 text-slate-600">
-                  公式LINEを追加したあと、以下の8桁の連携コードをそのまま送信してください。
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-3xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-5">
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 sm:p-4">
-                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_132px] md:items-stretch">
-                  <div className="min-w-0 overflow-hidden rounded-2xl bg-white/60 px-3 py-4 text-center text-[2rem] font-bold tracking-[0.14em] text-emerald-800 md:flex md:items-center md:justify-center md:px-3 md:text-[2.05rem] md:tracking-[0.08em] lg:text-[2.25rem]">
-                    <span className="block max-w-full whitespace-nowrap leading-none">{lineLinkInfo.code}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCopyCode}
-                    title="連携コードをコピー"
-                    aria-label="連携コードをコピー"
-                    className={classNames(
-                      "inline-flex h-14 w-full shrink-0 items-center justify-center gap-2 rounded-2xl px-4 text-sm font-semibold text-white shadow-sm transition md:h-full md:min-h-16 md:w-[132px] md:px-3",
-                      copied ? "bg-emerald-700" : "bg-emerald-600 hover:bg-emerald-500"
-                    )}
-                  >
-                    <CopyIcon />
-                    <span>{copied ? "コピー済み" : "コピー"}</span>
-                  </button>
-                </div>
-              </div>
-              <p className="mt-3 text-xs leading-6 text-slate-500 sm:text-sm">
-                連携コードをコピーし、公式LINEのトーク画面に貼り付けて送信してください。
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 sm:p-6">
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-base font-bold text-white shadow-sm">
-                3
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-lg font-semibold text-slate-900">連携完了</div>
-                <p className="mt-2 text-sm leading-7 text-slate-600">
-                  LINEに連携完了メッセージが届けば設定は完了です。以後、日程の確定や変更の案内もLINEで受け取れます。
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-center pt-1 sm:justify-start">
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex min-w-[180px] items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-          >
-            閉じる
-          </button>
-        </div>
-      </div>
-    </ModalShell>
-  );
-}
-
-
-function ParticipantResponsePage({
-  loading,
-  error,
-  requestItem,
-  assignedSlot,
-  studyTitle,
-  responseNote,
-  setResponseNote,
-  onSubmitChangeRequest,
-  submitting,
-  submitMessage,
-  onBackToTop,
-}) {
-  const confirmationStatus = requestItem?.participantConfirmationStatus || "pending";
-
-  return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#f8fafc_38%,_#eef2ff_100%)] text-slate-900">
-      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-        <ResponsePageHeader />
-
-        {loading ? <LoadingCard title="確認情報を読み込んでいます..." /> : null}
-
-        {error ? (
-          <Card className="p-6">
-            <div className="rounded-3xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm leading-7 text-rose-700">
-              {error}
-            </div>
-            <button
-              type="button"
-              onClick={onBackToTop}
-              className="mt-5 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              予約ページへ戻る
-            </button>
-          </Card>
-        ) : null}
-
-        {!loading && !error && requestItem ? (
-          <div className="space-y-5">
-            <Card className="p-6">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="text-xl font-semibold text-slate-900">{requestItem.name || "参加者様"}</div>
-                <StatusBadge tone={getParticipantConfirmationTone(confirmationStatus)}>{getParticipantConfirmationLabel(confirmationStatus)}</StatusBadge>
-              </div>
-              <div className="mt-4 space-y-2 text-sm text-slate-600">
-                <div><span className="font-medium text-slate-800">登録メール:</span> {requestItem.email || "未登録"}</div>
-                <div><span className="font-medium text-slate-800">所属・学年:</span> {requestItem.affiliation || "未入力"}</div>
-              </div>
-
-              <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-                <div className="text-sm font-medium text-slate-700">現在の確定日程</div>
-                <div className="mt-3 text-base font-semibold text-slate-900">
-                  {assignedSlot ? (
-                    <>
-                      {formatJapaneseDate(assignedSlot.date)} / {PERIOD_MAP[assignedSlot.periodKey]?.label || assignedSlot.periodKey}
-                      {assignedSlot.location ? " / " + assignedSlot.location : ""}
-                    </>
-                  ) : (
-                    "現在、確定済みの日程はありません。"
-                  )}
-                </div>
-                {assignedSlot?.note ? <div className="mt-2 whitespace-pre-line text-sm text-slate-500">{assignedSlot.note}</div> : null}
-                {assignedSlot?.date && assignedSlot?.periodKey ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      downloadIcsFile(
-                        "schedule.ics",
-                        [{ slot: assignedSlot, summary: studyTitle || "実験参加", uid: `lablink-${requestItem?.id || "unknown"}@lablink` }]
-                      )
-                    }
-                    className="mt-4 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-medium text-teal-700 transition hover:bg-teal-100"
-                  >
-                    カレンダーに追加（.ics）
-                  </button>
-                ) : null}
-              </div>
-
-              {submitMessage ? (
-                <div className="mt-5 rounded-3xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm leading-7 text-emerald-800">
-                  {submitMessage}
-                </div>
-              ) : null}
-
-              {requestItem.participantResponseNote ? (
-                <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-4">
-                  <div className="text-sm font-medium text-slate-700">直近の連絡内容</div>
-                  <div className="mt-2 whitespace-pre-line text-sm leading-7 text-slate-600">{requestItem.participantResponseNote}</div>
-                </div>
-              ) : null}
-            </Card>
-
-            <Card className="p-6">
-              <div className="space-y-5">
-                <div>
-                  <h2 className="text-xl font-semibold text-slate-900">変更希望を送信する</h2>
-                  <p className="mt-2 text-sm leading-7 text-slate-600">
-                    参加が難しい場合や再調整を希望する場合は、理由や参加可能な日時を入力して送信してください。
-                  </p>
-                </div>
-
-                <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-sm leading-7 text-amber-900">
-                  日程に問題がない場合は、このページではなく、メール内の青い「この日程で確認しました」ボタンから確認済みにしてください。
-                </div>
-
-                <div className="space-y-4 rounded-3xl border border-rose-200 bg-rose-50/60 p-5">
-                  <div>
-                    <h3 className="text-lg font-semibold text-rose-950">変更希望</h3>
-                    <p className="mt-2 text-sm leading-7 text-rose-900/80">
-                      できるだけ具体的に、参加できない理由や参加可能な日時を記入してください。
-                    </p>
-                  </div>
-
-                  <label className="block text-sm">
-                    <div className="mb-1.5 text-rose-900">変更内容・ご都合</div>
-                    <textarea
-                      value={responseNote}
-                      onChange={(event) => setResponseNote(event.target.value)}
-                      placeholder="例）この時間は授業があるため参加できません。来週火曜3〜5限なら参加できます。"
-                      className="min-h-36 w-full rounded-2xl border border-rose-200 bg-white px-4 py-3 outline-none transition focus:border-rose-400"
-                    />
-                  </label>
-
-                  <div className="flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      onClick={onSubmitChangeRequest}
-                      disabled={submitting || !assignedSlot}
-                      className="rounded-2xl bg-rose-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-rose-500 disabled:opacity-60"
-                    >
-                      {submitting ? "送信中..." : confirmationStatus === "change_requested" ? "もう一度、変更希望を送信する" : "変更希望を送信する"}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={onBackToTop}
-                      className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                    >
-                      予約ページへ戻る
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function SelectedStudyContextCard({ study, onOpenHelp }) {
-  if (!study) return null;
-
-  const steps = [
-    ["01", "希望枠を選択", "空いている日程から最大5枠まで選びます。"],
-    ["02", "担当者が確定", "申込内容を確認し、参加日時を決定します。"],
-    ["03", "案内を確認", "確定案内をメールで確認し、必要に応じてLINE連携できます。"],
-  ];
-
-  return (
-    <div className="mb-5 rounded-[30px] border border-white/80 bg-white/88 p-5 shadow-[0_16px_50px_rgba(15,23,42,0.08)] backdrop-blur sm:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <div className="text-xs font-semibold tracking-[0.16em] text-teal-600">RESERVATION PAGE</div>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">実験日程の予約</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            「{study.title}」の内容を確認し、下のカレンダーまたは一覧から希望日時を選択してください。
-          </p>
-        </div>
-        <StatusBadge tone={getStudyStatusTone(study.status)}>{getStudyStatusLabel(study.status)}</StatusBadge>
-      </div>
-
-      <div className="mt-5 rounded-[26px] border border-teal-100 bg-gradient-to-br from-teal-50 via-white to-blue-50 p-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-xs font-semibold tracking-[0.16em] text-teal-600">HOW IT WORKS</div>
-            <h2 className="mt-1 text-base font-bold text-slate-950">申込から参加まで</h2>
-          </div>
-          {typeof onOpenHelp === "function" ? (
-            <button
-              type="button"
-              onClick={onOpenHelp}
-              className="rounded-2xl border border-teal-200 bg-white px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50"
-            >
-              詳しく見る
-            </button>
-          ) : null}
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          {steps.map(([number, title, text]) => (
-            <div key={number} className="rounded-3xl border border-white/80 bg-white/85 p-4">
-              <div className="text-xs font-bold tracking-[0.18em] text-teal-500">{number}</div>
-              <div className="mt-2 text-sm font-semibold text-slate-900">{title}</div>
-              <div className="mt-1 text-xs leading-5 text-slate-500">{text}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ParticipantPage({
-  sortedSlots,
-  displayMonth,
-  setDisplayMonth,
-  selectedDate,
-  handleSelectDate,
-  monthSummary,
-  days,
-  selectedDaySlots,
-  participantForm,
-  setParticipantForm,
-  togglePreferredSlot,
-  handleSubmitRequest,
-  participantSubmitLoading,
-  message,
-  lineLinkInfo,
-  onOpenLineGuide,
-  detailsRef,
-  onOpenAdmin,
-  onOpenHelp,
-  onOpenHome,
-  onOpenStudies,
-  stats,
-  isLoading,
-  onRetry,
-  setupMode,
-  calendarView,
-  setCalendarView,
-  experimentInfo,
-  activeStudy,
-}) {
-  const mobileDateItems = days
-    .filter((day) => day.getMonth() === displayMonth.getMonth())
-    .map((day) => {
-      const dateKey = formatDateKey(day);
-      const summary = monthSummary[dateKey];
-      return { day, dateKey, summary };
-    })
-    .filter(({ summary }) => (summary?.slotCount || 0) > 0);
-
-  return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#eff6ff_30%,_#f8fafc_60%,_#eef2ff_100%)] text-slate-900">
-      <PublicSiteHeader onOpenHelp={onOpenHelp} onOpenAdmin={onOpenAdmin} onOpenHome={onOpenHome} onOpenReservation={onOpenStudies || onOpenHome} activePage="studies" />
-      <div className="mx-auto max-w-7xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
-        <SelectedStudyContextCard study={activeStudy} onOpenHelp={onOpenHelp} />
-
-        {setupMode ? <div className="mb-6"><SetupNotice /></div> : null}
-
-
-        <section className="mb-6">
-          <ExperimentInfoCard
-            info={experimentInfo}
-            stats={stats}
-            openSlotCount={sortedSlots.length}
-            onRetry={onRetry}
-            setupMode={setupMode}
-          />
-        </section>
-
-        {isLoading ? (
-          <LoadingCard title="公開中の日程を読み込んでいます..." />
-        ) : (
-          <section className="grid gap-6 xl:grid-cols-[1.28fr,0.92fr]">
-            <Card>
-              <SectionHeader
-                eyebrow="CALENDAR"
-                title="空いている日をカレンダーで選ぶ"
-                description="表示方法を切り替えながら、見やすい形で日程を確認できます。色の意味は下の凡例で確認できます。"
-                action={
-                  <div className="flex w-full flex-col gap-3 sm:w-auto sm:items-end">
-                    <div className="inline-flex w-full rounded-2xl border border-slate-200 bg-white p-1 sm:w-auto">
-                      <button
-                        type="button"
-                        onClick={() => setCalendarView("calendar")}
-                        className={classNames(
-                          "flex-1 rounded-xl px-3 py-2 text-sm font-medium transition sm:flex-none",
-                          calendarView === "calendar" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
-                        )}
-                      >
-                        カレンダー表示
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCalendarView("list")}
-                        className={classNames(
-                          "flex-1 rounded-xl border-l border-slate-200 px-3 py-2 text-sm font-medium transition sm:flex-none sm:border-l-0",
-                          calendarView === "list" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
-                        )}
-                      >
-                        一覧表示
-                      </button>
-                    </div>
-                    <div className="grid w-full grid-cols-[56px_1fr_56px] items-center gap-2 sm:w-auto sm:min-w-[260px]">
-                      <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() - 1, 1))}>
-                        <ChevronLeft />
-                      </IconButton>
-                      <div className="text-center text-sm font-semibold text-slate-700">{formatMonthTitle(displayMonth)}</div>
-                      <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() + 1, 1))}>
-                        <ChevronRight />
-                      </IconButton>
-                    </div>
-                  </div>
-                }
-              />
-
-              <div className="mb-4 hidden flex-wrap gap-2 text-xs text-slate-500 md:flex">
-                <StatusBadge tone="emerald">空きあり</StatusBadge>
-                <StatusBadge tone="amber">残りわずか</StatusBadge>
-                <StatusBadge tone="rose">満席</StatusBadge>
-                <StatusBadge tone="slate">公開枠なし</StatusBadge>
-              </div>
-
-              <div className="mb-4 flex flex-nowrap items-center justify-between gap-2 overflow-x-auto pb-1 text-xs text-slate-500 md:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <span className="inline-flex shrink-0 rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">空きあり</span>
-                <span className="inline-flex shrink-0 rounded-full border border-amber-200 bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700">残りわずか</span>
-                <span className="inline-flex shrink-0 rounded-full border border-rose-200 bg-rose-100 px-2.5 py-1 text-xs font-medium text-rose-700">満席</span>
-                <span className="inline-flex shrink-0 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">公開枠なし</span>
-              </div>
-
-              {calendarView === "calendar" ? (
-                <>
-                  <div className="mb-3 grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-400">
-                    {WEEK_LABELS.map((label, index) => (
-                      <div
-                        key={label}
-                        className={classNames(
-                          "py-2",
-                          index === 0 ? "text-rose-500" : index === 6 ? "text-sky-500" : "text-slate-400"
-                        )}
-                      >
-                        {label}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="hidden md:grid md:grid-cols-7 md:gap-2">
-                    {days.map((day) => {
-                      const dateKey = formatDateKey(day);
-                      const summary = monthSummary[dateKey];
-                      const inMonth = day.getMonth() === displayMonth.getMonth();
-                      const selected = dateKey === selectedDate;
-                      const hasSlots = summary?.slotCount > 0;
-                      const onlyFewLeft = hasSlots && summary.totalRemaining <= 1;
-                      const allFull = hasSlots && summary.fullCount === summary.slotCount;
-                      const holidayName = getJapaneseHolidayName(day);
-                      const isHoliday = Boolean(holidayName);
-                      const isSunday = day.getDay() === 0;
-                      const isSaturday = day.getDay() === 6;
-
-                      return (
-                        <button
-                          key={dateKey}
-                          onClick={() => handleSelectDate(dateKey)}
-                          className={classNames(
-                            "min-h-[114px] rounded-3xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                            selected
-                              ? "border-slate-900 bg-slate-900 text-white shadow-lg"
-                              : !inMonth
-                              ? "bg-slate-50 text-slate-400 border-slate-200"
-                              : hasSlots
-                              ? allFull
-                                ? "border-rose-300 bg-rose-50 hover:border-rose-400 hover:shadow-sm"
-                                : onlyFewLeft
-                                ? "border-amber-300 bg-amber-50 hover:border-amber-400 hover:shadow-sm"
-                                : "border-emerald-300 bg-emerald-50 hover:border-emerald-400 hover:shadow-sm"
-                              : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                            <div
-                              className={classNames(
-                                "font-semibold",
-                                hasSlots ? "text-lg" : "text-sm",
-                                selected
-                                  ? "text-white"
-                                  : isHoliday || isSunday
-                                  ? "text-rose-600"
-                                  : isSaturday
-                                  ? "text-sky-600"
-                                  : "text-slate-900"
-                              )}
-                            >
-                              {day.getDate()}
-                            </div>
-                            {holidayName && inMonth ? (
-                              <span className={classNames("rounded-full px-2 py-0.5 text-[10px] font-medium", selected ? "bg-white/15 text-white" : "bg-rose-100 text-rose-700")}>
-                                祝
-                              </span>
-                            ) : null}
-                          </div>
-                            {hasSlots ? (
-                              allFull ? (
-                                <StatusBadge tone="rose">満枠</StatusBadge>
-                              ) : onlyFewLeft ? (
-                                <StatusBadge tone="amber">残少</StatusBadge>
-                              ) : (
-                                <StatusBadge tone="emerald">空き</StatusBadge>
-                              )
-                            ) : null}
-                          </div>
-                          <div className={classNames("mt-4 space-y-1 text-xs leading-5", selected ? "text-slate-200" : "text-slate-500")}>
-                            <div>{summary?.slotCount || 0} 枠</div>
-                            <div>{hasSlots ? `残り ${summary.totalRemaining} 席` : "公開枠なし"}</div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="grid grid-cols-7 gap-2 md:hidden">
-                    {days.map((day) => {
-                      const dateKey = formatDateKey(day);
-                      const summary = monthSummary[dateKey];
-                      const inMonth = day.getMonth() === displayMonth.getMonth();
-                      const selected = dateKey === selectedDate;
-                      const hasSlots = summary?.slotCount > 0;
-                      const allFull = hasSlots && summary.fullCount === summary.slotCount;
-                      const few = hasSlots && !allFull && summary.totalRemaining <= 1;
-                      const holidayName = getJapaneseHolidayName(day);
-                      const isHoliday = Boolean(holidayName);
-                      const isSunday = day.getDay() === 0;
-                      const isSaturday = day.getDay() === 6;
-
-                      return (
-                        <button
-                          key={dateKey}
-                          onClick={() => handleSelectDate(dateKey)}
-                          className={classNames(
-                            "aspect-square rounded-2xl border text-center transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                            selected
-                              ? "border-slate-900 bg-slate-900 text-white shadow-md"
-                              : !inMonth
-                              ? "border-slate-200 bg-slate-50 text-slate-300"
-                              : hasSlots
-                              ? allFull
-                                ? "border-rose-200 bg-rose-100 text-rose-700"
-                                : few
-                                ? "border-amber-200 bg-amber-100 text-amber-700"
-                                : "border-emerald-200 bg-emerald-100 text-emerald-700"
-                              : "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
-                          )}
-                        >
-                          <div
-                            className={classNames(
-                              "flex h-full items-center justify-center text-base font-semibold",
-                              selected
-                                ? "text-white"
-                                : isHoliday || isSunday
-                                ? "text-rose-600"
-                                : isSaturday
-                                ? "text-sky-600"
-                                : inMonth
-                                ? "text-slate-800"
-                                : "text-slate-300"
-                            )}
-                          >
-                            {day.getDate()}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              ) : (
-                <div className="space-y-3">
-                  {mobileDateItems.length === 0 ? (
-                    <div className="rounded-3xl border border-dashed border-slate-200 p-5 text-sm text-slate-500">
-                      今月の公開中の枠はまだありません。
-                    </div>
-                  ) : (
-                    mobileDateItems.map(({ day, dateKey, summary }) => {
-                      const selected = dateKey === selectedDate;
-                      const allFull = summary.fullCount === summary.slotCount;
-                      const few = !allFull && summary.totalRemaining <= 1;
-                      return (
-                        <button
-                          key={dateKey}
-                          onClick={() => handleSelectDate(dateKey)}
-                          className={classNames(
-                            "w-full rounded-3xl border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                            selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white hover:border-slate-300"
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className={classNames("text-lg font-semibold", selected ? "text-white" : "text-slate-900")}>
-                                {day.getDate()}日（{WEEK_LABELS[day.getDay()]}）
-                              </div>
-                              <div className={classNames("mt-1 text-sm", selected ? "text-slate-200" : "text-slate-500")}>
-                                {summary.slotCount}枠 / 残り {summary.totalRemaining}席
-                              </div>
-                            </div>
-                            <StatusBadge tone={allFull ? "rose" : few ? "amber" : "emerald"}>
-                              {allFull ? "満枠" : few ? "残少" : "空き"}
-                            </StatusBadge>
-                          </div>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </Card>
-
-            <div className="space-y-6">
-              <Card ref={detailsRef} tabIndex={-1} className="scroll-mt-6 focus:outline-none focus:ring-2 focus:ring-sky-300">
-                <SectionHeader
-                  eyebrow="DETAIL"
-                  title={selectedDate ? `${formatJapaneseDate(selectedDate)} の詳細枠` : "日付を選択してください"}
-                  description="気になる時間帯を選ぶと、右下の送信フォームに反映されます。"
-                />
-                <div className="space-y-3">
-                  {selectedDaySlots.length === 0 ? (
-                    <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-sm text-slate-500">
-                      この日は現在公開されている枠がありません。
-                    </div>
-                  ) : (
-                    selectedDaySlots.map((slot) => {
-                      const metrics = getSlotMetrics(slot);
-                      const selected = participantForm.preferredSlotIds.includes(slot.id);
-                      return (
-                        <div key={slot.id} className={classNames("rounded-3xl border p-4 transition", selected ? "border-sky-300 bg-sky-50" : "border-slate-200 bg-slate-50/80")}>
-                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-base font-semibold text-slate-900">{getSlotLabel(slot)}</div>
-                                <StatusBadge tone={metrics.full ? "rose" : metrics.remaining <= 1 ? "amber" : "emerald"}>
-                                  {metrics.full ? "満枠" : `残り ${metrics.remaining} 席`}
-                                </StatusBadge>
-                              </div>
-                              <div className="mt-2 text-sm text-slate-500">{slot.location || "場所未設定"}</div>
-                              {slot.note ? <div className="mt-1 text-sm text-slate-500">{slot.note}</div> : null}
-                              {selected ? <div className="mt-3 text-sm font-medium text-sky-700">この枠は希望一覧に追加されています。</div> : null}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => togglePreferredSlot(slot.id)}
-                              disabled={metrics.full && !selected}
-                              className={classNames(
-                                "rounded-2xl px-4 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                                selected
-                                  ? "bg-slate-900 text-white"
-                                  : metrics.full
-                                  ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-                              )}
-                            >
-                              {selected ? "選択中" : "希望に追加"}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </Card>
-
-              {participantForm.preferredSlotIds.length > 0 ? (
-              <Card>
-                <SectionHeader
-                  eyebrow="FORM"
-                  title="希望日時を送信する"
-                  description="氏名、メールアドレス、所属・学年、希望枠は必須です。確定連絡は迷惑メールに入る場合があるため、受信箱と迷惑メールの両方を確認してください。"
-                  action={<StatusBadge tone="sky">最大{MAX_PREFERRED_SLOTS}枠まで</StatusBadge>}
-                />
-
-                <form onSubmit={handleSubmitRequest} className="space-y-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="text-sm">
-                      <div className="mb-1.5 text-slate-600">氏名 <span className="text-rose-500">*</span></div>
-                      <input
-                        required
-                        value={participantForm.name}
-                        onChange={(event) => setParticipantForm((prev) => ({ ...prev, name: event.target.value }))}
-                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                        placeholder="例: 山田 太郎"
-                        autoComplete="name"
-                      />
-                    </label>
-                    <label className="text-sm">
-                      <div className="mb-1.5 text-slate-600">メールアドレス <span className="text-rose-500">*</span></div>
-                      <input
-                        required
-                        type="email"
-                        value={participantForm.email}
-                        onChange={(event) => setParticipantForm((prev) => ({ ...prev, email: event.target.value }))}
-                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                        placeholder="example@xxx.com"
-                        autoComplete="email"
-                      />
-                      <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900">
-                        送信後は、受信箱と迷惑メールの両方を必ず確認してください。
-                      </div>
-                    </label>
-                  </div>
-
-                  <label className="block text-sm">
-                    <div className="mb-1.5 text-slate-600">所属・学年 <span className="text-rose-500">*</span></div>
-                    <input
-                      required
-                      value={participantForm.affiliation}
-                      onChange={(event) => setParticipantForm((prev) => ({ ...prev, affiliation: event.target.value }))}
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                      placeholder="例: 情報理工学部 B4"
-                    />
-                  </label>
-
-                  <label className="block text-sm">
-                    <div className="mb-1.5 text-slate-600">補足</div>
-                    <textarea
-                      value={participantForm.note}
-                      onChange={(event) => setParticipantForm((prev) => ({ ...prev, note: event.target.value }))}
-                      className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                      placeholder="例: 放課後希望 / VR酔いしやすい など"
-                    />
-                  </label>
-
-                  {(activeStudy?.customFields || []).map((field) => {
-                    const val = (participantForm.customFieldValues || {})[field.id] ?? (field.type === "checkbox" ? [] : "");
-                    const setVal = (newVal) => setParticipantForm((prev) => ({
-                      ...prev,
-                      customFieldValues: { ...(prev.customFieldValues || {}), [field.id]: newVal },
-                    }));
-                    return (
-                      <div key={field.id} className="block text-sm">
-                        <div className="mb-1.5 text-slate-600">
-                          {field.label}
-                          {field.required ? <span className="ml-1 text-rose-500">*</span> : null}
-                        </div>
-                        {field.type === "text" && (
-                          <input
-                            required={field.required}
-                            value={val}
-                            onChange={(e) => setVal(e.target.value)}
-                            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                          />
-                        )}
-                        {field.type === "textarea" && (
-                          <textarea
-                            required={field.required}
-                            value={val}
-                            onChange={(e) => setVal(e.target.value)}
-                            className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                          />
-                        )}
-                        {field.type === "select" && (
-                          <select
-                            required={field.required}
-                            value={val}
-                            onChange={(e) => setVal(e.target.value)}
-                            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                          >
-                            <option value="">選択してください</option>
-                            {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                          </select>
-                        )}
-                        {field.type === "radio" && (
-                          <div className="flex flex-wrap gap-3">
-                            {(field.options || []).map((opt) => (
-                              <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
-                                <input
-                                  type="radio"
-                                  name={`custom_${field.id}`}
-                                  value={opt}
-                                  checked={val === opt}
-                                  onChange={() => setVal(opt)}
-                                  className="h-4 w-4"
-                                />
-                                {opt}
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                        {field.type === "checkbox" && (
-                          <div className="flex flex-wrap gap-3">
-                            {(field.options || []).map((opt) => (
-                              <label key={opt} className="flex items-center gap-2 text-sm text-slate-700">
-                                <input
-                                  type="checkbox"
-                                  value={opt}
-                                  checked={Array.isArray(val) && val.includes(opt)}
-                                  onChange={(e) => {
-                                    const next = Array.isArray(val) ? [...val] : [];
-                                    setVal(e.target.checked ? [...next, opt] : next.filter((v) => v !== opt));
-                                  }}
-                                  className="h-4 w-4 rounded"
-                                />
-                                {opt}
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  <div className="rounded-3xl bg-slate-50 p-4">
-                    <div className="text-sm font-medium text-slate-700">選択中の希望枠 <span className="text-rose-500">*</span></div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {participantForm.preferredSlotIds.length === 0 ? (
-                        <div className="text-sm text-slate-500">まだ選択されていません。</div>
-                      ) : (
-                        participantForm.preferredSlotIds.map((slotId) => {
-                          const slot = sortedSlots.find((item) => item.id === slotId);
-                          if (!slot) return null;
-                          return (
-                            <button
-                              key={slotId}
-                              type="button"
-                              onClick={() => togglePreferredSlot(slotId)}
-                              className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700"
-                            >
-                              {formatJapaneseDate(slot.date)} / {PERIOD_MAP[slot.periodKey].label} ×
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-
-                  <PrivacyNote />
-
-                  {message ? (
-                    <div className="rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                      {message}
-                    </div>
-                  ) : null}
-
-                  {lineLinkInfo?.code ? (
-                    <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-7 text-emerald-900">
-                      <div className="font-semibold text-emerald-950">LINE連携コードを発行しました</div>
-                      <p className="mt-1">
-                        公式LINEで通知を受け取りたい場合は、申込完了後に表示された案内に従って連携してください。
-                      </p>
-                      <button
-                        type="button"
-                        onClick={onOpenLineGuide}
-                        className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500"
-                      >
-                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-[8px] font-black tracking-tight text-[#06C755]">
-                          LINE
-                        </span>
-                        公式LINEの案内をもう一度見る
-                      </button>
-                    </div>
-                  ) : null}
-
-                  <button
-                    disabled={participantSubmitLoading}
-                    className="w-full rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-300 disabled:opacity-60"
-                  >
-                    {participantSubmitLoading ? "送信中..." : "希望日時を送信する"}
-                  </button>
-                </form>
-              </Card>
-              ) : (
-                <Card className="border-dashed border-slate-200 bg-white/75">
-                  <SectionHeader
-                    eyebrow="FORM"
-                    title="希望日時を選択すると申込フォームが表示されます"
-                    description="まず左側のカレンダーまたは詳細枠から参加できる日程を選択してください。選択後に氏名やメールアドレスの入力フォームが表示されます。"
-                  />
-                  <div className="rounded-3xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                    選択中の希望枠はまだありません。参加したい時間帯の「希望に追加」を押してください。
-                  </div>
-                </Card>
-              )}
-            </div>
-          </section>
-        )}
-      </div>
-    </div>
-  );
-}
 
 
 function AdminStudyManager({
@@ -5091,6 +3085,7 @@ function AdminPage({
   );
 }
 
+
 function ResearcherRegisterPage({ authUser, onGoogleLogin, onBack, registerForm, setRegisterForm, onSubmit, loading, error }) {
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#ccfbf1_0%,_#f8fafc_34%,_#eef2ff_100%)] px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
@@ -5428,7 +3423,9 @@ function AdminLoginPage({
   );
 }
 
-export default function ExperimentParticipantScheduler() {
+
+
+export default function AdminDashboard() {
   const [slots, setSlots] = useState([]);
   const [requests, setRequests] = useState([]);
   const [displayMonth, setDisplayMonth] = useState(() => {
@@ -5436,7 +3433,7 @@ export default function ExperimentParticipantScheduler() {
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [selectedDate, setSelectedDate] = useState("");
-  const [page, setPage] = useState("landing");
+  const [page, setPage] = useState("admin-login");
   const [adminTab, setAdminTab] = useState("studies");
   const [authReady, setAuthReady] = useState(!firebaseReady);
   const [calendarView, setCalendarView] = useState("calendar");
@@ -5527,24 +3524,10 @@ export default function ExperimentParticipantScheduler() {
   const shouldFocusDetailsRef = useRef(false);
 
   useEffect(() => {
-    document.title = "LabLink | 実験日程予約ページ";
+    document.title = "管理者ページ | LabLink";
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token") || "";
-
-    if (token) {
-      window.location.replace(`/response?token=${encodeURIComponent(token)}`);
-      return;
-    }
-
-    const studyId = normalizeStudyId(params.get("study") || "");
-    if (studyId) {
-      window.location.replace(`/study/${encodeURIComponent(studyId)}`);
-    }
-  }, []);
+  // No URL redirect needed in admin page
 
   useEffect(() => {
     if (!firebaseReady) {
@@ -5842,6 +3825,15 @@ export default function ExperimentParticipantScheduler() {
 
   useEffect(() => {
     if (!firebaseReady || page !== "admin" || !authUser) return undefined;
+    // adminStudies がまだロード中なら待つ
+    if (adminStudiesLoading) return undefined;
+    // アクセス可能なスタディが存在しない場合はスキップ
+    if (adminStudies.length === 0) return undefined;
+    // selectedStudyId がアクセス可能なスタディに含まれていない場合は最初のスタディに自動切り替え
+    if (!adminStudies.some((s) => s.id === selectedStudyId)) {
+      setSelectedStudyId(adminStudies[0].id);
+      return undefined;
+    }
 
     const unsubscribeSlots = onSnapshot(
       query(collection(firestore, "slots"), where("studyId", "==", selectedStudyId)),
@@ -5883,7 +3875,7 @@ export default function ExperimentParticipantScheduler() {
       unsubscribeSlots();
       unsubscribeRequests();
     };
-  }, [page, authUser, selectedStudyId]);
+  }, [page, authUser, selectedStudyId, adminStudies, adminStudiesLoading]);
 
   useEffect(() => {
     if (!selectedDate || !detailsRef.current || page !== "participant" || !shouldFocusDetailsRef.current) return;
@@ -7478,7 +5470,7 @@ export default function ExperimentParticipantScheduler() {
       setDeletingResearcherProfile(true);
       await deleteDoc(doc(firestore, "researchers", authUser.uid));
       showToast("研究者登録を解除しました。", "success");
-      setPage("landing");
+      window.location.href = "/";
     } catch (error) {
       console.error(error);
       showToast("解除に失敗しました。", "error");
@@ -7495,15 +5487,7 @@ export default function ExperimentParticipantScheduler() {
   }
 
   function navigateToLanding() {
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("study");
-      url.searchParams.delete("request");
-      url.searchParams.delete("token");
-      url.searchParams.delete("action");
-      window.history.replaceState({}, "", url.toString());
-    }
-    setPage("landing");
+    window.location.href = "/";
   }
 
   function navigateToStudies() {
@@ -7531,7 +5515,20 @@ export default function ExperimentParticipantScheduler() {
   }
 
   function openAdminPage() {
-    window.location.href = "/admin";
+    setAuthError("");
+    if (!authUser) {
+      setPage("admin-login");
+      return;
+    }
+    if (isSuperAdmin || isApprovedResearcher) {
+      setPage("admin");
+      return;
+    }
+    if (isPendingResearcher) {
+      setPage("researcher-pending");
+      return;
+    }
+    setPage("researcher-register");
   }
 
   async function handleGoogleLogin() {
@@ -7579,25 +5576,7 @@ export default function ExperimentParticipantScheduler() {
 
   return (
     <>
-      {page === "landing" ? (
-        <LabLinkLandingPage
-          studies={studies}
-          studiesLoading={studiesLoading}
-          onOpenStudies={navigateToStudies}
-          onOpenAdmin={openAdminPage}
-          onOpenHelp={() => setShowHelp(true)}
-        />
-      ) : page === "studies" ? (
-        <StudyBrowsePage
-          studies={studies}
-          studiesLoading={studiesLoading}
-          studiesError={studiesError}
-          onOpenReservation={openStudyReservation}
-          onOpenAdmin={openAdminPage}
-          onOpenHelp={() => setShowHelp(true)}
-          onOpenHome={navigateToLanding}
-        />
-      ) : page === "admin-login" ? (
+      {page === "admin-login" || (!authUser && page !== "researcher-register" && page !== "researcher-pending" && page !== "researcher-profile" && page !== "admin") ? (
         <AdminLoginPage
           authUser={authUser}
           authReady={authReady}
@@ -7729,78 +5708,18 @@ export default function ExperimentParticipantScheduler() {
             onGoogleLogin={handleGoogleLogin}
           />
         )
-      ) : page === "participant-response" ? (
-        <ParticipantResponsePage
-          loading={participantResponseLoading}
-          error={participantResponseError}
-          requestItem={participantResponseRequest}
-          assignedSlot={participantResponseRequest ? {
-            date: participantResponseRequest.assignedDate || "",
-            periodKey: participantResponseRequest.assignedPeriodKey || "",
-            location: participantResponseRequest.assignedLocation || "",
-            note: participantResponseRequest.assignedNote || "",
-          } : null}
-          studyTitle={activeExperimentInfo?.title || ""}
-          responseNote={participantResponseNote}
-          setResponseNote={setParticipantResponseNote}
-          onSubmitChangeRequest={submitParticipantChangeRequest}
-          submitting={participantResponseSubmitting}
-          submitMessage={participantResponseMessage}
-          onBackToTop={navigateToParticipantTop}
-        />
       ) : (
-        <ParticipantPage
-          sortedSlots={sortedSlots.filter((slot) => slot.isPublished !== false)}
-          displayMonth={displayMonth}
-          setDisplayMonth={setDisplayMonth}
-          selectedDate={selectedDate}
-          handleSelectDate={handleSelectDate}
-          monthSummary={monthSummary}
-          days={days}
-          selectedDaySlots={selectedDaySlots}
-          participantForm={participantForm}
-          setParticipantForm={setParticipantForm}
-          togglePreferredSlot={togglePreferredSlot}
-          handleSubmitRequest={handleSubmitRequest}
-          participantSubmitLoading={participantSubmitLoading}
-          message={message}
-          lineLinkInfo={lastLineLinkInfo}
-          onOpenLineGuide={() => setLineGuideOpen(true)}
-          detailsRef={detailsRef}
-          onOpenAdmin={openAdminPage}
-          onOpenHelp={() => setShowHelp(true)}
-          onOpenHome={navigateToLanding}
-          onOpenStudies={navigateToStudies}
-          stats={stats}
-          isLoading={slotsLoading}
-          onRetry={retryFetch}
-          setupMode={!firebaseReady}
-          calendarView={calendarView}
-          setCalendarView={setCalendarView}
-          experimentInfo={activeExperimentInfo}
-          activeStudy={activeStudy}
+        <AdminLoginPage
+          authUser={authUser}
+          authReady={authReady}
+          authError={authError}
+          firebaseEnabled={firebaseReady}
+          onBack={navigateToLanding}
+          onGoogleLogin={handleGoogleLogin}
         />
       )}
 
-      {showHelp ? <HelpModal onClose={() => setShowHelp(false)} /> : null}
       {showLineCodeHelp ? <LineLinkCodeHelpModal onClose={() => setShowLineCodeHelp(false)} /> : null}
-      {participantConfirmOpen ? (
-        <ParticipantRequestConfirmModal
-          open={participantConfirmOpen}
-          participantForm={participantForm}
-          sortedSlots={sortedSlots.filter((slot) => slot.isPublished !== false)}
-          onConfirm={confirmSubmitRequest}
-          onClose={() => setParticipantConfirmOpen(false)}
-          loading={participantSubmitLoading}
-        />
-      ) : null}
-      {lineGuideOpen && lastLineLinkInfo?.code ? (
-        <LineLinkGuideModal
-          lineLinkInfo={lastLineLinkInfo}
-          onClose={() => setLineGuideOpen(false)}
-          onToast={setToast}
-        />
-      ) : null}
       {editingSlot ? (
         <EditSlotModal
           form={editSlotForm}
