@@ -310,6 +310,7 @@ export default function StudyPage() {
   const [lineGuideOpen, setLineGuideOpen] = useState(false);
   const [lineLinkInfo, setLineLinkInfo] = useState(null);
   const [toast, setToast] = useState(null);
+  const [step, setStep] = useState(1); // 1 = pick slots, 2 = fill form
   const detailsRef = useRef(null);
 
   function showToast(msg, tone = "info") {
@@ -497,7 +498,6 @@ export default function StudyPage() {
         onOpenReservation={() => router.push("/studies")}
         activePage="studies"
       />
-
       <ActionToast toast={toast} onClose={() => setToast(null)} />
       {showHelp ? <HelpModal onClose={() => setShowHelp(false)} /> : null}
       <ConfirmModal
@@ -516,41 +516,111 @@ export default function StudyPage() {
         />
       ) : null}
 
-      <div className="mx-auto max-w-7xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
-        <SelectedStudyContextCard study={study} onOpenHelp={() => setShowHelp(true)} />
+      <div className="mx-auto max-w-5xl px-4 pb-10 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-7">
 
-        {!firebaseReady ? <div className="mb-6"><SetupNotice /></div> : null}
+        {/* ── Page header ──────────────────────────────────────────── */}
+        <div className="mb-5">
+          <div className="text-xs font-semibold tracking-[0.16em] text-teal-600">RESERVATION</div>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
+            {study?.title || "実験日程の予約"}
+          </h1>
+        </div>
 
-        <section className="mb-6">
-          <ExperimentInfoCard
-            info={experimentInfo}
-            stats={{ openSeats }}
-            openSlotCount={sortedSlots.length}
-            setupMode={!firebaseReady}
-          />
-        </section>
+        {!firebaseReady ? <div className="mb-5"><SetupNotice /></div> : null}
 
-        {slotsLoading ? (
+        {/* ── Step indicator ─────────────────────────────────────── */}
+        <div className="mb-6 flex items-center">
+          {[
+            { n: 1, label: "実験を確認" },
+            { n: 2, label: "日程を選ぶ" },
+            { n: 3, label: "情報を入力" },
+          ].map(({ n, label }, i) => (
+            <React.Fragment key={n}>
+              <div className="flex items-center gap-2">
+                <div className={classNames(
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+                  step > n ? "bg-teal-600 text-white" :
+                  step === n ? "bg-slate-900 text-white" :
+                  "border-2 border-slate-200 bg-white text-slate-400"
+                )}>
+                  {step > n ? (
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 13l4 4L19 7"/></svg>
+                  ) : n}
+                </div>
+                <span className={classNames("hidden text-xs font-semibold sm:block", step >= n ? "text-slate-900" : "text-slate-400")}>
+                  {label}
+                </span>
+              </div>
+              {i < 2 && (
+                <div className={classNames("mx-2 h-px flex-1 transition-colors", step > n ? "bg-teal-400" : "bg-slate-200")} />
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+
+        <div className="space-y-5">
+
+        {/* ════════════════════════════════════════════════════════
+             STEP 1 — 実験を確認する
+             ════════════════════════════════════════════════════════ */}
+        {step === 1 ? (
+          <div className="space-y-5">
+            <button
+              type="button"
+              onClick={() => router.push("/studies")}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <ChevronLeft />
+              募集中の実験に戻る
+            </button>
+            <ExperimentInfoCard
+              info={experimentInfo}
+              stats={{ openSeats }}
+              openSlotCount={sortedSlots.length}
+              setupMode={!firebaseReady}
+            />
+            <button
+              type="button"
+              onClick={() => { setStep(2); window.scrollTo(0, 0); }}
+              className="w-full rounded-2xl bg-slate-900 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+            >
+              日程を選ぶ →
+            </button>
+          </div>
+        ) : slotsLoading ? (
           <LoadingCard title="公開中の日程を読み込んでいます..." />
-        ) : (
-          <section className="grid gap-6 xl:grid-cols-[1.28fr,0.92fr]">
+        ) : step === 2 ? (
+          /* ════════════════════════════════════════════════════════
+             STEP 2 — 日程を選ぶ
+             ════════════════════════════════════════════════════════ */
+          <div className="space-y-5">
+            <button
+              type="button"
+              onClick={() => { setStep(1); window.scrollTo(0, 0); }}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <ChevronLeft />
+              実験情報に戻る
+            </button>
             <Card>
               <SectionHeader
-                eyebrow="CALENDAR"
-                title="空いている日をカレンダーで選ぶ"
-                description="表示方法を切り替えながら、見やすい形で日程を確認できます。"
+                eyebrow="STEP 2"
+                title="希望日を選んでください"
+                description="空きのある日付をタップすると、その日の時間帯が下に表示されます。最大5枠まで選べます。"
                 action={
-                  <div className="flex w-full flex-col gap-3 sm:w-auto sm:items-end">
+                  <div className="flex flex-col gap-3">
                     <div className="inline-flex w-full rounded-2xl border border-slate-200 bg-white p-1 sm:w-auto">
                       {["calendar", "list"].map((view) => (
                         <button key={view} type="button" onClick={() => setCalendarView(view)}
-                          className={classNames("flex-1 rounded-xl px-3 py-2 text-sm font-medium transition sm:flex-none",
-                            calendarView === view ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50")}>
-                          {view === "calendar" ? "カレンダー表示" : "一覧表示"}
+                          className={classNames(
+                            "flex-1 rounded-xl px-3 py-2 text-sm font-medium transition sm:flex-none",
+                            calendarView === view ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"
+                          )}>
+                          {view === "calendar" ? "カレンダー" : "一覧"}
                         </button>
                       ))}
                     </div>
-                    <div className="grid w-full grid-cols-[56px_1fr_56px] items-center gap-2 sm:w-auto sm:min-w-[260px]">
+                    <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2">
                       <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() - 1, 1))}><ChevronLeft /></IconButton>
                       <div className="text-center text-sm font-semibold text-slate-700">{formatMonthTitle(displayMonth)}</div>
                       <IconButton onClick={() => setDisplayMonth(new Date(displayMonth.getFullYear(), displayMonth.getMonth() + 1, 1))}><ChevronRight /></IconButton>
@@ -559,29 +629,20 @@ export default function StudyPage() {
                 }
               />
 
-              <div className="mb-4 hidden flex-wrap gap-2 text-xs text-slate-500 md:flex">
-                <StatusBadge tone="emerald">空きあり</StatusBadge>
-                <StatusBadge tone="amber">残りわずか</StatusBadge>
-                <StatusBadge tone="rose">満席</StatusBadge>
-                <StatusBadge tone="slate">公開枠なし</StatusBadge>
-              </div>
-              <div className="mb-4 flex flex-nowrap items-center justify-between gap-2 overflow-x-auto pb-1 text-xs text-slate-500 md:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="mb-4 flex flex-wrap gap-2 text-xs">
                 {[["emerald","空きあり"],["amber","残りわずか"],["rose","満席"],["slate","公開枠なし"]].map(([tone,label]) => (
-                  <span key={tone} className={classNames("inline-flex shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium",
-                    tone === "emerald" ? "border-emerald-200 bg-emerald-100 text-emerald-700" :
-                    tone === "amber" ? "border-amber-200 bg-amber-100 text-amber-700" :
-                    tone === "rose" ? "border-rose-200 bg-rose-100 text-rose-700" :
-                    "border-slate-200 bg-slate-100 text-slate-700")}>{label}</span>
+                  <StatusBadge key={tone} tone={tone}>{label}</StatusBadge>
                 ))}
               </div>
 
               {calendarView === "calendar" ? (
                 <>
-                  <div className="mb-3 grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-400">
+                  <div className="mb-3 grid grid-cols-7 gap-1.5 text-center text-xs font-semibold">
                     {WEEK_LABELS.map((label, i) => (
-                      <div key={label} className={classNames("py-2", i === 0 ? "text-rose-500" : i === 6 ? "text-sky-500" : "text-slate-400")}>{label}</div>
+                      <div key={label} className={classNames("py-1.5", i === 0 ? "text-rose-500" : i === 6 ? "text-sky-500" : "text-slate-400")}>{label}</div>
                     ))}
                   </div>
+                  {/* Desktop calendar */}
                   <div className="hidden md:grid md:grid-cols-7 md:gap-2">
                     {days.map((day) => {
                       const dateKey = formatDateKey(day);
@@ -596,34 +657,37 @@ export default function StudyPage() {
                       const isSaturday = day.getDay() === 6;
                       return (
                         <button key={dateKey} onClick={() => handleSelectDate(dateKey)}
-                          className={classNames("min-h-[114px] rounded-3xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                          className={classNames(
+                            "min-h-[100px] rounded-3xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
                             selected ? "border-slate-900 bg-slate-900 text-white shadow-lg" :
                             !inMonth ? "bg-slate-50 text-slate-400 border-slate-200" :
                             hasSlots ? allFull ? "border-rose-300 bg-rose-50 hover:border-rose-400 hover:shadow-sm" :
                               onlyFewLeft ? "border-amber-300 bg-amber-50 hover:border-amber-400 hover:shadow-sm" :
                               "border-emerald-300 bg-emerald-50 hover:border-emerald-400 hover:shadow-sm" :
-                            "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm")}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2">
+                            "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
+                          )}>
+                          <div className="flex items-start justify-between gap-1">
+                            <div className="flex items-center gap-1.5">
                               <div className={classNames("font-semibold", hasSlots ? "text-lg" : "text-sm",
                                 selected ? "text-white" : (holidayName || isSunday) ? "text-rose-600" : isSaturday ? "text-sky-600" : "text-slate-900")}>
                                 {day.getDate()}
                               </div>
                               {holidayName && inMonth ? (
-                                <span className={classNames("rounded-full px-2 py-0.5 text-[10px] font-medium", selected ? "bg-white/15 text-white" : "bg-rose-100 text-rose-700")}>祝</span>
+                                <span className={classNames("rounded-full px-1.5 py-0.5 text-[10px] font-medium", selected ? "bg-white/15 text-white" : "bg-rose-100 text-rose-700")}>祝</span>
                               ) : null}
                             </div>
-                            {hasSlots ? allFull ? <StatusBadge tone="rose">満枠</StatusBadge> : onlyFewLeft ? <StatusBadge tone="amber">残少</StatusBadge> : <StatusBadge tone="emerald">空き</StatusBadge> : null}
+                            {hasSlots ? allFull ? <StatusBadge tone="rose">満</StatusBadge> : onlyFewLeft ? <StatusBadge tone="amber">残</StatusBadge> : <StatusBadge tone="emerald">空</StatusBadge> : null}
                           </div>
-                          <div className={classNames("mt-4 space-y-1 text-xs leading-5", selected ? "text-slate-200" : "text-slate-500")}>
-                            <div>{summary?.slotCount || 0} 枠</div>
-                            <div>{hasSlots ? `残り ${summary.totalRemaining} 席` : "公開枠なし"}</div>
+                          <div className={classNames("mt-3 space-y-0.5 text-xs leading-5", selected ? "text-slate-200" : "text-slate-500")}>
+                            <div>{summary?.slotCount || 0}枠</div>
+                            <div>{hasSlots ? `残${summary.totalRemaining}席` : "なし"}</div>
                           </div>
                         </button>
                       );
                     })}
                   </div>
-                  <div className="grid grid-cols-7 gap-2 md:hidden">
+                  {/* Mobile calendar */}
+                  <div className="grid grid-cols-7 gap-1.5 md:hidden">
                     {days.map((day) => {
                       const dateKey = formatDateKey(day);
                       const summary = monthSummary[dateKey];
@@ -637,15 +701,19 @@ export default function StudyPage() {
                       const isSaturday = day.getDay() === 6;
                       return (
                         <button key={dateKey} onClick={() => handleSelectDate(dateKey)}
-                          className={classNames("aspect-square rounded-2xl border text-center transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                          className={classNames(
+                            "aspect-square rounded-xl border text-center transition focus:outline-none focus:ring-2 focus:ring-sky-300",
                             selected ? "border-slate-900 bg-slate-900 text-white shadow-md" :
                             !inMonth ? "border-slate-200 bg-slate-50 text-slate-300" :
                             hasSlots ? allFull ? "border-rose-200 bg-rose-100 text-rose-700" :
                               few ? "border-amber-200 bg-amber-100 text-amber-700" :
                               "border-emerald-200 bg-emerald-100 text-emerald-700" :
-                            "border-slate-200 bg-white text-slate-800 hover:border-slate-300")}>
-                          <div className={classNames("flex h-full items-center justify-center text-base font-semibold",
-                            selected ? "text-white" : (holidayName || isSunday) ? "text-rose-600" : isSaturday ? "text-sky-600" : inMonth ? "text-slate-800" : "text-slate-300")}>
+                            "border-slate-200 bg-white text-slate-800 hover:border-slate-300"
+                          )}>
+                          <div className={classNames(
+                            "flex h-full items-center justify-center text-sm font-semibold",
+                            selected ? "text-white" : (holidayName || isSunday) ? "text-rose-600" : isSaturday ? "text-sky-600" : inMonth ? "text-slate-800" : "text-slate-300"
+                          )}>
                             {day.getDate()}
                           </div>
                         </button>
@@ -664,15 +732,17 @@ export default function StudyPage() {
                       const few = !allFull && summary.totalRemaining <= 1;
                       return (
                         <button key={dateKey} onClick={() => handleSelectDate(dateKey)}
-                          className={classNames("w-full rounded-3xl border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                            selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white hover:border-slate-300")}>
+                          className={classNames(
+                            "w-full rounded-3xl border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                            selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white hover:border-slate-300"
+                          )}>
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className={classNames("text-lg font-semibold", selected ? "text-white" : "text-slate-900")}>
                                 {day.getDate()}日（{WEEK_LABELS[day.getDay()]}）
                               </div>
                               <div className={classNames("mt-1 text-sm", selected ? "text-slate-200" : "text-slate-500")}>
-                                {summary.slotCount}枠 / 残り {summary.totalRemaining}席
+                                {summary.slotCount}枠 / 残り{summary.totalRemaining}席
                               </div>
                             </div>
                             <StatusBadge tone={allFull ? "rose" : few ? "amber" : "emerald"}>
@@ -687,12 +757,13 @@ export default function StudyPage() {
               )}
             </Card>
 
-            <div className="space-y-6">
-              <Card ref={detailsRef} tabIndex={-1} className="scroll-mt-6 focus:outline-none focus:ring-2 focus:ring-sky-300">
+            {/* Slot detail panel — appears when a date is selected */}
+            {selectedDate && (
+              <Card ref={detailsRef} tabIndex={-1} className="scroll-mt-6 focus:outline-none">
                 <SectionHeader
-                  eyebrow="DETAIL"
-                  title={selectedDate ? `${formatJapaneseDate(selectedDate)} の詳細枠` : "日付を選択してください"}
-                  description="気になる時間帯を選ぶと、右下の送信フォームに反映されます。"
+                  eyebrow="時間帯"
+                  title={`${formatJapaneseDate(selectedDate)} の空き枠`}
+                  description="参加できる時間帯を選んでください。複数選択できます。"
                 />
                 <div className="space-y-3">
                   {selectedDaySlots.length === 0 ? (
@@ -704,23 +775,33 @@ export default function StudyPage() {
                       const metrics = getSlotMetrics(slot);
                       const selected = participantForm.preferredSlotIds.includes(slot.id);
                       return (
-                        <div key={slot.id} className={classNames("rounded-3xl border p-4 transition", selected ? "border-sky-300 bg-sky-50" : "border-slate-200 bg-slate-50/80")}>
-                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                            <div>
+                        <div key={slot.id}
+                          className={classNames(
+                            "rounded-3xl border p-4 transition",
+                            selected ? "border-sky-300 bg-sky-50" : "border-slate-200 bg-slate-50/80"
+                          )}>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
                                 <div className="text-base font-semibold text-slate-900">{getSlotLabel(slot)}</div>
                                 <StatusBadge tone={metrics.full ? "rose" : metrics.remaining <= 1 ? "amber" : "emerald"}>
-                                  {metrics.full ? "満枠" : `残り ${metrics.remaining} 席`}
+                                  {metrics.full ? "満枠" : `残り${metrics.remaining}席`}
                                 </StatusBadge>
                               </div>
-                              <div className="mt-2 text-sm text-slate-500">{slot.location || "場所未設定"}</div>
-                              {slot.note ? <div className="mt-1 text-sm text-slate-500">{slot.note}</div> : null}
-                              {selected ? <div className="mt-3 text-sm font-medium text-sky-700">この枠は希望一覧に追加されています。</div> : null}
+                              <div className="mt-1 text-sm text-slate-500">{slot.location || "場所未設定"}</div>
+                              {slot.note ? <div className="mt-0.5 text-sm text-slate-500">{slot.note}</div> : null}
                             </div>
-                            <button type="button" onClick={() => togglePreferredSlot(slot.id)} disabled={metrics.full && !selected}
-                              className={classNames("rounded-2xl px-4 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                                selected ? "bg-slate-900 text-white" : metrics.full ? "cursor-not-allowed bg-slate-100 text-slate-400" : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100")}>
-                              {selected ? "選択中" : "希望に追加"}
+                            <button type="button" onClick={() => togglePreferredSlot(slot.id)}
+                              disabled={metrics.full && !selected}
+                              className={classNames(
+                                "shrink-0 rounded-2xl px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                                selected
+                                  ? "bg-sky-600 text-white hover:bg-sky-500"
+                                  : metrics.full
+                                  ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                              )}>
+                              {selected ? "選択中 ✓" : "選択する"}
                             </button>
                           </div>
                         </div>
@@ -729,118 +810,159 @@ export default function StudyPage() {
                   )}
                 </div>
               </Card>
+            )}
 
-              {participantForm.preferredSlotIds.length > 0 ? (
-                <Card>
-                  <SectionHeader
-                    eyebrow="FORM"
-                    title="希望日時を送信する"
-                    description="氏名、メールアドレス、所属・学年、希望枠は必須です。確定連絡は迷惑メールに入る場合があるため、受信箱と迷惑メールの両方を確認してください。"
-                    action={<StatusBadge tone="sky">最大{MAX_PREFERRED_SLOTS}枠まで</StatusBadge>}
-                  />
-                  <form onSubmit={handleSubmitRequest} className="space-y-4">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <label className="text-sm">
-                        <div className="mb-1.5 text-slate-600">氏名 <span className="text-rose-500">*</span></div>
-                        <input required value={participantForm.name} onChange={(e) => setParticipantForm((p) => ({ ...p, name: e.target.value }))}
-                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                          placeholder="例: 山田 太郎" autoComplete="name" />
-                      </label>
-                      <label className="text-sm">
-                        <div className="mb-1.5 text-slate-600">メールアドレス <span className="text-rose-500">*</span></div>
-                        <input required type="email" value={participantForm.email} onChange={(e) => setParticipantForm((p) => ({ ...p, email: e.target.value }))}
-                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                          placeholder="example@xxx.com" autoComplete="email" />
-                        <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900">
-                          送信後は、受信箱と迷惑メールの両方を必ず確認してください。
-                        </div>
-                      </label>
+            {/* Selected slots summary + Next button */}
+            {participantForm.preferredSlotIds.length > 0 && (
+              <div className="rounded-3xl border border-sky-200 bg-sky-50 p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-sky-900">選択中の希望枠</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {participantForm.preferredSlotIds.map((slotId) => {
+                        const slot = sortedSlots.find((s) => s.id === slotId);
+                        if (!slot) return null;
+                        return (
+                          <button key={slotId} type="button" onClick={() => togglePreferredSlot(slotId)}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-white px-3 py-1.5 text-xs font-medium text-sky-700 transition hover:bg-sky-100">
+                            {formatJapaneseDate(slot.date)} / {PERIOD_MAP[slot.periodKey]?.label || slot.periodKey}
+                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                          </button>
+                        );
+                      })}
                     </div>
-                    <label className="block text-sm">
-                      <div className="mb-1.5 text-slate-600">所属・学年 <span className="text-rose-500">*</span></div>
-                      <input required value={participantForm.affiliation} onChange={(e) => setParticipantForm((p) => ({ ...p, affiliation: e.target.value }))}
-                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                        placeholder="例: 情報理工学部 B4" />
-                    </label>
-                    <label className="block text-sm">
-                      <div className="mb-1.5 text-slate-600">補足</div>
-                      <textarea value={participantForm.note} onChange={(e) => setParticipantForm((p) => ({ ...p, note: e.target.value }))}
-                        className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
-                        placeholder="例: 放課後希望 / VR酔いしやすい など" />
-                    </label>
-
-                    {(study?.customFields || []).map((field) => {
-                      const val = (participantForm.customFieldValues || {})[field.id] ?? (field.type === "checkbox" ? [] : "");
-                      const setVal = (v) => setParticipantForm((p) => ({ ...p, customFieldValues: { ...(p.customFieldValues || {}), [field.id]: v } }));
-                      return (
-                        <div key={field.id} className="block text-sm">
-                          <div className="mb-1.5 text-slate-600">{field.label}{field.required ? <span className="ml-1 text-rose-500">*</span> : null}</div>
-                          {field.type === "text" && <input required={field.required} value={val} onChange={(e) => setVal(e.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200" />}
-                          {field.type === "textarea" && <textarea required={field.required} value={val} onChange={(e) => setVal(e.target.value)} className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200" />}
-                          {field.type === "select" && <select required={field.required} value={val} onChange={(e) => setVal(e.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"><option value="">選択してください</option>{(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select>}
-                          {field.type === "radio" && <div className="flex flex-wrap gap-3">{(field.options || []).map((opt) => <label key={opt} className="flex items-center gap-2 text-sm text-slate-700"><input type="radio" name={`custom_${field.id}`} value={opt} checked={val === opt} onChange={() => setVal(opt)} className="h-4 w-4" />{opt}</label>)}</div>}
-                          {field.type === "checkbox" && <div className="flex flex-wrap gap-3">{(field.options || []).map((opt) => <label key={opt} className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" value={opt} checked={Array.isArray(val) && val.includes(opt)} onChange={(e) => { const next = Array.isArray(val) ? [...val] : []; setVal(e.target.checked ? [...next, opt] : next.filter((v) => v !== opt)); }} className="h-4 w-4 rounded" />{opt}</label>)}</div>}
-                        </div>
-                      );
-                    })}
-
-                    <div className="rounded-3xl bg-slate-50 p-4">
-                      <div className="text-sm font-medium text-slate-700">選択中の希望枠 <span className="text-rose-500">*</span></div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {participantForm.preferredSlotIds.length === 0 ? (
-                          <div className="text-sm text-slate-500">まだ選択されていません。</div>
-                        ) : (
-                          participantForm.preferredSlotIds.map((slotId) => {
-                            const slot = sortedSlots.find((s) => s.id === slotId);
-                            if (!slot) return null;
-                            return (
-                              <button key={slotId} type="button" onClick={() => togglePreferredSlot(slotId)}
-                                className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700">
-                                {formatJapaneseDate(slot.date)} / {PERIOD_MAP[slot.periodKey].label} ×
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-
-                    <PrivacyNote />
-
-                    {message ? (
-                      <div className="rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">{message}</div>
-                    ) : null}
-
-                    {lineLinkInfo?.code ? (
-                      <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-7 text-emerald-900">
-                        <div className="font-semibold text-emerald-950">LINE連携コードを発行しました</div>
-                        <button type="button" onClick={() => setLineGuideOpen(true)}
-                          className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500">
-                          公式LINEの案内をもう一度見る
-                        </button>
-                      </div>
-                    ) : null}
-
-                    <button disabled={submitLoading}
-                      className="w-full rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-300 disabled:opacity-60">
-                      {submitLoading ? "送信中..." : "希望日時を送信する"}
-                    </button>
-                  </form>
-                </Card>
-              ) : (
-                <Card className="border-dashed border-slate-200 bg-white/75">
-                  <SectionHeader
-                    eyebrow="FORM"
-                    title="希望日時を選択すると申込フォームが表示されます"
-                    description="まず左側のカレンダーまたは詳細枠から参加できる日程を選択してください。"
-                  />
-                  <div className="rounded-3xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                    選択中の希望枠はまだありません。参加したい時間帯の「希望に追加」を押してください。
                   </div>
-                </Card>
-              )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setStep(3); window.scrollTo(0, 0); }}
+                  className="mt-4 w-full rounded-2xl bg-slate-900 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  この日程で申込情報を入力する →
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ════════════════════════════════════════════════════════
+             STEP 3 — 情報を入力する
+             ════════════════════════════════════════════════════════ */
+          <div className="space-y-5">
+            <button
+              type="button"
+              onClick={() => { setStep(2); window.scrollTo(0, 0); }}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <ChevronLeft />
+              日程選択に戻る
+            </button>
+
+            {/* Selected slots review */}
+            <div className="rounded-3xl border border-sky-200 bg-sky-50 p-5">
+              <div className="text-xs font-semibold tracking-[0.16em] text-sky-600">選択した希望枠</div>
+              <div className="mt-3 space-y-2">
+                {participantForm.preferredSlotIds.map((slotId) => {
+                  const slot = sortedSlots.find((s) => s.id === slotId);
+                  if (!slot) return null;
+                  return (
+                    <div key={slotId} className="flex items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3">
+                      <div className="text-sm font-medium text-slate-800">
+                        {formatJapaneseDate(slot.date)} / {PERIOD_MAP[slot.periodKey]?.label || slot.periodKey}
+                        {slot.location ? ` / ${slot.location}` : ""}
+                      </div>
+                      <button type="button" onClick={() => togglePreferredSlot(slotId)}
+                        className="shrink-0 text-xs text-slate-400 transition hover:text-rose-500">
+                        削除
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </section>
+
+            {/* Form */}
+            <Card>
+              <SectionHeader
+                eyebrow="STEP 2"
+                title="申込情報を入力してください"
+                description="確定連絡はメールでお送りします。受信箱と迷惑メールの両方をご確認ください。"
+              />
+              <form onSubmit={handleSubmitRequest} className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="text-sm">
+                    <div className="mb-1.5 text-slate-600">氏名 <span className="text-rose-500">*</span></div>
+                    <input required value={participantForm.name}
+                      onChange={(e) => setParticipantForm((p) => ({ ...p, name: e.target.value }))}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
+                      placeholder="例: 山田 太郎" autoComplete="name" />
+                  </label>
+                  <label className="text-sm">
+                    <div className="mb-1.5 text-slate-600">メールアドレス <span className="text-rose-500">*</span></div>
+                    <input required type="email" value={participantForm.email}
+                      onChange={(e) => setParticipantForm((p) => ({ ...p, email: e.target.value }))}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
+                      placeholder="example@xxx.com" autoComplete="email" />
+                    <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-6 text-amber-900">
+                      送信後は受信箱と迷惑メールの両方を確認してください。
+                    </div>
+                  </label>
+                </div>
+                <label className="block text-sm">
+                  <div className="mb-1.5 text-slate-600">所属・学年 <span className="text-rose-500">*</span></div>
+                  <input required value={participantForm.affiliation}
+                    onChange={(e) => setParticipantForm((p) => ({ ...p, affiliation: e.target.value }))}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
+                    placeholder="例: 情報理工学部 B4" />
+                </label>
+                <label className="block text-sm">
+                  <div className="mb-1.5 text-slate-600">補足</div>
+                  <textarea value={participantForm.note}
+                    onChange={(e) => setParticipantForm((p) => ({ ...p, note: e.target.value }))}
+                    className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"
+                    placeholder="例: 放課後希望 / VR酔いしやすい など" />
+                </label>
+
+                {(study?.customFields || []).map((field) => {
+                  const val = (participantForm.customFieldValues || {})[field.id] ?? (field.type === "checkbox" ? [] : "");
+                  const setVal = (v) => setParticipantForm((p) => ({ ...p, customFieldValues: { ...(p.customFieldValues || {}), [field.id]: v } }));
+                  return (
+                    <div key={field.id} className="block text-sm">
+                      <div className="mb-1.5 text-slate-600">{field.label}{field.required ? <span className="ml-1 text-rose-500">*</span> : null}</div>
+                      {field.type === "text" && <input required={field.required} value={val} onChange={(e) => setVal(e.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200" />}
+                      {field.type === "textarea" && <textarea required={field.required} value={val} onChange={(e) => setVal(e.target.value)} className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200" />}
+                      {field.type === "select" && <select required={field.required} value={val} onChange={(e) => setVal(e.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-sky-200"><option value="">選択してください</option>{(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}</select>}
+                      {field.type === "radio" && <div className="flex flex-wrap gap-3">{(field.options || []).map((opt) => <label key={opt} className="flex items-center gap-2 text-sm text-slate-700"><input type="radio" name={`custom_${field.id}`} value={opt} checked={val === opt} onChange={() => setVal(opt)} className="h-4 w-4" />{opt}</label>)}</div>}
+                      {field.type === "checkbox" && <div className="flex flex-wrap gap-3">{(field.options || []).map((opt) => <label key={opt} className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" value={opt} checked={Array.isArray(val) && val.includes(opt)} onChange={(e) => { const next = Array.isArray(val) ? [...val] : []; setVal(e.target.checked ? [...next, opt] : next.filter((v) => v !== opt)); }} className="h-4 w-4 rounded" />{opt}</label>)}</div>}
+                    </div>
+                  );
+                })}
+
+                <PrivacyNote />
+
+                {message ? (
+                  <div className="rounded-3xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{message}</div>
+                ) : null}
+
+                {lineLinkInfo?.code ? (
+                  <div className="rounded-3xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-7 text-emerald-900">
+                    <div className="font-semibold text-emerald-950">LINE連携コードを発行しました</div>
+                    <button type="button" onClick={() => setLineGuideOpen(true)}
+                      className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500">
+                      公式LINEの案内をもう一度見る
+                    </button>
+                  </div>
+                ) : null}
+
+                <button
+                  disabled={submitLoading}
+                  className="w-full rounded-2xl bg-slate-900 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-300 disabled:opacity-60">
+                  {submitLoading ? "送信中..." : "内容を確認して送信する →"}
+                </button>
+              </form>
+            </Card>
+          </div>
         )}
+        </div>{/* end space-y-5 */}
       </div>
     </div>
   );

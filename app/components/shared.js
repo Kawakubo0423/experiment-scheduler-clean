@@ -396,37 +396,58 @@ export function LandingFeatureCard({ title, text, icon, tone = "teal" }) {
 
 // ── Study list ────────────────────────────────────────────────────────────────
 
-export function StudyPreviewCard({ study, openSlotCount, openSeats, onOpenReservation, showLegacyStats = false }) {
+const CARD_ACCENT_GRADIENTS = [
+  "from-teal-400 to-emerald-400",
+  "from-indigo-400 to-violet-400",
+  "from-amber-400 to-orange-400",
+  "from-sky-400 to-blue-400",
+  "from-rose-400 to-pink-400",
+];
+
+export function StudyPreviewCard({ study, openSlotCount, openSeats, onOpenReservation, showLegacyStats = false, colorIndex = 0 }) {
   const safeStudy = study || normalizeStudyInfo({});
   const statusTone = getStudyStatusTone(safeStudy.status);
+  const accentGradient = CARD_ACCENT_GRADIENTS[colorIndex % CARD_ACCENT_GRADIENTS.length];
+  const hasReward = safeStudy.reward && safeStudy.reward !== "未設定" && safeStudy.reward.trim() !== "";
   return (
-    <div className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge tone={statusTone}>{getStudyStatusLabel(safeStudy.status)}</StatusBadge>
-        <StatusBadge tone="sky">日程予約受付中</StatusBadge>
+    <div className="group flex flex-col overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_18px_55px_rgba(15,23,42,0.08)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_28px_65px_rgba(15,23,42,0.13)]">
+      <div className={`h-1.5 w-full shrink-0 bg-gradient-to-r ${accentGradient}`} />
+      <div className="flex flex-1 flex-col p-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge tone={statusTone}>{getStudyStatusLabel(safeStudy.status)}</StatusBadge>
+          {hasReward ? (
+            <StatusBadge tone="emerald">謝礼あり</StatusBadge>
+          ) : null}
+        </div>
+        <h3 className="mt-3 text-xl font-bold leading-snug tracking-tight text-slate-950">{safeStudy.title || "研究実験 参加者募集"}</h3>
+        <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{safeStudy.description || "公開中の日程から希望日時を選んで申し込めます。"}</p>
+        <div className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+          <div className="rounded-2xl bg-slate-50 px-4 py-3"><span className="font-semibold text-slate-900">所要時間：</span>{safeStudy.duration || "未設定"}</div>
+          {hasReward ? (
+            <div className="rounded-2xl bg-teal-50 px-4 py-3 text-teal-900"><span className="font-semibold">謝礼：</span>{safeStudy.reward}</div>
+          ) : (
+            <div className="rounded-2xl bg-slate-50 px-4 py-3"><span className="font-semibold text-slate-900">謝礼：</span>なし</div>
+          )}
+          <div className="rounded-2xl bg-slate-50 px-4 py-3"><span className="font-semibold text-slate-900">場所：</span>{safeStudy.location || safeStudy.organization || "未設定"}</div>
+          <div className="rounded-2xl bg-slate-50 px-4 py-3"><span className="font-semibold text-slate-900">実施組織：</span>{safeStudy.organization || "未設定"}</div>
+          {showLegacyStats ? (
+            <>
+              <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-emerald-900"><span className="font-semibold">公開枠：</span>{openSlotCount}枠</div>
+              <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-emerald-900"><span className="font-semibold">残り席数：</span>{openSeats}席</div>
+            </>
+          ) : null}
+        </div>
+        <div className="mt-auto pt-5">
+          <button
+            type="button"
+            onClick={() => onOpenReservation?.(safeStudy)}
+            disabled={safeStudy.status === "closed" || safeStudy.status === "draft"}
+            className="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.20)] transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+          >
+            {safeStudy.status === "closed" ? "募集は終了しました" : "この実験の日程を見る"}
+          </button>
+        </div>
       </div>
-      <h3 className="mt-4 text-xl font-bold tracking-tight text-slate-950">{safeStudy.title || "研究実験 参加者募集"}</h3>
-      <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{safeStudy.description || "公開中の日程から希望日時を選んで申し込めます。"}</p>
-      <div className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
-        <div className="rounded-2xl bg-slate-50 px-4 py-3"><span className="font-semibold text-slate-900">所要時間：</span>{safeStudy.duration || "未設定"}</div>
-        <div className="rounded-2xl bg-slate-50 px-4 py-3"><span className="font-semibold text-slate-900">謝礼：</span>{safeStudy.reward || "未設定"}</div>
-        <div className="rounded-2xl bg-slate-50 px-4 py-3"><span className="font-semibold text-slate-900">場所：</span>{safeStudy.location || safeStudy.organization || "未設定"}</div>
-        <div className="rounded-2xl bg-slate-50 px-4 py-3"><span className="font-semibold text-slate-900">実施組織：</span>{safeStudy.organization || "未設定"}</div>
-        {showLegacyStats ? (
-          <>
-            <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-emerald-900"><span className="font-semibold">公開枠：</span>{openSlotCount}枠</div>
-            <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-emerald-900"><span className="font-semibold">残り席数：</span>{openSeats}席</div>
-          </>
-        ) : null}
-      </div>
-      <button
-        type="button"
-        onClick={() => onOpenReservation?.(safeStudy)}
-        disabled={safeStudy.status === "closed" || safeStudy.status === "draft"}
-        className="mt-5 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_30px_rgba(15,23,42,0.20)] transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
-      >
-        {safeStudy.status === "closed" ? "募集は終了しました" : "この実験の日程を見る"}
-      </button>
     </div>
   );
 }
