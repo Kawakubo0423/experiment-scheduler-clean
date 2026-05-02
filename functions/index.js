@@ -2,7 +2,6 @@ const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
-const { getAuth: getAdminAuth } = require("firebase-admin/auth");
 const crypto = require("crypto");
 
 initializeApp();
@@ -2322,11 +2321,63 @@ exports.verifyParticipantOtp = onCall({ cors: true }, async (request) => {
   // 使用済みにマーク
   await snap.ref.update({ used: true });
 
-  // Firebase Custom Token 発行
-  const uid = "p_" + crypto.createHash("sha256").update(email).digest("hex");
-  const customToken = await getAdminAuth().createCustomToken(uid, {
-    participantEmail: email,
+  // セッショントークン発行（30日有効）
+  const sessionToken = crypto.randomUUID();
+  await db.collection("mypageSessions").doc(sessionToken).set({
+    email,
+    createdAt: FieldValue.serverTimestamp(),
+    expiresAt: Timestamp.fromMillis(Date.now() + 30 * 24 * 60 * 60 * 1000),
   });
 
-  return { customToken };
+  return { sessionToken, email };
+});
+
+function tsToIso(ts) {
+  if (!ts) return null;
+  try { return ts.toDate().toISOString(); } catch (_) { return null; }
+}
+
+function serializeRequest(doc) {
+  const d = { ...doc };
+  for (const key of ["createdAt", "updatedAt", "completedAt", "participantRespondedAt",
+    "lineLinkedAt", "lineLinkedAt"]) {
+    if (d[key] !== undefined) d[key] = tsToIso(d[key]);
+  }
+  return d;
+}
+
+exports.getMyBookings = onCall({ cors: true }, async (request) => {
+  const sessionToken = String(request.data?.sessionToken || "").trim();
+  if (!sessionToken) throw new HttpsError("invalid-argument", "セッションが無効です");
+
+  const sessionSnap = await db.collection("mypageSessions").doc(sessionToken).get();
+  if (!sessionSnap.exists) throw new HttpsError("unauthenticated", "セッションが無効か期限切れです。再度ログインしてください。");
+
+  const session = sessionSnap.data();
+  if (session.expiresAt.toMillis() < Date.now()) {
+    throw new HttpsError("unauthenticated", "セッションの有効期限が切れています。再度ログインしてください。");
+  }
+
+  const email = session.email;
+
+  const requestsSnap = await db.collection("requests").where("email", "==", email).get();
+  const requests = requestsSnap.docs
+    .map((d) => serializeRequest({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+
+  const slotIds = [...new Set(requests.map((r) => r.assignedSlotId).filter(Boolean))];
+  const studyIds = [...new Set(requests.map((r) => r.studyId).filter(Boolean))];
+
+  const [slotDocs, studyDocs] = await Promise.all([
+    Promise.all(slotIds.map((id) => db.collection("slots").doc(id).get())),
+    Promise.all(studyIds.map((id) => db.collection("studies").doc(id).get())),
+  ]);
+
+  const slots = {};
+  slotDocs.forEach((s) => { if (s.exists) slots[s.id] = { id: s.id, ...s.data() }; });
+
+  const studies = {};
+  studyDocs.forEach((s) => { if (s.exists) studies[s.id] = { id: s.id, ...s.data() }; });
+
+  return { email, requests, slots, studies };
 });

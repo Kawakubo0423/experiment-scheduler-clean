@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { signInWithCustomToken, signOut, onAuthStateChanged } from "firebase/auth";
-import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { firebaseApp, firebaseAuth, firestore, firebaseReady } from "@/app/lib/firebase";
+import { firebaseApp, firebaseReady } from "@/app/lib/firebase";
+
+const SESSION_KEY = "lablink_mypage_session";
 
 const PERIOD_LABELS = {
   p1: "09:00〜10:35",
@@ -46,9 +46,9 @@ function formatDateJP(dateStr) {
   });
 }
 
-function formatCreatedAt(ts) {
-  if (!ts) return "";
-  const d = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
+function formatCreatedAt(isoStr) {
+  if (!isoStr) return "";
+  const d = new Date(isoStr);
   return d.toLocaleDateString("ja-JP", { year: "numeric", month: "short", day: "numeric" });
 }
 
@@ -83,9 +83,7 @@ function BookingCard({ request, study, slot }) {
 
   const slotLine = slot
     ? `${formatDateJP(slot.date)}　${PERIOD_LABELS[slot.periodKey] || slot.periodKey || ""}${slot.location ? `　${slot.location}` : ""}`
-    : request.assignedSlotId
-      ? "日程情報を取得中..."
-      : null;
+    : null;
 
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-5 shadow-sm">
@@ -118,11 +116,17 @@ function BookingCard({ request, study, slot }) {
   );
 }
 
+function getCallable(name) {
+  const fns = getFunctions(firebaseApp);
+  return httpsCallable(fns, name);
+}
+
 export default function MyPage() {
   const [step, setStep] = useState("init"); // "init" | "email" | "otp" | "bookings"
   const [email, setEmail] = useState("");
   const [sessionId, setSessionId] = useState("");
   const [code, setCode] = useState("");
+  const [sessionToken, setSessionToken] = useState("");
   const [participantEmail, setParticipantEmail] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -135,26 +139,22 @@ export default function MyPage() {
 
   const [cooldown, setCooldown] = useState(0);
 
+  // localStorage からセッション復元
   useEffect(() => {
-    if (!firebaseReady) {
-      setStep("email");
-      return;
-    }
-    const unsub = onAuthStateChanged(firebaseAuth, async (user) => {
-      if (user) {
-        try {
-          const tokenResult = await user.getIdTokenResult();
-          const pEmail = tokenResult.claims.participantEmail;
-          if (pEmail) {
-            setParticipantEmail(pEmail);
-            setStep("bookings");
-            return;
-          }
-        } catch (_) {}
+    if (!firebaseReady) { setStep("email"); return; }
+    try {
+      const saved = localStorage.getItem(SESSION_KEY);
+      if (saved) {
+        const { token, mail } = JSON.parse(saved);
+        if (token && mail) {
+          setSessionToken(token);
+          setParticipantEmail(mail);
+          setStep("bookings");
+          return;
+        }
       }
-      setStep("email");
-    });
-    return unsub;
+    } catch (_) {}
+    setStep("email");
   }, []);
 
   useEffect(() => {
@@ -169,9 +169,7 @@ export default function MyPage() {
     setLoading(true);
     setError("");
     try {
-      const fns = getFunctions(firebaseApp);
-      const sendOtp = httpsCallable(fns, "sendParticipantOtp");
-      const result = await sendOtp({ email: email.trim().toLowerCase() });
+      const result = await getCallable("sendParticipantOtp")({ email: email.trim().toLowerCase() });
       setSessionId(result.data.sessionId);
       setStep("otp");
       setCooldown(60);
@@ -188,9 +186,7 @@ export default function MyPage() {
     setLoading(true);
     setError("");
     try {
-      const fns = getFunctions(firebaseApp);
-      const sendOtp = httpsCallable(fns, "sendParticipantOtp");
-      const result = await sendOtp({ email: email.trim().toLowerCase() });
+      const result = await getCallable("sendParticipantOtp")({ email: email.trim().toLowerCase() });
       setSessionId(result.data.sessionId);
       setCode("");
       setCooldown(60);
@@ -207,69 +203,59 @@ export default function MyPage() {
     setLoading(true);
     setError("");
     try {
-      const fns = getFunctions(firebaseApp);
-      const verifyOtp = httpsCallable(fns, "verifyParticipantOtp");
-      const result = await verifyOtp({
+      const result = await getCallable("verifyParticipantOtp")({
         sessionId,
         code: code.trim(),
         email: email.trim().toLowerCase(),
       });
-      await signInWithCustomToken(firebaseAuth, result.data.customToken);
-      setParticipantEmail(email.trim().toLowerCase());
+      const { sessionToken: token, email: mail } = result.data;
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ token, mail }));
+      setSessionToken(token);
+      setParticipantEmail(mail);
       setStep("bookings");
     } catch (err) {
       const msg = err.message || "";
       if (msg.includes("正しくありません")) setError("確認コードが正しくありません。");
       else if (msg.includes("有効期限")) setError("コードの有効期限が切れています。再送信してください。");
       else if (msg.includes("使用済み")) setError("このコードはすでに使用されています。再送信してください。");
-      else setError("認証に失敗しました。コードを確認してください。");
+      else setError(`認証に失敗しました: ${msg}`);
     } finally {
       setLoading(false);
     }
   }
 
   const loadBookings = useCallback(async () => {
-    if (!firebaseReady || !participantEmail) return;
+    if (!firebaseReady || !sessionToken) return;
     setLoadingBookings(true);
     try {
-      const q = query(collection(firestore, "requests"), where("email", "==", participantEmail));
-      const snap = await getDocs(q);
-      const reqs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      reqs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-      setRequests(reqs);
-
-      const uniqueStudyIds = [...new Set(reqs.map((r) => r.studyId).filter(Boolean))];
-      const studySnaps = await Promise.all(
-        uniqueStudyIds.map((id) => getDoc(doc(firestore, "studies", id)).catch(() => null))
-      );
-      const sm = {};
-      studySnaps.forEach((s) => { if (s?.exists()) sm[s.id] = s.data(); });
-      setStudyMap(sm);
-
-      const uniqueSlotIds = [...new Set(reqs.map((r) => r.assignedSlotId).filter(Boolean))];
-      const slotSnaps = await Promise.all(
-        uniqueSlotIds.map((id) => getDoc(doc(firestore, "slots", id)).catch(() => null))
-      );
-      const slm = {};
-      slotSnaps.forEach((s) => { if (s?.exists()) slm[s.id] = s.data(); });
-      setSlotMap(slm);
+      const result = await getCallable("getMyBookings")({ sessionToken });
+      const { requests: reqs, slots, studies } = result.data;
+      setRequests(reqs || []);
+      setSlotMap(slots || {});
+      setStudyMap(studies || {});
     } catch (err) {
-      console.error("Failed to load bookings:", err);
+      const msg = err.message || "";
+      if (msg.includes("セッション") || msg.includes("ログイン")) {
+        localStorage.removeItem(SESSION_KEY);
+        setStep("email");
+        setError("セッションが切れました。再度ログインしてください。");
+      }
     } finally {
       setLoadingBookings(false);
     }
-  }, [participantEmail]);
+  }, [sessionToken]);
 
   useEffect(() => {
-    if (step === "bookings" && participantEmail) loadBookings();
-  }, [step, participantEmail, loadBookings]);
+    if (step === "bookings" && sessionToken) loadBookings();
+  }, [step, sessionToken, loadBookings]);
 
-  async function handleSignOut() {
-    if (firebaseReady) await signOut(firebaseAuth);
+  function handleSignOut() {
+    localStorage.removeItem(SESSION_KEY);
     setStep("email");
     setEmail("");
     setCode("");
     setSessionId("");
+    setSessionToken("");
     setParticipantEmail("");
     setRequests([]);
     setSlotMap({});
@@ -286,7 +272,6 @@ export default function MyPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/30">
-      {/* ヘッダー */}
       <header className="sticky top-0 z-30 border-b border-white/70 bg-white/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <a href="/" className="min-w-0 rounded-2xl text-left transition hover:opacity-85">
@@ -308,7 +293,6 @@ export default function MyPage() {
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
-        {/* メールアドレス入力 */}
         {step === "email" && (
           <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/85 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
             <div className="px-6 pb-6 pt-8 sm:px-8 sm:pt-10">
@@ -318,9 +302,7 @@ export default function MyPage() {
               </p>
               <form onSubmit={handleSendOtp} className="space-y-4">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    メールアドレス
-                  </label>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">メールアドレス</label>
                   <input
                     type="email"
                     value={email}
@@ -331,9 +313,7 @@ export default function MyPage() {
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
                   />
                 </div>
-                {error && (
-                  <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>
-                )}
+                {error && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
                 <button
                   type="submit"
                   disabled={loading || !email.trim()}
@@ -346,7 +326,6 @@ export default function MyPage() {
           </div>
         )}
 
-        {/* OTPコード入力 */}
         {step === "otp" && (
           <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/85 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
             <div className="px-6 pb-6 pt-8 sm:px-8 sm:pt-10">
@@ -359,9 +338,7 @@ export default function MyPage() {
               </p>
               <form onSubmit={handleVerifyOtp} className="space-y-4">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                    確認コード（6桁）
-                  </label>
+                  <label className="mb-1.5 block text-sm font-medium text-slate-700">確認コード（6桁）</label>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -375,9 +352,7 @@ export default function MyPage() {
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-center text-2xl font-bold tracking-[0.3em] text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
                   />
                 </div>
-                {error && (
-                  <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>
-                )}
+                {error && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
                 <button
                   type="submit"
                   disabled={loading || code.length < 6}
@@ -407,7 +382,6 @@ export default function MyPage() {
           </div>
         )}
 
-        {/* 予約一覧 */}
         {step === "bookings" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
