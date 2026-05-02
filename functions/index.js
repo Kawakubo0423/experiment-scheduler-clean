@@ -1,7 +1,8 @@
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
-const { onRequest } = require("firebase-functions/v2/https");
+const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
+const { getAuth: getAdminAuth } = require("firebase-admin/auth");
 const crypto = require("crypto");
 
 initializeApp();
@@ -126,7 +127,7 @@ function buildLineLinkCodeTextBlock(requestData = {}) {
   return [
     "",
     "【LINEでも通知を受け取る（任意）】",
-    topUrl ? `予約サイトのトップページ（${topUrl}）を開き、ヘッダーの「LINEで通知を受け取る」から公式LINEを友だち追加してください。` : "予約サイトのトップページを開き、ヘッダーの「LINEで通知を受け取る」から公式LINEを友だち追加してください。",
+    topUrl ? `予約サイトのトップページ（${topUrl}）を開き、ヘッダーの「公式LINE追加」（スマートフォンでは「LINE」）から公式LINEを友だち追加してください。` : "予約サイトのトップページを開き、ヘッダーの「公式LINE追加」（スマートフォンでは「LINE」）から公式LINEを友だち追加してください。",
     `友だち追加後、以下の連携コードをLINEで送信してください。`,
     `連携コード: ${code}`,
     "※LINE連携は任意です。連携しない場合でも、メールでご連絡します。",
@@ -146,7 +147,7 @@ function buildLineLinkCodeHtmlBlock(requestData = {}) {
   return `
     <div style="margin-top: 18px; padding: 16px; border: 1px solid #a7f3d0; background: #ecfdf5; border-radius: 16px;">
       <div style="font-weight: 700; color: #047857; margin-bottom: 8px;">LINEでも通知を受け取る（任意）</div>
-      <p style="margin: 0 0 10px; color: #065f46;">${topLinkHtml}を開き、ページ上部のヘッダーにある「LINEで通知を受け取る」から公式LINEを友だち追加してください。</p>
+      <p style="margin: 0 0 10px; color: #065f46;">${topLinkHtml}を開き、ページ上部のヘッダーにある「公式LINE追加」（スマートフォンでは「LINE」）から公式LINEを友だち追加してください。</p>
       <p style="margin: 0 0 8px; color: #065f46; font-weight: 600;">友だち追加後、以下のコードをLINEで送信してください。</p>
       <div style="display:inline-block; padding: 10px 14px; border-radius: 12px; background: #ffffff; border: 1px solid #6ee7b7; color: #064e3b; font-size: 20px; font-weight: 800; letter-spacing: 0.18em;">${escapeHtml(code)}</div>
       <p style="margin: 10px 0 0; font-size: 13px; color: #047857;">LINE連携は任意です。連携しない場合でも、メールでご連絡します。</p>
@@ -2220,4 +2221,124 @@ exports.propagateResearcherContactEmail = onDocumentUpdated("researchers/{uid}",
   });
   batches.push(batch.commit());
   await Promise.all(batches);
+});
+
+// ─────────────────────────────────────────────────
+// 参加者マイページ: OTP認証
+// ─────────────────────────────────────────────────
+
+const OTP_EXPIRY_MINUTES = 10;
+const OTP_COOLDOWN_SECONDS = 60;
+
+exports.sendParticipantOtp = onCall({ cors: true }, async (request) => {
+  const email = String(request.data?.email || "").trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpsError("invalid-argument", "メールアドレスが無効です");
+  }
+
+  // クールダウンチェック（同じメールに60秒以内に再送しない）
+  const recentSnap = await db
+    .collection("otpVerifications")
+    .where("email", "==", email)
+    .where("createdAt", ">", Timestamp.fromMillis(Date.now() - OTP_COOLDOWN_SECONDS * 1000))
+    .limit(1)
+    .get();
+  if (!recentSnap.empty) {
+    throw new HttpsError("resource-exhausted", "しばらく待ってから再送してください");
+  }
+
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const codeHash = crypto.createHash("sha256").update(code).digest("hex");
+  const expiresAt = Timestamp.fromMillis(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+  const sessionId = crypto.randomUUID();
+
+  await db.collection("otpVerifications").doc(sessionId).set({
+    email,
+    codeHash,
+    expiresAt,
+    used: false,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  const from = `"${FROM_NAME}" <${FROM_ADDRESS}>`;
+  const subject = `【LabLink】ログイン確認コード: ${code}`;
+  const textBody = withSignatureText(
+    [
+      `以下の確認コードを入力してください。`,
+      ``,
+      `確認コード: ${code}`,
+      ``,
+      `このコードは${OTP_EXPIRY_MINUTES}分間有効です。`,
+      `心当たりのない場合はこのメールを無視してください。`,
+    ].join("\n")
+  );
+  const htmlBody = withSignatureHtml(`
+    <div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:560px;margin:0 auto;color:#1e293b;">
+      <div style="background:#f8fafc;border-radius:16px;padding:32px 28px;text-align:center;">
+        <p style="margin:0 0 8px;font-size:15px;color:#64748b;">LabLink 参加者マイページ</p>
+        <p style="margin:0 0 24px;font-size:15px;">以下の確認コードを入力してください</p>
+        <div style="display:inline-block;background:#fff;border:2px solid #e2e8f0;border-radius:12px;padding:16px 40px;margin-bottom:24px;">
+          <span style="font-size:36px;font-weight:700;letter-spacing:0.15em;color:#0f172a;">${escapeHtml(code)}</span>
+        </div>
+        <p style="margin:0;font-size:13px;color:#94a3b8;">このコードは${OTP_EXPIRY_MINUTES}分間有効です</p>
+        <p style="margin:8px 0 0;font-size:13px;color:#94a3b8;">心当たりのない場合はこのメールを無視してください</p>
+      </div>
+    </div>
+  `);
+
+  await db.collection(MAIL_COLLECTION).add({
+    to: email,
+    message: {
+      from,
+      replyTo: REPLY_TO,
+      subject,
+      text: textBody,
+      html: htmlBody,
+    },
+  });
+
+  return { sessionId };
+});
+
+exports.verifyParticipantOtp = onCall({ cors: true }, async (request) => {
+  const email = String(request.data?.email || "").trim().toLowerCase();
+  const sessionId = String(request.data?.sessionId || "").trim();
+  const code = String(request.data?.code || "").trim();
+
+  if (!email || !sessionId || !code) {
+    throw new HttpsError("invalid-argument", "入力が不完全です");
+  }
+
+  const snap = await db.collection("otpVerifications").doc(sessionId).get();
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "確認コードが無効です");
+  }
+
+  const data = snap.data();
+
+  if (data.email !== email) {
+    throw new HttpsError("permission-denied", "確認コードが無効です");
+  }
+  if (data.used) {
+    throw new HttpsError("already-exists", "このコードはすでに使用済みです");
+  }
+  if (data.expiresAt.toMillis() < Date.now()) {
+    throw new HttpsError("deadline-exceeded", "確認コードの有効期限が切れています");
+  }
+
+  const codeHash = crypto.createHash("sha256").update(code).digest("hex");
+  if (codeHash !== data.codeHash) {
+    throw new HttpsError("permission-denied", "確認コードが正しくありません");
+  }
+
+  // 使用済みにマーク
+  await snap.ref.update({ used: true });
+
+  // Firebase Custom Token 発行
+  const uid = "p_" + crypto.createHash("sha256").update(email).digest("hex");
+  const customToken = await getAdminAuth().createCustomToken(uid, {
+    participantEmail: email,
+  });
+
+  return { customToken };
 });

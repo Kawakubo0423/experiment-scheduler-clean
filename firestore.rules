@@ -205,11 +205,21 @@ service cloud.firestore {
     // ─────────────────────────────────────────────────
     // slots コレクション
     // ─────────────────────────────────────────────────
+    // OTP認証済み参加者かどうか
+    function isParticipant() {
+      return request.auth != null
+        && request.auth.token.participantEmail != null;
+    }
+
+    // ─────────────────────────────────────────────────
+    // slots コレクション
+    // ─────────────────────────────────────────────────
     match /slots/{slotId} {
       allow get, list: if resource.data.isPublished == true;
 
       allow get, list: if isAdmin()
-        || isStudyAdmin(resource.data.studyId);
+        || isStudyAdmin(resource.data.studyId)
+        || isParticipant();
 
       allow create: if (isAdmin() || isStudyAdmin(request.resource.data.studyId))
         && request.resource.data.keys().hasAll([
@@ -256,7 +266,9 @@ service cloud.firestore {
         ])
         && validRequestCreateData();
 
-      allow get, list: if isAdmin() || isStudyAdmin(resource.data.studyId);
+      allow get, list: if isAdmin()
+        || isStudyAdmin(resource.data.studyId)
+        || (isParticipant() && request.auth.token.participantEmail == resource.data.email);
 
       // customFieldValues を affectedKeys に追加
       allow update: if (isAdmin() || isStudyAdmin(resource.data.studyId))
@@ -359,7 +371,8 @@ service cloud.firestore {
     match /studies/{studyId} {
       allow get: if resource.data.isPublished == true
         || isAdmin()
-        || isStudyAdmin(studyId);
+        || isStudyAdmin(studyId)
+        || isParticipant();
 
       allow list: if resource.data.isPublished == true
         || isAdmin()

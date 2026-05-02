@@ -30,7 +30,7 @@ import {
   getMonthGrid,
 } from "@/app/lib/date-utils";
 import { normalizeStudyInfo, normalizeExperimentInfo, studyToExperimentInfo } from "@/app/lib/study-utils";
-import { sortSlots, getSlotLabel, getSlotMetrics, getDaySummary } from "@/app/lib/slot-utils";
+import { sortSlots, getSlotLabel, getSlotMetrics, getDaySummary, hasSlotEnded } from "@/app/lib/slot-utils";
 import { generateLineLinkCode } from "@/app/lib/request-utils";
 import {
   LINE_QR_IMAGE_URL,
@@ -484,6 +484,12 @@ export default function StudyPage() {
     }
   }
 
+  function isDatePast(dateKey) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(`${dateKey}T00:00:00`) < today;
+  }
+
   const mobileDateItems = days
     .filter((day) => day.getMonth() === displayMonth.getMonth())
     .map((day) => { const dateKey = formatDateKey(day); return { day, dateKey, summary: monthSummary[dateKey] }; })
@@ -630,7 +636,7 @@ export default function StudyPage() {
               />
 
               <div className="mb-4 flex flex-wrap gap-2 text-xs">
-                {[["emerald","空きあり"],["amber","残りわずか"],["rose","満席"],["slate","公開枠なし"]].map(([tone,label]) => (
+                {[["emerald","空きあり"],["amber","残りわずか"],["rose","満席"],["slate","公開枠なし / 終了"]].map(([tone,label]) => (
                   <StatusBadge key={tone} tone={tone}>{label}</StatusBadge>
                 ))}
               </div>
@@ -655,10 +661,13 @@ export default function StudyPage() {
                       const holidayName = getJapaneseHolidayName(day);
                       const isSunday = day.getDay() === 0;
                       const isSaturday = day.getDay() === 6;
+                      const isPast = inMonth && isDatePast(dateKey);
                       return (
-                        <button key={dateKey} onClick={() => handleSelectDate(dateKey)}
+                        <button key={dateKey} onClick={() => !isPast && handleSelectDate(dateKey)}
+                          disabled={isPast}
                           className={classNames(
                             "min-h-[100px] rounded-3xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                            isPast ? "cursor-not-allowed border-slate-100 bg-slate-50 opacity-50" :
                             selected ? "border-slate-900 bg-slate-900 text-white shadow-lg" :
                             !inMonth ? "bg-slate-50 text-slate-400 border-slate-200" :
                             hasSlots ? allFull ? "border-rose-300 bg-rose-50 hover:border-rose-400 hover:shadow-sm" :
@@ -669,6 +678,7 @@ export default function StudyPage() {
                           <div className="flex items-start justify-between gap-1">
                             <div className="flex items-center gap-1.5">
                               <div className={classNames("font-semibold", hasSlots ? "text-lg" : "text-sm",
+                                isPast ? "text-slate-400" :
                                 selected ? "text-white" : (holidayName || isSunday) ? "text-rose-600" : isSaturday ? "text-sky-600" : "text-slate-900")}>
                                 {day.getDate()}
                               </div>
@@ -676,11 +686,12 @@ export default function StudyPage() {
                                 <span className={classNames("rounded-full px-1.5 py-0.5 text-[10px] font-medium", selected ? "bg-white/15 text-white" : "bg-rose-100 text-rose-700")}>祝</span>
                               ) : null}
                             </div>
-                            {hasSlots ? allFull ? <StatusBadge tone="rose">満</StatusBadge> : onlyFewLeft ? <StatusBadge tone="amber">残</StatusBadge> : <StatusBadge tone="emerald">空</StatusBadge> : null}
+                            {isPast && hasSlots ? <StatusBadge tone="slate">終了</StatusBadge> :
+                             hasSlots ? allFull ? <StatusBadge tone="rose">満</StatusBadge> : onlyFewLeft ? <StatusBadge tone="amber">残</StatusBadge> : <StatusBadge tone="emerald">空</StatusBadge> : null}
                           </div>
                           <div className={classNames("mt-3 space-y-0.5 text-xs leading-5", selected ? "text-slate-200" : "text-slate-500")}>
                             <div>{summary?.slotCount || 0}枠</div>
-                            <div>{hasSlots ? `残${summary.totalRemaining}席` : "なし"}</div>
+                            <div>{hasSlots ? (isPast ? "受付終了" : `残${summary.totalRemaining}席`) : "なし"}</div>
                           </div>
                         </button>
                       );
@@ -699,10 +710,13 @@ export default function StudyPage() {
                       const holidayName = getJapaneseHolidayName(day);
                       const isSunday = day.getDay() === 0;
                       const isSaturday = day.getDay() === 6;
+                      const isPast = inMonth && isDatePast(dateKey);
                       return (
-                        <button key={dateKey} onClick={() => handleSelectDate(dateKey)}
+                        <button key={dateKey} onClick={() => !isPast && handleSelectDate(dateKey)}
+                          disabled={isPast}
                           className={classNames(
                             "aspect-square rounded-xl border text-center transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                            isPast ? "cursor-not-allowed border-slate-100 bg-slate-50 opacity-40" :
                             selected ? "border-slate-900 bg-slate-900 text-white shadow-md" :
                             !inMonth ? "border-slate-200 bg-slate-50 text-slate-300" :
                             hasSlots ? allFull ? "border-rose-200 bg-rose-100 text-rose-700" :
@@ -712,6 +726,7 @@ export default function StudyPage() {
                           )}>
                           <div className={classNames(
                             "flex h-full items-center justify-center text-sm font-semibold",
+                            isPast ? "text-slate-300" :
                             selected ? "text-white" : (holidayName || isSunday) ? "text-rose-600" : isSaturday ? "text-sky-600" : inMonth ? "text-slate-800" : "text-slate-300"
                           )}>
                             {day.getDate()}
@@ -730,23 +745,26 @@ export default function StudyPage() {
                       const selected = dateKey === selectedDate;
                       const allFull = summary.fullCount === summary.slotCount;
                       const few = !allFull && summary.totalRemaining <= 1;
+                      const isPast = isDatePast(dateKey);
                       return (
-                        <button key={dateKey} onClick={() => handleSelectDate(dateKey)}
+                        <button key={dateKey} onClick={() => !isPast && handleSelectDate(dateKey)}
+                          disabled={isPast}
                           className={classNames(
                             "w-full rounded-3xl border p-4 text-left transition focus:outline-none focus:ring-2 focus:ring-sky-300",
+                            isPast ? "cursor-not-allowed border-slate-100 bg-slate-50 opacity-50" :
                             selected ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white hover:border-slate-300"
                           )}>
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <div className={classNames("text-lg font-semibold", selected ? "text-white" : "text-slate-900")}>
+                              <div className={classNames("text-lg font-semibold", isPast ? "text-slate-400" : selected ? "text-white" : "text-slate-900")}>
                                 {day.getDate()}日（{WEEK_LABELS[day.getDay()]}）
                               </div>
-                              <div className={classNames("mt-1 text-sm", selected ? "text-slate-200" : "text-slate-500")}>
-                                {summary.slotCount}枠 / 残り{summary.totalRemaining}席
+                              <div className={classNames("mt-1 text-sm", isPast ? "text-slate-400" : selected ? "text-slate-200" : "text-slate-500")}>
+                                {isPast ? "受付終了" : `${summary.slotCount}枠 / 残り${summary.totalRemaining}席`}
                               </div>
                             </div>
-                            <StatusBadge tone={allFull ? "rose" : few ? "amber" : "emerald"}>
-                              {allFull ? "満枠" : few ? "残少" : "空き"}
+                            <StatusBadge tone={isPast ? "slate" : allFull ? "rose" : few ? "amber" : "emerald"}>
+                              {isPast ? "終了" : allFull ? "満枠" : few ? "残少" : "空き"}
                             </StatusBadge>
                           </div>
                         </button>
@@ -774,34 +792,42 @@ export default function StudyPage() {
                     selectedDaySlots.map((slot) => {
                       const metrics = getSlotMetrics(slot);
                       const selected = participantForm.preferredSlotIds.includes(slot.id);
+                      const ended = hasSlotEnded(slot);
                       return (
                         <div key={slot.id}
                           className={classNames(
                             "rounded-3xl border p-4 transition",
+                            ended ? "border-slate-100 bg-slate-50 opacity-60" :
                             selected ? "border-sky-300 bg-sky-50" : "border-slate-200 bg-slate-50/80"
                           )}>
                           <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-base font-semibold text-slate-900">{getSlotLabel(slot)}</div>
-                                <StatusBadge tone={metrics.full ? "rose" : metrics.remaining <= 1 ? "amber" : "emerald"}>
-                                  {metrics.full ? "満枠" : `残り${metrics.remaining}席`}
-                                </StatusBadge>
+                                <div className={classNames("text-base font-semibold", ended ? "text-slate-400" : "text-slate-900")}>{getSlotLabel(slot)}</div>
+                                {ended ? (
+                                  <StatusBadge tone="slate">受付終了</StatusBadge>
+                                ) : (
+                                  <StatusBadge tone={metrics.full ? "rose" : metrics.remaining <= 1 ? "amber" : "emerald"}>
+                                    {metrics.full ? "満枠" : `残り${metrics.remaining}席`}
+                                  </StatusBadge>
+                                )}
                               </div>
                               <div className="mt-1 text-sm text-slate-500">{slot.location || "場所未設定"}</div>
                               {slot.note ? <div className="mt-0.5 text-sm text-slate-500">{slot.note}</div> : null}
                             </div>
-                            <button type="button" onClick={() => togglePreferredSlot(slot.id)}
-                              disabled={metrics.full && !selected}
+                            <button type="button" onClick={() => !ended && togglePreferredSlot(slot.id)}
+                              disabled={ended || (metrics.full && !selected)}
                               className={classNames(
                                 "shrink-0 rounded-2xl px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-sky-300",
-                                selected
+                                ended
+                                  ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                                  : selected
                                   ? "bg-sky-600 text-white hover:bg-sky-500"
                                   : metrics.full
                                   ? "cursor-not-allowed bg-slate-100 text-slate-400"
                                   : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
                               )}>
-                              {selected ? "選択中 ✓" : "選択する"}
+                              {ended ? "終了" : selected ? "選択中 ✓" : "選択する"}
                             </button>
                           </div>
                         </div>
