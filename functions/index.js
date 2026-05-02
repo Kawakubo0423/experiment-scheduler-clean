@@ -2228,23 +2228,11 @@ exports.propagateResearcherContactEmail = onDocumentUpdated("researchers/{uid}",
 // ─────────────────────────────────────────────────
 
 const OTP_EXPIRY_MINUTES = 10;
-const OTP_COOLDOWN_SECONDS = 60;
 
 exports.sendParticipantOtp = onCall({ cors: true }, async (request) => {
   const email = String(request.data?.email || "").trim().toLowerCase();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new HttpsError("invalid-argument", "メールアドレスが無効です");
-  }
-
-  // クールダウンチェック（同じメールに60秒以内に再送しない）
-  const recentSnap = await db
-    .collection("otpVerifications")
-    .where("email", "==", email)
-    .where("createdAt", ">", Timestamp.fromMillis(Date.now() - OTP_COOLDOWN_SECONDS * 1000))
-    .limit(1)
-    .get();
-  if (!recentSnap.empty) {
-    throw new HttpsError("resource-exhausted", "しばらく待ってから再送してください");
   }
 
   const code = String(Math.floor(100000 + Math.random() * 900000));

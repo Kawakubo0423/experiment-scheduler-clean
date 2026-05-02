@@ -328,7 +328,7 @@ export default function MyPage() {
                     required
                     autoFocus
                     placeholder="example@email.com"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
                   />
                 </div>
                 {error && (
@@ -372,7 +372,7 @@ export default function MyPage() {
                     required
                     autoFocus
                     placeholder="000000"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-center text-2xl font-bold tracking-[0.3em] outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-center text-2xl font-bold tracking-[0.3em] text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
                   />
                 </div>
                 {error && (
