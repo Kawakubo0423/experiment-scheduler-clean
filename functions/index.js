@@ -1,5 +1,6 @@
 const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const crypto = require("crypto");
@@ -2380,4 +2381,42 @@ exports.getMyBookings = onCall({ cors: true }, async (request) => {
   studyDocs.forEach((s) => { if (s.exists) studies[s.id] = { id: s.id, ...s.data() }; });
 
   return { email, requests, slots, studies };
+});
+
+// ─────────────────────────────────────────────────
+// 有効期限切れセッション・OTPの定期削除（毎日3時）
+// ─────────────────────────────────────────────────
+
+exports.cleanupExpiredDocs = onSchedule("every day 03:00", async () => {
+  const now = Timestamp.now();
+
+  async function deleteExpired(collectionName) {
+    const snap = await db
+      .collection(collectionName)
+      .where("expiresAt", "<", now)
+      .get();
+    if (snap.empty) return 0;
+
+    const batches = [];
+    let batch = db.batch();
+    let count = 0;
+    snap.forEach((doc) => {
+      batch.delete(doc.ref);
+      count++;
+      if (count % 400 === 0) {
+        batches.push(batch.commit());
+        batch = db.batch();
+      }
+    });
+    batches.push(batch.commit());
+    await Promise.all(batches);
+    return count;
+  }
+
+  const [otpCount, sessionCount] = await Promise.all([
+    deleteExpired("otpVerifications"),
+    deleteExpired("mypageSessions"),
+  ]);
+
+  console.log(`cleanupExpiredDocs: otpVerifications=${otpCount}, mypageSessions=${sessionCount}`);
 });
