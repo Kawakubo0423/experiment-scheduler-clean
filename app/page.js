@@ -300,10 +300,10 @@ function PublicSiteHeader({ onOpenHelp, onOpenAdmin, onOpenHome, onOpenReservati
             募集中の実験
           </button>
           <a
-            href="/mypage"
+            href="/mypage" target="_blank" rel="noreferrer"
             className="hidden rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 sm:inline-flex"
           >
-            マイページ
+            予約確認
           </a>
           <button
             type="button"
@@ -326,7 +326,7 @@ function PublicSiteHeader({ onOpenHelp, onOpenAdmin, onOpenHome, onOpenReservati
           <IconButton aria-label="募集中の実験を見る" onClick={onOpenReservation} title="募集中の実験" className="sm:hidden">
             <LandingIcon type="list" />
           </IconButton>
-          <a href="/mypage" aria-label="マイページへ" title="マイページへ" className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 sm:hidden">
+          <a href="/mypage" target="_blank" rel="noreferrer" aria-label="予約確認ページへ" title="予約確認ページへ" className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-50 sm:hidden">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
           </a>
           <IconButton aria-label="管理者ページへ" onClick={onOpenAdmin} title="管理者ページへ" className="sm:hidden">
@@ -790,7 +790,7 @@ function LabLinkLandingPage({
           </div>
 
           <a
-            href="/mypage"
+            href="/mypage" target="_blank" rel="noreferrer"
             className="group mt-4 flex w-full items-center justify-between rounded-[24px] border border-slate-200/80 bg-white/70 px-6 py-4 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white"
             style={{ animation: "lablink-fade-up 0.7s ease-out 0.18s both" }}
           >

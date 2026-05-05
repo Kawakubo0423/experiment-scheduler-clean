@@ -353,6 +353,36 @@ export function ResponsePageHeader({ tone = "rose" }) {
   );
 }
 
+export function MypageHeader({ email, onSignOut }) {
+  return (
+    <div className="mb-6 rounded-[32px] border border-white/70 bg-white/80 px-6 py-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+      <div className="flex items-start justify-between gap-4">
+        <LabLinkBrand compact />
+        {onSignOut ? (
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-50"
+          >
+            ログアウト
+          </button>
+        ) : null}
+      </div>
+      <div className="mt-5 inline-flex rounded-full border border-slate-200 bg-slate-100 px-3 py-1 text-xs font-semibold tracking-[0.16em] text-slate-600">
+        RESERVATION
+      </div>
+      <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-900">予約確認・変更</h1>
+      {email ? (
+        <p className="mt-2 text-sm text-slate-500">{email}</p>
+      ) : (
+        <p className="mt-3 text-sm leading-7 text-slate-600">
+          申し込み時のメールアドレスで認証して、予約内容を確認できます。
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Content ───────────────────────────────────────────────────────────────────
 
 export function TinyFeature({ title, text, tone = "teal" }) {
